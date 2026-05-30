@@ -1,4 +1,7 @@
+"use client";
+
 import Link from 'next/link';
+import { signOut } from 'next-auth/react';
 
 const modules = [
   { label: 'Knox', href: '/knox', icon: '🐺' },
@@ -19,7 +22,7 @@ const modules = [
 
 export default function MorePage() {
   return (
-    <div className="px-4 pt-14">
+    <div className="px-4 pt-14 pb-24">
       <h1 className="text-2xl font-semibold mb-4">More</h1>
 
       <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden shadow-sm">
@@ -39,6 +42,17 @@ export default function MorePage() {
           </Link>
         ))}
       </div>
+
+      <button
+        onClick={() => signOut({ callbackUrl: '/' })}
+        className="w-full mt-6 py-3.5 rounded-2xl border border-red-200 dark:border-red-900 text-red-500 text-sm font-medium active:bg-red-50 dark:active:bg-red-950 transition-colors"
+      >
+        Sign Out
+      </button>
+
+      <p className="text-center text-xs text-zinc-400 mt-4">
+        Personal OS · Built with Claude
+      </p>
     </div>
   );
 }
