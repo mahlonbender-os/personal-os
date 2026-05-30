@@ -12,7 +12,7 @@ export default function HealthCard() {
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Today's Health</h2>
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Today&apos;s Health</h2>
         <span className="text-[11px] text-zinc-400">via Apple Health</span>
       </div>
 
