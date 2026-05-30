@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// This endpoint receives nightly Apple Health data from your iOS Shortcut
 export async function POST(req: NextRequest) {
-  // Step 1: Check the secret key matches
+  // Check the secret key
   const authHeader = req.headers.get('authorization');
   const secret = process.env.HEALTH_INGEST_SECRET;
 
@@ -11,7 +10,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Step 2: Parse the incoming data
+  // Parse the incoming data
   let body;
   try {
     body = await req.json();
@@ -32,13 +31,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing date field' }, { status: 400 });
   }
 
-  // Step 3: Connect to Supabase using service role (bypasses RLS for server writes)
+  // Use anon key — RLS policies on health_logs handle security
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Step 4: Find your user ID from the database
+  // Find your user
   const { data: user, error: userError } = await supabase
     .from('users')
     .select('id')
@@ -46,10 +45,11 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (userError || !user) {
+    console.error('User lookup error:', userError);
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  // Step 5: Upsert the health log (insert or update if date already exists)
+  // Upsert the health log
   const { error } = await supabase
     .from('health_logs')
     .upsert({
