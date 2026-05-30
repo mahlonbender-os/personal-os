@@ -31,9 +31,9 @@ export const authOptions: AuthOptions = {
         );
 
       if (error) {
-        console.error('Error upserting user:', error);
-        return false;
-      }
+  console.error('Error upserting user:', JSON.stringify(error));
+  return false;
+}
 
       return true;
     },
