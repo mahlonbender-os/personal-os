@@ -75,8 +75,6 @@ export default function CalendarPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // New event form state
   const [newEvent, setNewEvent] = useState({
     title: "",
     description: "",
@@ -128,7 +126,6 @@ export default function CalendarPage() {
         start = `${newEvent.date}T${newEvent.startTime || "09:00"}:00`;
         end = `${newEvent.date}T${newEvent.endTime || "10:00"}:00`;
       } else {
-        // For all-day events, end date should be the next day per Google API
         const endDate = new Date(newEvent.date);
         endDate.setDate(endDate.getDate() + 1);
         end = endDate.toISOString().split("T")[0];
@@ -187,7 +184,6 @@ export default function CalendarPage() {
     }
   }
 
-  // Group events by date
   const groupedEvents: Record<string, CalendarEvent[]> = {};
   events.forEach((event) => {
     const key = getDateKey(event.start);
@@ -208,7 +204,6 @@ export default function CalendarPage() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
         <div className="flex items-center justify-between px-4 pt-12 pb-3">
           <div>
@@ -231,8 +226,6 @@ export default function CalendarPage() {
             </svg>
           </button>
         </div>
-
-        {/* Day range selector */}
         <div className="flex gap-2 px-4 pb-3">
           {[7, 14, 30].map((d) => (
             <button
@@ -264,10 +257,7 @@ export default function CalendarPage() {
           <div className="text-center py-12">
             <p className="text-red-500 text-sm mb-2">Error loading calendar</p>
             <p className="text-muted-foreground text-xs mb-4">{error}</p>
-            <button
-              onClick={fetchEvents}
-              className="text-primary text-sm underline"
-            >
+            <button onClick={fetchEvents} className="text-primary text-sm underline">
               Try again
             </button>
           </div>
@@ -288,7 +278,6 @@ export default function CalendarPage() {
 
               return (
                 <div key={dateKey}>
-                  {/* Date header */}
                   <div className="flex items-center gap-3 mb-2">
                     <div
                       className={`w-10 h-10 rounded-full flex flex-col items-center justify-center text-xs font-bold shrink-0 ${
@@ -298,9 +287,7 @@ export default function CalendarPage() {
                       }`}
                     >
                       <span className="text-[10px] leading-none uppercase">
-                        {dateObj.toLocaleDateString("en-US", {
-                          weekday: "short",
-                        })}
+                        {dateObj.toLocaleDateString("en-US", { weekday: "short" })}
                       </span>
                       <span className="text-base leading-tight">
                         {dateObj.getDate()}
@@ -311,8 +298,7 @@ export default function CalendarPage() {
                     </span>
                   </div>
 
-                  {/* Events for this day */}
-                  <div className="flex flex-col gap-2 ml-13 pl-1">
+                  <div className="flex flex-col gap-2 pl-13">
                     {dayEvents.map((event) => (
                       <button
                         key={event.id}
@@ -320,13 +306,9 @@ export default function CalendarPage() {
                         className="w-full text-left bg-card border border-border rounded-xl p-3 active:scale-[0.98] transition-transform"
                       >
                         <div className="flex items-start gap-3">
-                          {/* Color dot */}
                           <div
                             className="w-2.5 h-2.5 rounded-full mt-1 shrink-0"
-                            style={{
-                              backgroundColor:
-                                event.calendarColor || "#4285f4",
-                            }}
+                            style={{ backgroundColor: event.calendarColor || "#4285f4" }}
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">
@@ -336,17 +318,12 @@ export default function CalendarPage() {
                               <span className="text-xs text-muted-foreground">
                                 {formatTime(event.start, event.allDay)}
                                 {!event.allDay && event.end && (
-                                  <span>
-                                    {" "}
-                                    – {formatTime(event.end, false)}
-                                  </span>
+                                  <span> – {formatTime(event.end, false)}</span>
                                 )}
                               </span>
                               {event.location && (
                                 <>
-                                  <span className="text-muted-foreground text-xs">
-                                    ·
-                                  </span>
+                                  <span className="text-muted-foreground text-xs">·</span>
                                   <span className="text-xs text-muted-foreground truncate">
                                     📍 {event.location}
                                   </span>
@@ -370,7 +347,6 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {/* Event Detail Modal */}
       {selectedEvent && (
         <div
           className="fixed inset-0 z-50 bg-black/60 flex items-end"
@@ -380,22 +356,16 @@ export default function CalendarPage() {
             className="w-full bg-background rounded-t-3xl p-6 pb-10 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Color bar */}
             <div
               className="w-12 h-1 rounded-full mx-auto mb-6"
-              style={{
-                backgroundColor: selectedEvent.calendarColor || "#4285f4",
-              }}
+              style={{ backgroundColor: selectedEvent.calendarColor || "#4285f4" }}
             />
-
             <h2 className="text-xl font-semibold text-foreground mb-1">
               {selectedEvent.title}
             </h2>
-
             <p className="text-sm text-muted-foreground mb-4">
               {selectedEvent.calendarName}
             </p>
-
             <div className="flex flex-col gap-3">
               <div className="flex items-start gap-3">
                 <span className="text-base mt-0.5">🗓️</span>
@@ -419,16 +389,12 @@ export default function CalendarPage() {
                   )}
                 </div>
               </div>
-
               {selectedEvent.location && (
                 <div className="flex items-start gap-3">
                   <span className="text-base mt-0.5">📍</span>
-                  <p className="text-sm text-foreground">
-                    {selectedEvent.location}
-                  </p>
+                  <p className="text-sm text-foreground">{selectedEvent.location}</p>
                 </div>
               )}
-
               {selectedEvent.description && (
                 <div className="flex items-start gap-3">
                   <span className="text-base mt-0.5">📝</span>
@@ -438,7 +404,6 @@ export default function CalendarPage() {
                 </div>
               )}
             </div>
-
             <div className="flex gap-3 mt-6">
               {selectedEvent.htmlLink && (
                 
@@ -462,7 +427,6 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Add Event Modal */}
       {showAddModal && (
         <div
           className="fixed inset-0 z-50 bg-black/60 flex items-end"
@@ -473,10 +437,7 @@ export default function CalendarPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-12 h-1 bg-muted rounded-full mx-auto mb-6" />
-            <h2 className="text-xl font-semibold text-foreground mb-6">
-              New Event
-            </h2>
-
+            <h2 className="text-xl font-semibold text-foreground mb-6">New Event</h2>
             <div className="flex flex-col gap-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -485,14 +446,11 @@ export default function CalendarPage() {
                 <input
                   type="text"
                   value={newEvent.title}
-                  onChange={(e) =>
-                    setNewEvent((p) => ({ ...p, title: e.target.value }))
-                  }
+                  onChange={(e) => setNewEvent((p) => ({ ...p, title: e.target.value }))}
                   placeholder="Event title"
                   className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
-
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Date *
@@ -500,31 +458,22 @@ export default function CalendarPage() {
                 <input
                   type="date"
                   value={newEvent.date}
-                  onChange={(e) =>
-                    setNewEvent((p) => ({ ...p, date: e.target.value }))
-                  }
+                  onChange={(e) => setNewEvent((p) => ({ ...p, date: e.target.value }))}
                   className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
-
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
                   id="allDay"
                   checked={newEvent.allDay}
-                  onChange={(e) =>
-                    setNewEvent((p) => ({ ...p, allDay: e.target.checked }))
-                  }
+                  onChange={(e) => setNewEvent((p) => ({ ...p, allDay: e.target.checked }))}
                   className="w-4 h-4 rounded"
                 />
-                <label
-                  htmlFor="allDay"
-                  className="text-sm text-foreground"
-                >
+                <label htmlFor="allDay" className="text-sm text-foreground">
                   All day event
                 </label>
               </div>
-
               {!newEvent.allDay && (
                 <div className="flex gap-3">
                   <div className="flex-1">
@@ -534,12 +483,7 @@ export default function CalendarPage() {
                     <input
                       type="time"
                       value={newEvent.startTime}
-                      onChange={(e) =>
-                        setNewEvent((p) => ({
-                          ...p,
-                          startTime: e.target.value,
-                        }))
-                      }
+                      onChange={(e) => setNewEvent((p) => ({ ...p, startTime: e.target.value }))}
                       className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -550,18 +494,12 @@ export default function CalendarPage() {
                     <input
                       type="time"
                       value={newEvent.endTime}
-                      onChange={(e) =>
-                        setNewEvent((p) => ({
-                          ...p,
-                          endTime: e.target.value,
-                        }))
-                      }
+                      onChange={(e) => setNewEvent((p) => ({ ...p, endTime: e.target.value }))}
                       className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
                 </div>
               )}
-
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Location
@@ -569,32 +507,23 @@ export default function CalendarPage() {
                 <input
                   type="text"
                   value={newEvent.location}
-                  onChange={(e) =>
-                    setNewEvent((p) => ({ ...p, location: e.target.value }))
-                  }
+                  onChange={(e) => setNewEvent((p) => ({ ...p, location: e.target.value }))}
                   placeholder="Optional location"
                   className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
-
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Description
                 </label>
                 <textarea
                   value={newEvent.description}
-                  onChange={(e) =>
-                    setNewEvent((p) => ({
-                      ...p,
-                      description: e.target.value,
-                    }))
-                  }
+                  onChange={(e) => setNewEvent((p) => ({ ...p, description: e.target.value }))}
                   placeholder="Optional notes"
                   rows={3}
                   className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none focus:ring-2 focus:ring-primary resize-none"
                 />
               </div>
-
               {calendars.length > 0 && (
                 <div>
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -602,12 +531,7 @@ export default function CalendarPage() {
                   </label>
                   <select
                     value={newEvent.calendarId}
-                    onChange={(e) =>
-                      setNewEvent((p) => ({
-                        ...p,
-                        calendarId: e.target.value,
-                      }))
-                    }
+                    onChange={(e) => setNewEvent((p) => ({ ...p, calendarId: e.target.value }))}
                     className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="primary">Primary Calendar</option>
@@ -619,7 +543,6 @@ export default function CalendarPage() {
                   </select>
                 </div>
               )}
-
               <button
                 onClick={handleAddEvent}
                 disabled={saving || !newEvent.title || !newEvent.date}
