@@ -1,5 +1,5 @@
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import WeatherHeader from '@/components/command-center/WeatherHeader';
 import HealthCard from '@/components/command-center/HealthCard';
 import CashFlowCard from '@/components/command-center/CashFlowCard';
