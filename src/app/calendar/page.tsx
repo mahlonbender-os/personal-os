@@ -277,8 +277,8 @@ export default function CalendarPage() {
       </div>
 
       {selectedEvent ? (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end" onClick={() => setSelectedEvent(null)}>
-          <div className="w-full bg-background rounded-t-3xl p-6 pb-10 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4" onClick={() => setSelectedEvent(null)}>
+  <div className="w-full bg-background rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1 rounded-full mx-auto mb-6" style={{ backgroundColor: selectedEvent.calendarColor || "#4285f4" }} />
             <h2 className="text-xl font-semibold text-foreground mb-1">{selectedEvent.title}</h2>
             <p className="text-sm text-muted-foreground mb-4">{selectedEvent.calendarName}</p>
@@ -324,8 +324,8 @@ export default function CalendarPage() {
       ) : null}
 
       {showAddModal ? (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end" onClick={() => setShowAddModal(false)}>
-          <div className="w-full bg-background rounded-t-3xl p-6 pb-10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4" onClick={() => setShowAddModal(false)}>
+  <div className="w-full bg-background rounded-2xl p-6 pb-8 max-h-[90vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1 bg-muted rounded-full mx-auto mb-6" />
             <h2 className="text-xl font-semibold text-foreground mb-6">New Event</h2>
             <div className="flex flex-col gap-4">
