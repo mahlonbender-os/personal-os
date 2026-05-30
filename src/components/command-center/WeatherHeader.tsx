@@ -12,7 +12,7 @@ export default function WeatherHeader({ greeting }: { greeting: string }) {
     <div className="flex items-start justify-between pt-1">
       <div>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">{dateStr}</p>
-        <h1 className="text-2xl font-semibold tracking-tight">{greeting}, Eric</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{greeting}, Mahlon</h1>
       </div>
 
       {/* Weather pill — placeholder until API connected */}
