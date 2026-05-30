@@ -48,13 +48,6 @@ export default async function HealthCard() {
       color: 'text-blue-500',
     },
     {
-      label: 'Sleep',
-      value: formatSleep(log?.sleep_duration_minutes),
-      unit: '',
-      icon: '🌙',
-      color: 'text-indigo-500',
-    },
-    {
       label: 'Heart Rate',
       value: log?.resting_heart_rate ? `${log.resting_heart_rate}` : '—',
       unit: log?.resting_heart_rate ? 'bpm' : '',
@@ -90,7 +83,7 @@ export default async function HealthCard() {
         </span>
       </div>
 
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         {stats.map((stat) => (
           <div key={stat.label} className="flex flex-col items-center gap-0.5">
             <span className="text-base">{stat.icon}</span>
