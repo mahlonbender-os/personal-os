@@ -39,16 +39,23 @@ export async function POST(req: NextRequest) {
   // Hardcoded user ID -- skip the lookup
   const userId = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
-  const { error } = await supabase
+  // Helper to convert empty strings to null
+const clean = (val: unknown) => {
+  if (val === '' || val === null || val === undefined) return null;
+  const num = Number(val);
+  return isNaN(num) ? null : Math.round(num);
+};
+
+const { error } = await supabase
     .from('health_logs')
     .upsert({
       user_id: userId,
       log_date: date,
-      steps: steps ?? null,
-      sleep_duration_minutes: sleep_duration_minutes ?? null,
-      resting_heart_rate: resting_heart_rate ?? null,
-      activity_minutes: activity_minutes ?? null,
-      active_calories: active_calories ?? null,
+      steps: clean(steps),
+      sleep_duration_minutes: clean(sleep_duration_minutes),
+      resting_heart_rate: clean(resting_heart_rate),
+      activity_minutes: clean(activity_minutes),
+      active_calories: clean(active_calories),
       source: 'apple_health',
     }, {
       onConflict: 'user_id,log_date',
