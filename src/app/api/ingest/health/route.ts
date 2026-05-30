@@ -31,29 +31,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing date field' }, { status: 400 });
   }
 
-  // Use anon key — RLS policies on health_logs handle security
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Find your user
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('email', 'mahlon.bender@gmail.com')
-    .single();
+  // Hardcoded user ID -- skip the lookup
+  const userId = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
-  if (userError || !user) {
-    console.error('User lookup error:', userError);
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
-
-  // Upsert the health log
   const { error } = await supabase
     .from('health_logs')
     .upsert({
-      user_id: user.id,
+      user_id: userId,
       log_date: date,
       steps: steps ?? null,
       sleep_duration_minutes: sleep_duration_minutes ?? null,
@@ -66,8 +55,8 @@ export async function POST(req: NextRequest) {
     });
 
   if (error) {
-    console.error('Supabase error:', error);
-    return NextResponse.json({ error: 'Database error' }, { status: 500 });
+    console.error('Supabase error:', JSON.stringify(error));
+    return NextResponse.json({ error: 'Database error', details: error }, { status: 500 });
   }
 
   return NextResponse.json({ success: true, date });
