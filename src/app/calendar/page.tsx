@@ -36,13 +36,13 @@ function formatDateHeader(dateStr: string): string {
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
 
-  const isSameDay = (a: Date, b: Date) =>
+const checkSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
 
-  if (isSameDay(d, today)) return "Today";
-  if (isSameDay(d, tomorrow)) return "Tomorrow";
+  if (checkSameDay(d, today)) return "Today";
+  if (checkSameDay(d, tomorrow)) return "Tomorrow";
 
   return d.toLocaleDateString("en-US", {
     weekday: "long",
