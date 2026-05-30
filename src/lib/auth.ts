@@ -12,30 +12,17 @@ export const authOptions: AuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
     async signIn({ user }) {
-      // Use anon key here — users table policies allow this
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-
-      const { error } = await supabase
-        .from('users')
-        .upsert(
-          {
-            email: user.email,
-            name: user.name,
-            image: user.image,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'email' }
+      try {
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
 
-      if (error) {
-        console.error('Error upserting user:', JSON.stringify(error));
-        return false;
-      }
-
-      return true;
-    },
-  },
-};
+        await supabase
+          .from('users')
+          .upsert(
+            {
+              email: user.email,
+              name: user.name,
+              image: user.image,
+              updated
