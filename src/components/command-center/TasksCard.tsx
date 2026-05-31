@@ -4,24 +4,15 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckSquare, Check, Clock, ChevronRight } from 'lucide-react';
 
-interface Task {
+interface GoogleTask {
   id: string;
   title: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
   status: string;
-  due_date?: string;
-  category: string;
+  due?: string;
 }
 
-const PRIORITY_DOT: Record<string, string> = {
-  urgent: 'bg-red-500',
-  high: 'bg-orange-500',
-  medium: 'bg-yellow-500',
-  low: 'bg-blue-400',
-};
-
-function formatDue(dateStr: string): { label: string; urgent: boolean } {
-  const date = new Date(dateStr + 'T00:00:00');
+function formatDue(iso: string): { label: string; urgent: boolean } {
+  const date = new Date(iso);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.floor((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -33,25 +24,33 @@ function formatDue(dateStr: string): { label: string; urgent: boolean } {
 
 export default function TasksCard() {
   const router = useRouter();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<GoogleTask[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/tasks?status=pending&limit=4')
+    // Fetch first list, show its pending tasks
+    fetch('/api/tasks/lists')
       .then(r => r.json())
-      .then(d => setTasks(d.tasks || []))
+      .then(async d => {
+        const lists = d.lists || [];
+        if (lists.length === 0) return;
+        const firstListId = lists[0].id;
+        const res = await fetch(`/api/tasks/items?listId=${firstListId}&showCompleted=false`);
+        const data = await res.json();
+        setTasks((data.tasks || []).slice(0, 4));
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  const toggleComplete = async (e: React.MouseEvent, task: Task) => {
+  const toggleComplete = async (e: React.MouseEvent, task: GoogleTask, listId: string) => {
     e.stopPropagation();
-    await fetch('/api/tasks', {
+    setTasks(prev => prev.filter(t => t.id !== task.id));
+    await fetch('/api/tasks/items', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: task.id, status: 'completed' }),
+      body: JSON.stringify({ listId, taskId: task.id, status: 'completed' }),
     });
-    setTasks(prev => prev.filter(t => t.id !== task.id));
   };
 
   return (
@@ -75,28 +74,27 @@ export default function TasksCard() {
       {loading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-8 bg-muted rounded-lg animate-pulse" />
+            <div key={i} className="h-7 bg-muted rounded-lg animate-pulse" />
           ))}
         </div>
       ) : tasks.length === 0 ? (
-        <div className="text-center py-4">
-          <Check className="w-6 h-6 mx-auto text-green-500 mb-1" />
+        <div className="text-center py-3">
+          <Check className="w-5 h-5 mx-auto text-green-500 mb-1" />
           <p className="text-xs text-muted-foreground">All clear!</p>
         </div>
       ) : (
         <div className="space-y-2">
           {tasks.map(task => {
-            const due = task.due_date ? formatDue(task.due_date) : null;
+            const due = task.due ? formatDue(task.due) : null;
             return (
               <div key={task.id} className="flex items-center gap-2.5">
                 <button
-                  onClick={(e) => toggleComplete(e, task)}
-                  className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 hover:border-primary shrink-0 flex items-center justify-center"
+                  onClick={(e) => toggleComplete(e, task, '')}
+                  className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 hover:border-primary shrink-0"
                 />
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} />
                 <span className="text-sm flex-1 truncate">{task.title}</span>
                 {due && (
-                  <span className={`text-xs shrink-0 ${due.urgent ? 'text-red-500' : 'text-muted-foreground'}`}>
+                  <span className={`text-xs shrink-0 ${due.urgent ? 'text-orange-500' : 'text-muted-foreground'}`}>
                     {due.label}
                   </span>
                 )}
