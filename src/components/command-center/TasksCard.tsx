@@ -34,8 +34,9 @@ export default function TasksCard() {
       .then(async d => {
         const lists = d.lists || [];
         if (lists.length === 0) return;
-        const firstListId = lists[0].id;
-        const res = await fetch(`/api/tasks/items?listId=${firstListId}&showCompleted=false`);
+        const preferred = lists.find((l: { id: string; title: string }) => l.title === 'Personal OS');
+const firstListId = (preferred || lists[0]).id;
+const res = await fetch(`/api/tasks/items?listId=${firstListId}&showCompleted=false`);
         const data = await res.json();
         setTasks((data.tasks || []).slice(0, 4));
       })

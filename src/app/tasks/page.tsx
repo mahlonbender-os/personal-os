@@ -58,8 +58,11 @@ export default function TasksPage() {
       .then(r => r.json())
       .then(d => {
         const fetchedLists = d.lists || [];
-        setLists(fetchedLists);
-        if (fetchedLists.length > 0) setActiveListId(fetchedLists[0].id);
+setLists(fetchedLists);
+if (fetchedLists.length > 0) {
+  const preferred = fetchedLists.find((l: { id: string; title: string }) => l.title === 'Personal OS');
+  setActiveListId((preferred || fetchedLists[0]).id);
+}
       })
       .catch(console.error)
       .finally(() => setLoadingLists(false));
