@@ -10,6 +10,11 @@ interface Prediction {
   secondaryText: string;
 }
 
+interface Coords {
+  lat: number;
+  lng: number;
+}
+
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -21,8 +26,25 @@ export default function LocationAutocomplete({ value, onChange, placeholder = 'L
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [coords, setCoords] = useState<Coords | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Get user's location once on mount
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => {
+        // Permission denied or unavailable — fall back to no bias
+        // Hardcode Reading, PA as fallback since that's where you are
+        setCoords({ lat: 40.3356, lng: -75.9269 });
+      },
+      { timeout: 5000 }
+    );
+  }, []);
 
   // Sync external value changes
   useEffect(() => {
@@ -42,8 +64,15 @@ export default function LocationAutocomplete({ value, onChange, placeholder = 'L
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/places?input=${encodeURIComponent(input)}`);
+        const params = new URLSearchParams({ input: input.trim() });
+        if (coords) {
+          params.set('lat', String(coords.lat));
+          params.set('lng', String(coords.lng));
+        }
+
+        const res = await fetch(`/api/places?${params}`);
         const data = await res.json();
+
         if (data.predictions && data.predictions.length > 0) {
           setPredictions(data.predictions);
           setShowDropdown(true);
@@ -61,7 +90,7 @@ export default function LocationAutocomplete({ value, onChange, placeholder = 'L
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [input]);
+  }, [input, coords]);
 
   // Close dropdown when tapping outside
   useEffect(() => {
@@ -90,7 +119,6 @@ export default function LocationAutocomplete({ value, onChange, placeholder = 'L
 
   const handleInputChange = (val: string) => {
     setInput(val);
-    // If user clears the field, propagate immediately
     if (!val) onChange('');
   };
 
