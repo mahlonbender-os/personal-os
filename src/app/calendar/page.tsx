@@ -64,6 +64,38 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
+function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const options: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 5) {
+      const hh = String(h).padStart(2, '0');
+      const mm = String(m).padStart(2, '0');
+      options.push(`${hh}:${mm}`);
+    }
+  }
+
+  function toDisplay(val: string): string {
+    if (!val) return '';
+    const [h, m] = val.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour = h % 12 === 0 ? 12 : h % 12;
+    return `${hour}:${String(m).padStart(2, '0')} ${period}`;
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="text-sm text-blue-500 bg-transparent outline-none text-right"
+    >
+      {!value && <option value="">Select</option>}
+      {options.map((opt) => (
+        <option key={opt} value={opt}>{toDisplay(opt)}</option>
+      ))}
+    </select>
+  );
+}
+
 export default function CalendarPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -360,7 +392,7 @@ export default function CalendarPage() {
                   type="text"
                   value={newEvent.location}
                   onChange={(e) => setNewEvent((p) => ({ ...p, location: e.target.value }))}
-                  placeholder="Location or video call"
+                  placeholder="Location"
                   className="w-full px-4 py-3.5 bg-transparent text-black text-sm placeholder-gray-400 outline-none"
                 />
               </div>
@@ -392,12 +424,10 @@ export default function CalendarPage() {
                 {/* Start time */}
                 {!newEvent.allDay && (
                   <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
-                    <span className="text-sm text-black">Starts</span>
-                    <input
-                      type="time"
+                    <span className="text-sm text-black">Start</span>
+                    <TimeSelect
                       value={newEvent.startTime}
-                      onChange={(e) => setNewEvent((p) => ({ ...p, startTime: e.target.value }))}
-                      className="text-sm text-blue-500 bg-transparent outline-none text-right"
+                      onChange={(v) => setNewEvent((p) => ({ ...p, startTime: v }))}
                     />
                   </div>
                 )}
@@ -405,12 +435,10 @@ export default function CalendarPage() {
                 {/* End time */}
                 {!newEvent.allDay && (
                   <div className="flex items-center justify-between px-4 py-3.5">
-                    <span className="text-sm text-black">Ends</span>
-                    <input
-                      type="time"
+                    <span className="text-sm text-black">End</span>
+                    <TimeSelect
                       value={newEvent.endTime}
-                      onChange={(e) => setNewEvent((p) => ({ ...p, endTime: e.target.value }))}
-                      className="text-sm text-blue-500 bg-transparent outline-none text-right"
+                      onChange={(v) => setNewEvent((p) => ({ ...p, endTime: v }))}
                     />
                   </div>
                 )}
