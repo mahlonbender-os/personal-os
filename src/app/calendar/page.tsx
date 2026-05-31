@@ -324,10 +324,21 @@ export default function CalendarPage() {
       ) : null}
 
       {showAddModal ? (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4" onClick={() => setShowAddModal(false)}>
-  <div className="w-full bg-background rounded-2xl p-6 pb-8 max-h-[90vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-1 bg-muted rounded-full mx-auto mb-6" />
-            <h2 className="text-xl font-semibold text-foreground mb-6">New Event</h2>
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-end justify-center" onClick={() => setShowAddModal(false)}>
+          <div className="w-full bg-background rounded-t-2xl p-6 pb-10 max-h-[92vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+            {/* Header with X button */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-foreground">New Event</h2>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+
             <div className="flex flex-col gap-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</label>
@@ -342,14 +353,14 @@ export default function CalendarPage() {
                 <label htmlFor="allDay" className="text-sm text-foreground">All day event</label>
               </div>
               {!newEvent.allDay ? (
-                <div className="flex gap-3">
-                  <div className="flex-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Start</label>
-                    <input type="time" value={newEvent.startTime} onChange={(e) => setNewEvent((p) => ({ ...p, startTime: e.target.value }))} className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none" />
+                    <input type="time" value={newEvent.startTime} onChange={(e) => setNewEvent((p) => ({ ...p, startTime: e.target.value }))} className="w-full mt-1 px-3 py-3 bg-muted rounded-xl text-sm text-foreground outline-none" />
                   </div>
-                  <div className="flex-1">
+                  <div>
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">End</label>
-                    <input type="time" value={newEvent.endTime} onChange={(e) => setNewEvent((p) => ({ ...p, endTime: e.target.value }))} className="w-full mt-1 px-4 py-3 bg-muted rounded-xl text-sm text-foreground outline-none" />
+                    <input type="time" value={newEvent.endTime} onChange={(e) => setNewEvent((p) => ({ ...p, endTime: e.target.value }))} className="w-full mt-1 px-3 py-3 bg-muted rounded-xl text-sm text-foreground outline-none" />
                   </div>
                 </div>
               ) : null}
@@ -373,7 +384,7 @@ export default function CalendarPage() {
                 </div>
               ) : null}
               <button onClick={handleAddEvent} disabled={saving || !newEvent.title || !newEvent.date} className="w-full py-4 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-50 mt-2">
-                {saving ? "Saving" : "Add to Calendar"}
+                {saving ? "Saving…" : "Add to Calendar"}
               </button>
             </div>
           </div>
