@@ -389,6 +389,10 @@ export default function CalendarPage() {
                   placeholder="Title"
                   className="w-full px-4 py-3.5 bg-transparent text-black text-base placeholder-gray-400 outline-none border-b border-gray-200"
                 />
+              </div>
+
+              {/* Location — separate card so dropdown isn't clipped */}
+              <div className="bg-gray-100 rounded-2xl">
                 <LocationAutocomplete
                   value={newEvent.location}
                   onChange={(val) => setNewEvent((p) => ({ ...p, location: val }))}
