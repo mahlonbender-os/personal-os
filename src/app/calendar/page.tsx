@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
+import LocationAutocomplete from '@/components/LocationAutocomplete';
 
 interface CalendarEvent {
   id: string;
@@ -388,12 +389,10 @@ export default function CalendarPage() {
                   placeholder="Title"
                   className="w-full px-4 py-3.5 bg-transparent text-black text-base placeholder-gray-400 outline-none border-b border-gray-200"
                 />
-                <input
-                  type="text"
+                <LocationAutocomplete
                   value={newEvent.location}
-                  onChange={(e) => setNewEvent((p) => ({ ...p, location: e.target.value }))}
+                  onChange={(val) => setNewEvent((p) => ({ ...p, location: val }))}
                   placeholder="Location"
-                  className="w-full px-4 py-3.5 bg-transparent text-black text-sm placeholder-gray-400 outline-none"
                 />
               </div>
 
