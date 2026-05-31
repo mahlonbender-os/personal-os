@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     // radius is in meters — 50000 = ~31 miles
     if (lat && lng) {
       params.set('location', `${lat},${lng}`);
-      params.set('radius', '50000');
+      params.set('rankby', 'distance');
     }
 
     const res = await fetch(
