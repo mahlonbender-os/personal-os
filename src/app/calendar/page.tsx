@@ -325,131 +325,129 @@ export default function CalendarPage() {
 
       {showAddModal ? (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-end justify-center" onClick={() => setShowAddModal(false)}>
-          <div className="w-full bg-white rounded-t-2xl p-6 pb-10 max-h-[92vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full bg-white rounded-t-2xl max-h-[92vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
 
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-black">New Event</h2>
+            <div className="flex items-center justify-between px-4 pt-5 pb-4 border-b border-gray-200">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-black"
+                className="text-sm text-gray-500 font-medium"
               >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
+                Cancel
+              </button>
+              <h2 className="text-base font-semibold text-black">New Event</h2>
+              <button
+                onClick={handleAddEvent}
+                disabled={saving || !newEvent.title || !newEvent.date}
+                className="text-sm font-semibold text-blue-500 disabled:opacity-30"
+              >
+                {saving ? "Saving…" : "Add"}
               </button>
             </div>
 
-            <div className="flex flex-col gap-4">
+            <div className="px-4 py-5 flex flex-col gap-4">
 
-              {/* Title */}
-              <div>
-                <label className="text-xs font-medium text-black uppercase tracking-wide">Title</label>
+              {/* Title + Location group */}
+              <div className="bg-gray-100 rounded-2xl overflow-hidden">
                 <input
                   type="text"
                   value={newEvent.title}
                   onChange={(e) => setNewEvent((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="Event title"
-                  className="w-full mt-1 px-4 py-3 bg-white border border-black rounded-xl text-sm text-black outline-none"
+                  placeholder="Title"
+                  className="w-full px-4 py-3.5 bg-transparent text-black text-base placeholder-gray-400 outline-none border-b border-gray-200"
                 />
-              </div>
-
-              {/* Date */}
-              <div>
-                <label className="text-xs font-medium text-black uppercase tracking-wide">Date</label>
-                <input
-                  type="date"
-                  value={newEvent.date}
-                  onChange={(e) => setNewEvent((p) => ({ ...p, date: e.target.value }))}
-                  className="w-full mt-1 px-4 py-3 bg-white border border-black rounded-xl text-sm text-black outline-none"
-                />
-              </div>
-
-              {/* All day */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="allDay"
-                  checked={newEvent.allDay}
-                  onChange={(e) => setNewEvent((p) => ({ ...p, allDay: e.target.checked }))}
-                  className="w-4 h-4 rounded"
-                />
-                <label htmlFor="allDay" className="text-sm text-black">All day event</label>
-              </div>
-
-              {/* Start / End */}
-              {!newEvent.allDay ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-black uppercase tracking-wide">Start</label>
-                    <input
-                      type="time"
-                      value={newEvent.startTime}
-                      onChange={(e) => setNewEvent((p) => ({ ...p, startTime: e.target.value }))}
-                      className="w-full mt-1 px-3 py-3 bg-white border border-black rounded-xl text-sm text-black outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-black uppercase tracking-wide">End</label>
-                    <input
-                      type="time"
-                      value={newEvent.endTime}
-                      onChange={(e) => setNewEvent((p) => ({ ...p, endTime: e.target.value }))}
-                      className="w-full mt-1 px-3 py-3 bg-white border border-black rounded-xl text-sm text-black outline-none"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Location */}
-              <div>
-                <label className="text-xs font-medium text-black uppercase tracking-wide">Location</label>
                 <input
                   type="text"
                   value={newEvent.location}
                   onChange={(e) => setNewEvent((p) => ({ ...p, location: e.target.value }))}
-                  placeholder="Optional"
-                  className="w-full mt-1 px-4 py-3 bg-white border border-black rounded-xl text-sm text-black outline-none"
+                  placeholder="Location or video call"
+                  className="w-full px-4 py-3.5 bg-transparent text-black text-sm placeholder-gray-400 outline-none"
                 />
+              </div>
+
+              {/* Date + Time group */}
+              <div className="bg-gray-100 rounded-2xl overflow-hidden">
+                {/* All day toggle */}
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
+                  <span className="text-sm text-black">All-day</span>
+                  <button
+                    onClick={() => setNewEvent((p) => ({ ...p, allDay: !p.allDay }))}
+                    className={`w-12 h-7 rounded-full transition-colors relative ${newEvent.allDay ? 'bg-blue-500' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${newEvent.allDay ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+
+                {/* Date row */}
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
+                  <span className="text-sm text-black">Date</span>
+                  <input
+                    type="date"
+                    value={newEvent.date}
+                    onChange={(e) => setNewEvent((p) => ({ ...p, date: e.target.value }))}
+                    className="text-sm text-blue-500 bg-transparent outline-none text-right"
+                  />
+                </div>
+
+                {/* Start time */}
+                {!newEvent.allDay && (
+                  <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
+                    <span className="text-sm text-black">Starts</span>
+                    <input
+                      type="time"
+                      value={newEvent.startTime}
+                      onChange={(e) => setNewEvent((p) => ({ ...p, startTime: e.target.value }))}
+                      className="text-sm text-blue-500 bg-transparent outline-none text-right"
+                    />
+                  </div>
+                )}
+
+                {/* End time */}
+                {!newEvent.allDay && (
+                  <div className="flex items-center justify-between px-4 py-3.5">
+                    <span className="text-sm text-black">Ends</span>
+                    <input
+                      type="time"
+                      value={newEvent.endTime}
+                      onChange={(e) => setNewEvent((p) => ({ ...p, endTime: e.target.value }))}
+                      className="text-sm text-blue-500 bg-transparent outline-none text-right"
+                    />
+                  </div>
+                )}
+
+                {/* All day — no time rows needed, close group */}
+                {newEvent.allDay && <div />}
               </div>
 
               {/* Description */}
-              <div>
-                <label className="text-xs font-medium text-black uppercase tracking-wide">Description</label>
+              <div className="bg-gray-100 rounded-2xl overflow-hidden">
                 <textarea
                   value={newEvent.description}
                   onChange={(e) => setNewEvent((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="Optional notes"
+                  placeholder="Add notes"
                   rows={3}
-                  className="w-full mt-1 px-4 py-3 bg-white border border-black rounded-xl text-sm text-black outline-none resize-none"
+                  className="w-full px-4 py-3.5 bg-transparent text-black text-sm placeholder-gray-400 outline-none resize-none"
                 />
               </div>
 
-              {/* Calendar selector */}
-              {calendars.length > 0 ? (
-                <div>
-                  <label className="text-xs font-medium text-black uppercase tracking-wide">Calendar</label>
-                  <select
-                    value={newEvent.calendarId}
-                    onChange={(e) => setNewEvent((p) => ({ ...p, calendarId: e.target.value }))}
-                    className="w-full mt-1 px-4 py-3 bg-white border border-black rounded-xl text-sm text-black outline-none"
-                  >
-                    <option value="primary">Primary Calendar</option>
-                    {calendars.map((cal: any) => (
-                      <option key={cal.id} value={cal.id}>{cal.summary}</option>
-                    ))}
-                  </select>
+              {/* Calendar picker */}
+              {calendars.length > 0 && (
+                <div className="bg-gray-100 rounded-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3.5">
+                    <span className="text-sm text-black">Calendar</span>
+                    <select
+                      value={newEvent.calendarId}
+                      onChange={(e) => setNewEvent((p) => ({ ...p, calendarId: e.target.value }))}
+                      className="text-sm text-blue-500 bg-transparent outline-none text-right max-w-[55%] truncate"
+                    >
+                      <option value="primary">Primary</option>
+                      {calendars.map((cal: any) => (
+                        <option key={cal.id} value={cal.id}>{cal.summary}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              ) : null}
-
-              {/* Submit */}
-              <button
-                onClick={handleAddEvent}
-                disabled={saving || !newEvent.title || !newEvent.date}
-                className="w-full py-4 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-50 mt-2"
-              >
-                {saving ? "Saving…" : "Add to Calendar"}
-              </button>
+              )}
 
             </div>
           </div>
