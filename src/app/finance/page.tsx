@@ -288,11 +288,6 @@ export default function FinancePage() {
 
 // ═══════════════════════════════════════════════════════════
 // OVERVIEW PAGE
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-// OVERVIEW PAGE
 // ═══════════════════════════════════════════════════════════
 function OverviewPage({ accounts, totalBalance, totalCredit, thisMonthSpend, upcomingBills, transactions, goals, formatCurrency, lastSynced, onConnectBank, plaidReady }: any) {
   return (
