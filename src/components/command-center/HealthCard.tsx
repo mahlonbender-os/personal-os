@@ -1,32 +1,18 @@
-import { createClient } from '@supabase/supabase-js';
+'use client';
 
-async function getLatestHealthLog() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+import { useState, useEffect } from 'react';
 
-  const { data: user } = await supabase
-    .from('users')
-    .select('id')
-    .eq('email', 'mahlon.bender@gmail.com')
-    .single();
+export default function HealthCard() {
+  const [log, setLog] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!user) return null;
-
-  const { data } = await supabase
-    .from('health_logs')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('log_date', { ascending: false })
-    .limit(1)
-    .single();
-
-  return data;
-}
-
-export default async function HealthCard() {
-  const log = await getLatestHealthLog();
+  useEffect(() => {
+    fetch('/api/health/latest')
+      .then(r => r.json())
+      .then(d => setLog(d.log))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   const steps = log?.steps ?? null;
   const stepGoal = 10000;
@@ -70,28 +56,39 @@ export default async function HealthCard() {
           Today&apos;s Health
         </h2>
         <span className="text-[11px] text-zinc-400">
-          {log?.log_date
+          {loading ? '…' : log?.log_date
             ? new Date(log.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             : 'No data yet'}
         </span>
       </div>
 
-      <div className="grid grid-cols-4 gap-1">
-        {stats.map((stat) => (
-          <div key={stat.label} className="flex flex-col items-center gap-0.5">
-            <span className="text-base">{stat.icon}</span>
-            <span className={`text-sm font-semibold ${stat.color}`}>
-              {stat.value}
-            </span>
-            {stat.unit && (
-              <span className="text-[10px] text-zinc-400">{stat.unit}</span>
-            )}
-            <span className="text-[10px] text-zinc-400 text-center leading-tight">
-              {stat.label}
-            </span>
-          </div>
-        ))}
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-4 gap-1">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex flex-col items-center gap-1">
+              <div className="w-6 h-6 bg-zinc-100 dark:bg-zinc-800 rounded animate-pulse" />
+              <div className="w-8 h-3 bg-zinc-100 dark:bg-zinc-800 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 gap-1">
+          {stats.map((stat) => (
+            <div key={stat.label} className="flex flex-col items-center gap-0.5">
+              <span className="text-base">{stat.icon}</span>
+              <span className={`text-sm font-semibold ${stat.color}`}>
+                {stat.value}
+              </span>
+              {stat.unit && (
+                <span className="text-[10px] text-zinc-400">{stat.unit}</span>
+              )}
+              <span className="text-[10px] text-zinc-400 text-center leading-tight">
+                {stat.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3">
         <div className="flex justify-between text-[10px] text-zinc-400 mb-1">
