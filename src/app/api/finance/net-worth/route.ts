@@ -62,6 +62,7 @@ export async function GET() {
       totalLiabilities,
       netWorth,
       accounts: [...assets, ...liabilities],
+      debug: rows.slice(7, 15),
     });
   } catch (e: unknown) {
     return NextResponse.json(
