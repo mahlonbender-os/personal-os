@@ -88,47 +88,22 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+function formatBillDate(bill: Bill): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth(); // 0-based
+  if (bill.due_day) {
+    const d = new Date(year, month, bill.due_day);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  if (bill.due_date) return formatDate(bill.due_date);
+  return '';
+}
 
-function SyncButton({ onSync }: { onSync: () => void }) {
-  const [syncing, setSyncing] = useState(false);
-  const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+// ─── Sync function ────────────────────────────────────────────────────────────
 
-  const handleSync = async () => {
-    setSyncing(true);
-    setResult(null);
-    try {
-      const res = await fetch('/api/sync/sheets', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setResult(data.message || '✓ Done');
-        setLastSynced(new Date().toLocaleTimeString());
-        onSync();
-      } else {
-        setResult(data.message || 'Sync failed');
-      }
-    } catch {
-      setResult('Network error');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-3">
-      <button
-        onClick={handleSync}
-        disabled={syncing}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium disabled:opacity-60 active:scale-95 transition-transform"
-      >
-        <span className={syncing ? 'animate-spin inline-block' : ''}>⟳</span>
-        {syncing ? 'Syncing…' : 'Sync Sheets'}
-      </button>
-      {result && <span className="text-xs text-green-600 dark:text-green-400">{result}</span>}
-      {lastSynced && !result && <span className="text-xs text-gray-400">Last: {lastSynced}</span>}
-    </div>
-  );
+async function syncSheets(): Promise<void> {
+  await fetch('/api/sync/sheets', { method: 'POST' });
 }
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
@@ -149,7 +124,6 @@ function OverviewTab({ onRefresh }: { onRefresh: number }) {
       ]);
       const [cfData, nwData, txData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json()]);
 
-      // Find current month in cash flow data
       const now = new Date();
       const monthName = now.toLocaleString('default', { month: 'long' });
       const currentMonthData = cfData.months?.find((m: { month: string }) =>
@@ -233,7 +207,7 @@ function OverviewTab({ onRefresh }: { onRefresh: number }) {
         </div>
         {recentTx.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-400">
-            No transactions yet — tap Sync Sheets above
+            Pull down to sync latest data
           </p>
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-gray-700/50">
@@ -290,30 +264,27 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
     return matchCat && matchSearch;
   });
 
-  // Group by month
   const grouped = filtered.reduce<Record<string, Transaction[]>>((acc, tx) => {
-    const key = tx.month || 'Unknown';
+    const key = tx.date ? tx.date.substring(0, 7) : 'Unknown';
     if (!acc[key]) acc[key] = [];
     acc[key].push(tx);
     return acc;
   }, {});
 
-  const sortedMonths = Object.keys(grouped).sort((a, b) => {
-    // Sort months chronologically (rough sort by parsing)
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'];
-    const [aMonth, aYear] = a.split(' ');
-    const [bMonth, bYear] = b.split(' ');
-    if (aYear !== bYear) return parseInt(bYear) - parseInt(aYear);
-    return months.indexOf(bMonth) - months.indexOf(aMonth);
-  });
+  const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  function monthLabel(key: string): string {
+    if (key === 'Unknown') return 'Unknown';
+    const [y, m] = key.split('-');
+    const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+    return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+  }
 
   const totalFiltered = filtered.reduce((sum, tx) =>
     INCOME_CATEGORIES.includes(tx.category) ? sum + tx.amount : sum - tx.amount, 0);
 
   return (
     <div className="space-y-3">
-      {/* Search */}
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
         <input
@@ -325,7 +296,6 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
         />
       </div>
 
-      {/* Category filter chips */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
         {categories.map((cat) => (
           <button
@@ -342,7 +312,6 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
         ))}
       </div>
 
-      {/* Summary */}
       {filtered.length > 0 && (
         <div className="flex justify-between items-center px-1">
           <span className="text-xs text-gray-400">{filtered.length} transactions</span>
@@ -358,24 +327,24 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-400 text-sm">
-          {transactions.length === 0 ? 'No transactions yet — sync from Google Sheets first' : 'No results'}
+          {transactions.length === 0 ? 'Pull down to sync data' : 'No results'}
         </div>
       ) : (
         <div className="space-y-4">
-          {sortedMonths.map((month) => (
-            <div key={month}>
+          {sortedMonths.map((monthKey) => (
+            <div key={monthKey}>
               <div className="flex justify-between items-baseline mb-2">
-                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{month}</p>
-                <p className="text-xs text-gray-400">
-                  {grouped[month].length} tx
+                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {monthLabel(monthKey)}
                 </p>
+                <p className="text-xs text-gray-400">{grouped[monthKey].length} tx</p>
               </div>
               <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-                {grouped[month].map((tx, idx) => (
+                {grouped[monthKey].map((tx, idx) => (
                   <div
                     key={tx.id}
                     className={`flex items-center px-4 py-3 gap-3 ${
-                      idx !== grouped[month].length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''
+                      idx !== grouped[monthKey].length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''
                     }`}
                   >
                     <div
@@ -395,7 +364,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
                           {tx.category}
                         </span>
                         <span className="text-xs text-gray-400">{formatDate(tx.date)}</span>
-                        {tx.account && <span className="text-xs text-gray-300 dark:text-gray-500">{tx.account}</span>}
+                        {tx.account && <span className="text-xs text-gray-300 dark:text-gray-500 truncate">{tx.account}</span>}
                       </div>
                     </div>
                     <p className={`text-sm font-semibold flex-shrink-0 ${
@@ -434,13 +403,39 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
 
   useEffect(() => { load(); }, [load, onRefresh]);
 
-  const totalMonthly = bills.reduce((s, b) => s + (b.amount || 0), 0);
+  const totalMonthly = bills.reduce((s, b) => s + Math.abs(b.amount || 0), 0);
   const today = new Date().getDate();
 
-  const upcoming = bills
+  // All bills due on or after today this month, sorted by due_day
+  const upcomingThisMonth = bills
     .filter((b) => b.due_day && b.due_day >= today)
-    .sort((a, b) => (a.due_day || 0) - (b.due_day || 0))
-    .slice(0, 3);
+    .sort((a, b) => (a.due_day || 0) - (b.due_day || 0));
+
+  const pastThisMonth = bills
+    .filter((b) => b.due_day && b.due_day < today)
+    .sort((a, b) => (a.due_day || 0) - (b.due_day || 0));
+
+  function BillRow({ bill, idx, total }: { bill: Bill; idx: number; total: number }) {
+    return (
+      <div
+        className={`flex items-center px-4 py-3 gap-3 ${idx !== total - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
+      >
+        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
+          <span className="text-xs font-bold text-gray-500 dark:text-gray-300">{formatBillDate(bill)}</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{bill.name}</p>
+          <p className="text-xs text-gray-400">{bill.payment_account || bill.category}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(Math.abs(bill.amount))}</p>
+          {bill.status?.toLowerCase() === 'paid' && (
+            <span className="text-xs text-green-500">Paid</span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -451,63 +446,43 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
         <p className="text-xs text-gray-400 mt-0.5">{bills.length} recurring bills</p>
       </div>
 
-      {/* Upcoming */}
-      {upcoming.length > 0 && (
-        <div>
-          <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">Upcoming This Month</p>
-          <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-            {upcoming.map((bill, idx) => (
-              <div
-                key={bill.id}
-                className={`flex items-center px-4 py-3 gap-3 ${idx !== upcoming.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
-              >
-                <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-orange-600">{bill.due_day}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{bill.name}</p>
-                  <p className="text-xs text-gray-400">{bill.payment_account || bill.category}</p>
-                </div>
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(bill.amount)}</p>
-              </div>
-            ))}
-          </div>
+      {loading ? (
+        <div className="flex items-center justify-center h-32">
+          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      )}
-
-      {/* All Bills */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">All Bills</p>
-        {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : bills.length === 0 ? (
-          <div className="text-center py-10 text-gray-400 text-sm">No bills — sync from Google Sheets first</div>
-        ) : (
-          <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-            {bills.map((bill, idx) => (
-              <div
-                key={bill.id}
-                className={`flex items-center px-4 py-3 gap-3 ${idx !== bills.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{bill.name}</p>
-                    {bill.status === 'paid' && (
-                      <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full">Paid</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    {bill.due_day ? `Due day ${bill.due_day}` : bill.due_date || ''} · {bill.payment_account || bill.category}
-                  </p>
-                </div>
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(bill.amount)}</p>
+      ) : bills.length === 0 ? (
+        <div className="text-center py-10 text-gray-400 text-sm">Pull down to sync data</div>
+      ) : (
+        <>
+          {/* Upcoming this month */}
+          {upcomingThisMonth.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
+                Upcoming — {new Date().toLocaleString('default', { month: 'long' })}
+              </p>
+              <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+                {upcomingThisMonth.map((bill, idx) => (
+                  <BillRow key={bill.id} bill={bill} idx={idx} total={upcomingThisMonth.length} />
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+
+          {/* Past/paid this month */}
+          {pastThisMonth.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
+                Earlier This Month
+              </p>
+              <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+                {pastThisMonth.map((bill, idx) => (
+                  <BillRow key={bill.id} bill={bill} idx={idx} total={pastThisMonth.length} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -550,7 +525,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   if (error) return (
     <div className="rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 p-4 text-sm text-red-600 dark:text-red-400">
       {error}
-      <br /><span className="text-xs text-gray-400">Sign out and back in if token expired</span>
+      <br /><span className="text-xs text-gray-400">Pull down to refresh — token may have expired</span>
     </div>
   );
 
@@ -561,7 +536,6 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
   return (
     <div className="space-y-4">
-      {/* Net Worth Hero */}
       <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-5 text-white shadow-lg">
         <p className="text-blue-200 text-sm mb-1">Net Worth</p>
         <p className="text-4xl font-bold tracking-tight">{formatCurrency(data.netWorth)}</p>
@@ -577,16 +551,12 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
         </div>
       </div>
 
-      {/* Assets */}
       {assets.length > 0 && (
         <div>
           <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">Assets</p>
           <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
             {assets.map((acct, idx) => (
-              <div
-                key={idx}
-                className={`flex items-center px-4 py-3 gap-3 ${idx !== assets.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
-              >
+              <div key={idx} className={`flex items-center px-4 py-3 gap-3 ${idx !== assets.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}>
                 <div className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
                 <p className="flex-1 text-sm text-gray-700 dark:text-gray-200">{acct.name}</p>
                 <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(acct.value)}</p>
@@ -596,29 +566,18 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
         </div>
       )}
 
-      {/* Liabilities */}
       {liabilities.length > 0 && (
         <div>
           <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">Liabilities</p>
           <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
             {liabilities.map((acct, idx) => (
-              <div
-                key={idx}
-                className={`flex items-center px-4 py-3 gap-3 ${idx !== liabilities.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
-              >
+              <div key={idx} className={`flex items-center px-4 py-3 gap-3 ${idx !== liabilities.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}>
                 <div className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />
                 <p className="flex-1 text-sm text-gray-700 dark:text-gray-200">{acct.name}</p>
                 <p className="text-sm font-semibold text-red-600 dark:text-red-400">{formatCurrency(acct.value)}</p>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {assets.length === 0 && liabilities.length === 0 && (
-        <div className="text-center py-10 text-sm text-gray-400">
-          No account data found in the Accounts sheet.<br />
-          Check that sheet structure matches expected format.
         </div>
       )}
     </div>
@@ -631,8 +590,12 @@ export default function FinancePage() {
   const { data: session, status } = useSession();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [refreshCount, setRefreshCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
+    setSyncing(true);
+    await syncSheets();
+    setSyncing(false);
     setRefreshCount((c) => c + 1);
   }, []);
 
@@ -666,9 +629,13 @@ export default function FinancePage() {
         <div className="px-4 pt-4 pb-0">
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Finance</h1>
-            <SyncButton onSync={handleRefresh} />
+            {syncing && (
+              <div className="flex items-center gap-1.5 text-xs text-blue-500">
+                <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                Syncing…
+              </div>
+            )}
           </div>
-          {/* Tab Bar */}
           <div className="flex gap-1 overflow-x-auto pb-0 scrollbar-hide">
             {tabs.map((tab) => (
               <button
