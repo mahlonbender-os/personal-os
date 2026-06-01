@@ -11,22 +11,18 @@ interface MonthData {
   net: number;
 }
 
-function formatCurrency(n: number, compact = false): string {
-  if (compact && Math.abs(n) >= 1000) {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      notation: 'compact',
-      maximumFractionDigits: 1,
-    }).format(n);
-  }
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+function formatCurrency(n: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(Math.abs(n));
 }
 
 export default function CashFlowCard() {
   const [data, setData] = useState<MonthData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetch('/api/finance/cash-flow')
@@ -40,10 +36,7 @@ export default function CashFlowCard() {
         setData(found || null);
         setLoading(false);
       })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
+      .catch(() => setLoading(false));
   }, []);
 
   return (
@@ -57,17 +50,13 @@ export default function CashFlowCard() {
         </div>
 
         {loading && (
-          <div className="h-12 flex items-center">
+          <div className="h-10 flex items-center">
             <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
-        {error && (
-          <p className="text-xs text-gray-400">Connect Google Sheets to see data</p>
-        )}
-
-        {!loading && !error && !data && (
-          <p className="text-xs text-gray-400">No data for this month yet</p>
+        {!loading && !data && (
+          <p className="text-xs text-gray-400">Pull down to sync</p>
         )}
 
         {data && (
@@ -75,19 +64,19 @@ export default function CashFlowCard() {
             <div>
               <p className="text-xs text-gray-400 mb-0.5">Income</p>
               <p className="text-sm font-bold text-green-600 dark:text-green-400">
-                {formatCurrency(data.income, true)}
+                {formatCurrency(data.income)}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-400 mb-0.5">Spent</p>
               <p className="text-sm font-bold text-red-500 dark:text-red-400">
-                {formatCurrency(data.essentials + data.discretionary, true)}
+                {formatCurrency(data.essentials + data.discretionary)}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-400 mb-0.5">Net</p>
-              <p className={`text-sm font-bold ${data.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                {formatCurrency(data.net, true)}
+              <p className={`text-sm font-bold ${data.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                {formatCurrency(data.net)}
               </p>
             </div>
           </div>
