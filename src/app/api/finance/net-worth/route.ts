@@ -39,7 +39,7 @@ export async function GET() {
       const row = rows[i];
       if (!row) continue;
       const name = row[0]?.trim() || assetNames[i - 8];
-      const value = parseAmount(row[3]);
+      const value = parseAmount(row[4]);
       if (name && value > 0) {
         assets.push({ name, value, type: 'asset' as const });
       }
@@ -51,7 +51,7 @@ export async function GET() {
       const row = rows[i];
       if (!row) continue;
       const name = row[1]?.trim();
-      const value = parseAmount(row[3]);
+      const value = parseAmount(row[4]);
       if (name && value > 0) {
         liabilities.push({ name, value, type: 'liability' as const });
       }
