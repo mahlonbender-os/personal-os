@@ -95,13 +95,25 @@ export default function FinancePage() {
   };
 
   useEffect(() => {
-    if (session) {
-      if (typeof window !== 'undefined' && window.location.href.includes('oauth_state_id')) {
-        setOauthRedirectUri(window.location.href);
-      } else if (typeof window !== 'undefined' && document.referrer.includes('wellsfargo')) {
-        // Wells Fargo sometimes strips the oauth_state_id — force reopen
-        setOauthRedirectUri(window.location.href);
+    // Check for OAuth redirect immediately on mount, before session check
+    if (typeof window !== 'undefined') {
+      const url = window.location.href;
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('oauth_state_id') || url.includes('oauth_state_id')) {
+        setOauthRedirectUri(url);
+        // Store in sessionStorage in case page reloads
+        sessionStorage.setItem('plaid_oauth_redirect', url);
       }
+      // Check sessionStorage for previously stored OAuth redirect
+      const storedRedirect = sessionStorage.getItem('plaid_oauth_redirect');
+      if (storedRedirect) {
+        setOauthRedirectUri(storedRedirect);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session) {
       fetchLinkToken();
       fetchAccounts();
       fetchTransactions();
@@ -127,6 +139,9 @@ export default function FinancePage() {
         await syncTransactions();
         fetchAccounts();
         fetchLinkToken();
+        // Clear OAuth redirect storage after successful connection
+        sessionStorage.removeItem('plaid_oauth_redirect');
+        setOauthRedirectUri(null);
       } catch (err) {
         console.error('Error exchanging token:', err);
       }
