@@ -24,7 +24,9 @@ export async function GET() {
       .limit(1)
       .single();
 
-    return NextResponse.json({ log: data });
+    return NextResponse.json({ log: data }, {
+      headers: { 'Cache-Control': 'no-store' }
+    });
   } catch (error) {
     return NextResponse.json({ log: null });
   }
