@@ -17,7 +17,7 @@ export async function POST() {
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
-      redirect_uri: 'https://personal-os-delta-cyan.vercel.app/finance',
+      redirect_uri: 'https://personal-os-delta-cyan.vercel.app',
     });
 
     return NextResponse.json({ link_token: response.data.link_token });

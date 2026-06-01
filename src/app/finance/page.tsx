@@ -98,6 +98,9 @@ export default function FinancePage() {
     if (session) {
       if (typeof window !== 'undefined' && window.location.href.includes('oauth_state_id')) {
         setOauthRedirectUri(window.location.href);
+      } else if (typeof window !== 'undefined' && document.referrer.includes('wellsfargo')) {
+        // Wells Fargo sometimes strips the oauth_state_id — force reopen
+        setOauthRedirectUri(window.location.href);
       }
       fetchLinkToken();
       fetchAccounts();
