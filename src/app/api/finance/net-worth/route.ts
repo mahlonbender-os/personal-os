@@ -52,7 +52,7 @@ export async function GET() {
 
     // Liabilities — rows 19–27 (index 18–26), name in col B (index 1), value in col E (index 4)
     const liabilities = [];
-    for (let i = 18; i <= 26; i++) {
+    for (let i = 17; i <= 26; i++) {
       const row = rows[i];
       if (!row) continue;
       const name = cleanName(row[1]);
