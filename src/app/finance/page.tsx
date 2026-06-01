@@ -404,35 +404,40 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
   useEffect(() => { load(); }, [load, onRefresh]);
 
   const totalMonthly = bills.reduce((s, b) => s + Math.abs(b.amount || 0), 0);
-  const today = new Date().getDate();
 
-  // All bills due on or after today this month, sorted by due_day
-  const upcomingThisMonth = bills
-    .filter((b) => b.due_day && b.due_day >= today)
-    .sort((a, b) => (a.due_day || 0) - (b.due_day || 0));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const in7Days = new Date(today);
+  in7Days.setDate(today.getDate() + 7);
 
-  const pastThisMonth = bills
-    .filter((b) => b.due_day && b.due_day < today)
-    .sort((a, b) => (a.due_day || 0) - (b.due_day || 0));
+  const dueSoon = bills.filter((b) => {
+    if (!b.due_date) return false;
+    const d = new Date(b.due_date + 'T00:00:00');
+    return d <= in7Days;
+  });
+
+  const dueLater = bills.filter((b) => {
+    if (!b.due_date) return false;
+    const d = new Date(b.due_date + 'T00:00:00');
+    return d > in7Days;
+  });
 
   function BillRow({ bill, idx, total }: { bill: Bill; idx: number; total: number }) {
+    const dateLabel = bill.due_date ? formatDate(bill.due_date) : '';
     return (
       <div
         className={`flex items-center px-4 py-3 gap-3 ${idx !== total - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
       >
-        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-bold text-gray-500 dark:text-gray-300">{formatBillDate(bill)}</span>
+        <div className="w-12 flex-shrink-0 text-center">
+          <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{dateLabel}</span>
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{bill.name}</p>
           <p className="text-xs text-gray-400">{bill.payment_account || bill.category}</p>
         </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(Math.abs(bill.amount))}</p>
-          {bill.status?.toLowerCase() === 'paid' && (
-            <span className="text-xs text-green-500">Paid</span>
-          )}
-        </div>
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex-shrink-0">
+          {formatCurrency(Math.abs(bill.amount))}
+        </p>
       </div>
     );
   }
@@ -441,9 +446,11 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
     <div className="space-y-4">
       {/* Monthly Total */}
       <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Monthly Bills Total</p>
+        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+          Upcoming Bills Total
+        </p>
         <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalMonthly)}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{bills.length} recurring bills</p>
+        <p className="text-xs text-gray-400 mt-0.5">{bills.length} unpaid bills</p>
       </div>
 
       {loading ? (
@@ -451,32 +458,34 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : bills.length === 0 ? (
-        <div className="text-center py-10 text-gray-400 text-sm">Pull down to sync data</div>
+        <div className="text-center py-10 text-gray-400 text-sm">
+          No upcoming bills — pull down to sync
+        </div>
       ) : (
         <>
-          {/* Upcoming this month */}
-          {upcomingThisMonth.length > 0 && (
+          {/* Due within 7 days */}
+          {dueSoon.length > 0 && (
             <div>
-              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
-                Upcoming — {new Date().toLocaleString('default', { month: 'long' })}
+              <p className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-2 px-1">
+                Due Within 7 Days
               </p>
-              <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-                {upcomingThisMonth.map((bill, idx) => (
-                  <BillRow key={bill.id} bill={bill} idx={idx} total={upcomingThisMonth.length} />
+              <div className="rounded-2xl bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-900/50 overflow-hidden shadow-sm">
+                {dueSoon.map((bill, idx) => (
+                  <BillRow key={bill.id} bill={bill} idx={idx} total={dueSoon.length} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Past/paid this month */}
-          {pastThisMonth.length > 0 && (
+          {/* Coming up */}
+          {dueLater.length > 0 && (
             <div>
               <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
-                Earlier This Month
+                Coming Up
               </p>
               <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-                {pastThisMonth.map((bill, idx) => (
-                  <BillRow key={bill.id} bill={bill} idx={idx} total={pastThisMonth.length} />
+                {dueLater.map((bill, idx) => (
+                  <BillRow key={bill.id} bill={bill} idx={idx} total={dueLater.length} />
                 ))}
               </div>
             </div>
