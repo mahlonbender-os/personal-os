@@ -15,7 +15,8 @@ export async function GET() {
     .from('bills')
     .select('id, name, category, amount, due_day, due_date, payment_account, status')
     .eq('user_id', USER_ID)
-    .order('due_day', { ascending: true });
+    .eq('status', 'Upcoming')
+    .order('due_date', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ bills: data || [] });
