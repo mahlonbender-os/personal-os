@@ -13,6 +13,7 @@ export default function FinancePage() {
   const { data: session } = useSession();
   const [activePage, setActivePage] = useState<SubPage>('overview');
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [oauthRedirectUri, setOauthRedirectUri] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [bills, setBills] = useState<any[]>([]);
@@ -90,6 +91,10 @@ export default function FinancePage() {
 
   useEffect(() => {
     if (session) {
+      // Check if this is an OAuth redirect back from a bank
+      if (typeof window !== 'undefined' && window.location.href.includes('oauth_state_id')) {
+        setOauthRedirectUri(window.location.href);
+      }
       fetchLinkToken();
       fetchAccounts();
       fetchTransactions();
@@ -101,7 +106,36 @@ export default function FinancePage() {
   // ── Plaid Link hook ──
   const { open: openPlaidLink, ready: plaidReady } = usePlaidLink({
     token: linkToken,
+    receivedRedirectUri: oauthRedirectUri || undefined,
     onSuccess: async (public_token, metadata) => {
+      try {
+        await fetch('/api/plaid/exchange-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            public_token,
+            institution_name: metadata.institution?.name,
+            institution_id: metadata.institution?.institution_id,
+          }),
+        });
+        await syncTransactions();
+        fetchAccounts();
+        fetchLinkToken();
+      } catch (err) {
+        console.error('Error exchanging token:', err);
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (oauthRedirectUri && plaidReady) {
+      openPlaidLink();
+    }
+  }, [oauthRedirectUri, plaidReady, openPlaidLink]);
+
+  const syncTransactions = async () => {
+    },
+  });
       try {
         await fetch('/api/plaid/exchange-token', {
           method: 'POST',
