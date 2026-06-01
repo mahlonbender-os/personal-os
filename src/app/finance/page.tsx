@@ -191,7 +191,7 @@ function OverviewTab({ onRefresh }: { onRefresh: number }) {
             <div className="text-center">
               <p className="text-xs text-gray-400 mb-0.5">Net</p>
               <p className={`text-base font-bold ${cashFlow.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                {formatCurrency(cashFlow.net, true)}
+                {formatCurrency(Math.abs(cashFlow.net), true)}
               </p>
             </div>
           </div>
