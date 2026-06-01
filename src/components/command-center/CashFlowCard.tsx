@@ -11,12 +11,12 @@ interface MonthData {
   net: number;
 }
 
-function formatCurrency(n: number): string {
+function formatAmount(n: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    notation: 'compact',
-    maximumFractionDigits: 1,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(Math.abs(n));
 }
 
@@ -39,18 +39,22 @@ export default function CashFlowCard() {
       .catch(() => setLoading(false));
   }, []);
 
+  const spent = data ? data.essentials + data.discretionary : 0;
+
   return (
-    <Link href="/finance" className="block">
-      <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm active:scale-[0.98] transition-transform">
+    <Link href="/finance" className="block h-full">
+      <div className="h-full rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm active:scale-[0.98] transition-transform">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cash Flow</span>
+          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            Cash Flow
+          </span>
           <span className="text-xs text-gray-400">
-            {new Date().toLocaleString('default', { month: 'long' })}
+            {new Date().toLocaleString('default', { month: 'short' })}
           </span>
         </div>
 
         {loading && (
-          <div className="h-10 flex items-center">
+          <div className="h-20 flex items-center">
             <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
@@ -60,23 +64,27 @@ export default function CashFlowCard() {
         )}
 
         {data && (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-3">
             <div>
               <p className="text-xs text-gray-400 mb-0.5">Income</p>
-              <p className="text-sm font-bold text-green-600 dark:text-green-400">
-                {formatCurrency(data.income)}
+              <p className="text-sm font-bold text-green-600 dark:text-green-400 leading-tight">
+                {formatAmount(data.income)}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-400 mb-0.5">Spent</p>
-              <p className="text-sm font-bold text-red-500 dark:text-red-400">
-                {formatCurrency(data.essentials + data.discretionary)}
+              <p className="text-sm font-bold text-red-500 dark:text-red-400 leading-tight">
+                {formatAmount(spent)}
               </p>
             </div>
-            <div>
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
               <p className="text-xs text-gray-400 mb-0.5">Net</p>
-              <p className={`text-sm font-bold ${data.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
-                {formatCurrency(data.net)}
+              <p className={`text-sm font-bold leading-tight ${
+                data.net >= 0
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-500 dark:text-red-400'
+              }`}>
+                {formatAmount(data.net)}
               </p>
             </div>
           </div>
