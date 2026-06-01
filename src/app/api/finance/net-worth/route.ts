@@ -1,33 +1,44 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const SHEET_ID = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
 
-const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
+function parseAmount(val: string): number {
+  if (!val) return 0;
+  return parseFloat(val.replace(/[$,\s%]/g, '')) || 0;
+}
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const month = searchParams.get('month'); // e.g. "April 2026"
-  const category = searchParams.get('category');
-  const limit = parseInt(searchParams.get('limit') || '200');
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
 
-  let query = supabase
-    .from('transactions')
-    .select('*')
-    .eq('user_id', USER_ID)
-    .order('date', { ascending: false })
-    .limit(limit);
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Accounts!B3:C5')}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`Sheets error: ${res.status}`);
+    const data = await res.json();
+    const rows: string[][] = data.values || [];
 
-  if (month) query = query.eq('month', month);
-  if (category) query = query.eq('category', category);
+    // rows[0] = B3:C3 = Total Assets
+    // rows[1] = B4:C4 = Total Liabilities
+    // rows[2] = B5:C5 = Net Worth
+    const totalAssets = parseAmount(rows[0]?.[1]);
+    const totalLiabilities = parseAmount(rows[1]?.[1]);
+    const netWorth = parseAmount(rows[2]?.[1]);
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ transactions: data || [] });
+    return NextResponse.json({ totalAssets, totalLiabilities, netWorth, accounts: [] });
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
 }
