@@ -2,7 +2,7 @@
 
 export default function KnoxCard() {
   // Calculate Knox's age
-  const birthdate = new Date('2024-01-14');
+  const birthdate = new Date('2026-01-14');
   const now = new Date();
   const months =
     (now.getFullYear() - birthdate.getFullYear()) * 12 +
