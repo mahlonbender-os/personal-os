@@ -11,6 +11,11 @@ function parseAmount(val: string): number {
   return parseFloat(val.replace(/[$,\s()]/g, '')) || 0;
 }
 
+function cleanName(val: string): string {
+  if (!val) return '';
+  return val.trim().replace(/â€"/g, '–').replace(/â€™/g, "'");
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
@@ -27,32 +32,32 @@ export async function GET() {
     const data = await res.json();
     const rows: string[][] = data.values || [];
 
-    // Totals from B3:C5 (index row 2, cols 1 and 2)
+    // Totals — row 3 = index 2, row 4 = index 3, row 5 = index 4
+    // Column C = index 2
     const totalAssets = parseAmount(rows[2]?.[2]);
     const totalLiabilities = parseAmount(rows[3]?.[2]);
     const netWorth = parseAmount(rows[4]?.[2]);
 
-    // Assets: rows 9–14 (0-based: 8–13), name in col A, current value in col D (index 3)
-    const assetNames = ['401K', 'Fidelity', 'Home – Zestimate', 'HSA', 'Members 1st Checking', 'Roth IRA'];
+    // Assets — rows 9–15 (index 8–14), name in col B (index 1), value in col E (index 4)
     const assets = [];
-    for (let i = 8; i <= 13; i++) {
+    for (let i = 8; i <= 14; i++) {
       const row = rows[i];
       if (!row) continue;
-      const name = row[0]?.trim() || assetNames[i - 8];
+      const name = cleanName(row[1]);
       const value = parseAmount(row[4]);
-      if (name && value > 0) {
+      if (name && value > 0 && !name.toLowerCase().includes('total')) {
         assets.push({ name, value, type: 'asset' as const });
       }
     }
 
-    // Liabilities: rows 19–26 (0-based: 18–25), name in col B, current value in col D (index 3)
+    // Liabilities — rows 19–27 (index 18–26), name in col B (index 1), value in col E (index 4)
     const liabilities = [];
-    for (let i = 18; i <= 25; i++) {
+    for (let i = 18; i <= 26; i++) {
       const row = rows[i];
       if (!row) continue;
-      const name = row[1]?.trim();
+      const name = cleanName(row[1]);
       const value = parseAmount(row[4]);
-      if (name && value > 0) {
+      if (name && value > 0 && !name.toLowerCase().includes('total')) {
         liabilities.push({ name, value, type: 'liability' as const });
       }
     }
@@ -62,7 +67,6 @@ export async function GET() {
       totalLiabilities,
       netWorth,
       accounts: [...assets, ...liabilities],
-      debug: rows.slice(7, 15),
     });
   } catch (e: unknown) {
     return NextResponse.json(
