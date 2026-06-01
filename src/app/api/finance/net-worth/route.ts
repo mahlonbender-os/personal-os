@@ -18,7 +18,7 @@ export async function GET() {
   }
 
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Accounts!A1:D30')}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Accounts!A1:F30')}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
       cache: 'no-store',
