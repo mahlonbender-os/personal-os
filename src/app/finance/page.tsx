@@ -665,7 +665,7 @@ export default function FinancePage() {
 
       {/* Content */}
       <PullToRefresh onRefresh={handleRefresh}>
-        <div className="px-4 py-4 pb-28">
+        <div className="px-4 py-4 pb-28 min-h-screen">
           {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} />}
           {activeTab === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
           {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
