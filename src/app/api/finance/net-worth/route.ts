@@ -45,12 +45,12 @@ export async function GET() {
       }
     }
 
-    // Liabilities: rows 19–26 (0-based: 18–25), name in col A, current value in col D (index 3)
+    // Liabilities: rows 19–26 (0-based: 18–25), name in col B, current value in col D (index 3)
     const liabilities = [];
     for (let i = 18; i <= 25; i++) {
       const row = rows[i];
       if (!row) continue;
-      const name = row[0]?.trim();
+      const name = row[1]?.trim();
       const value = parseAmount(row[3]);
       if (name && value > 0) {
         liabilities.push({ name, value, type: 'liability' as const });
