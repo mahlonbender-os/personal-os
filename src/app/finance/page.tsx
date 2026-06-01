@@ -102,11 +102,13 @@ function SyncButton({ onSync }: { onSync: () => void }) {
       const res = await fetch('/api/sync/sheets', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setResult(data.message || '✓ Done');
+        const txCount = data.results?.transactions?.synced ?? '?';
+        const billCount = data.results?.bills?.synced ?? '?';
+        setResult(`✓ ${txCount} transactions, ${billCount} bills synced`);
         setLastSynced(new Date().toLocaleTimeString());
         onSync();
       } else {
-        setResult(data.message || 'Sync failed');
+        setResult('Sync failed — check console');
       }
     } catch {
       setResult('Network error');
