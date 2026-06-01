@@ -5,8 +5,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { usePlaidLink } from 'react-plaid-link';
 
-// ─── Sub-page imports will be inline components below ───
-
 type SubPage = 'overview' | 'transactions' | 'bills' | 'budget' | 'networth' | 'subscriptions' | 'cashback' | 'goals';
 
 export default function FinancePage() {
@@ -19,7 +17,6 @@ export default function FinancePage() {
   const [bills, setBills] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
 
@@ -34,7 +31,6 @@ export default function FinancePage() {
     { key: 'goals', label: 'Goals' },
   ];
 
-  // ── Fetch link token for Plaid Link ──
   const fetchLinkToken = useCallback(async () => {
     try {
       const res = await fetch('/api/plaid/create-link-token', { method: 'POST' });
@@ -45,7 +41,6 @@ export default function FinancePage() {
     }
   }, []);
 
-  // ── Fetch accounts from Plaid ──
   const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch('/api/plaid/accounts');
@@ -56,7 +51,6 @@ export default function FinancePage() {
     }
   }, []);
 
-  // ── Fetch transactions from Supabase ──
   const fetchTransactions = useCallback(async () => {
     try {
       const res = await fetch('/api/finance/transactions');
@@ -67,7 +61,6 @@ export default function FinancePage() {
     }
   }, []);
 
-  // ── Fetch bills from Supabase ──
   const fetchBills = useCallback(async () => {
     try {
       const res = await fetch('/api/finance/bills');
@@ -78,7 +71,6 @@ export default function FinancePage() {
     }
   }, []);
 
-  // ── Fetch goals from Supabase ──
   const fetchGoals = useCallback(async () => {
     try {
       const res = await fetch('/api/finance/goals');
@@ -89,9 +81,21 @@ export default function FinancePage() {
     }
   }, []);
 
+  const syncTransactions = async () => {
+    setSyncing(true);
+    try {
+      await fetch('/api/plaid/sync-transactions', { method: 'POST' });
+      setLastSynced(new Date().toLocaleTimeString());
+      await fetchTransactions();
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   useEffect(() => {
     if (session) {
-      // Check if this is an OAuth redirect back from a bank
       if (typeof window !== 'undefined' && window.location.href.includes('oauth_state_id')) {
         setOauthRedirectUri(window.location.href);
       }
@@ -103,7 +107,6 @@ export default function FinancePage() {
     }
   }, [session, fetchLinkToken, fetchAccounts, fetchTransactions, fetchBills, fetchGoals]);
 
-  // ── Plaid Link hook ──
   const { open: openPlaidLink, ready: plaidReady } = usePlaidLink({
     token: linkToken,
     receivedRedirectUri: oauthRedirectUri || undefined,
@@ -133,44 +136,6 @@ export default function FinancePage() {
     }
   }, [oauthRedirectUri, plaidReady, openPlaidLink]);
 
-  const syncTransactions = async () => {
-    },
-  });
-      try {
-        await fetch('/api/plaid/exchange-token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            public_token,
-            institution_name: metadata.institution?.name,
-            institution_id: metadata.institution?.institution_id,
-          }),
-        });
-        // Sync transactions after connecting
-        await syncTransactions();
-        fetchAccounts();
-        fetchLinkToken(); // refresh token for next use
-      } catch (err) {
-        console.error('Error exchanging token:', err);
-      }
-    },
-  });
-
-  const syncTransactions = async () => {
-    setSyncing(true);
-    try {
-      const res = await fetch('/api/plaid/sync-transactions', { method: 'POST' });
-      const data = await res.json();
-      setLastSynced(new Date().toLocaleTimeString());
-      await fetchTransactions();
-    } catch (err) {
-      console.error('Sync failed:', err);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // ── Helpers ──
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
@@ -186,135 +151,129 @@ export default function FinancePage() {
     .filter(t => {
       const txDate = new Date(t.date);
       const now = new Date();
-      return txDate.getMonth() === now.getMonth() && 
+      return txDate.getMonth() === now.getMonth() &&
              txDate.getFullYear() === now.getFullYear() &&
              t.amount > 0 &&
              !t.pending;
     })
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const upcomingBills = bills
-    .filter(b => {
-      const today = new Date();
-      const due = b.due_day || 0;
-      const daysUntil = due - today.getDate();
-      return daysUntil >= 0 && daysUntil <= 7;
-    });
+  const upcomingBills = bills.filter(b => {
+    const today = new Date();
+    const due = b.due_day || 0;
+    const daysUntil = due - today.getDate();
+    return daysUntil >= 0 && daysUntil <= 7;
+  });
 
-  // ─── RENDER ───────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background">
       <PullToRefresh onRefresh={async () => {
         await Promise.all([fetchAccounts(), fetchTransactions(), fetchBills(), fetchGoals()]);
       }}>
         <div className="pb-24">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
-        <div className="px-4 pt-4 pb-2">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold">Finance</h1>
-            <div className="flex gap-2">
-              <button
-                onClick={syncTransactions}
-                disabled={syncing}
-                className="text-xs px-3 py-1.5 rounded-full bg-muted text-muted-foreground active:bg-accent"
-              >
-                {syncing ? '⟳ Syncing…' : '⟳ Sync'}
-              </button>
-              <button
-                onClick={() => plaidReady && openPlaidLink()}
-                disabled={!plaidReady}
-                className="text-xs px-3 py-1.5 rounded-full bg-primary text-primary-foreground"
-              >
-                + Account
-              </button>
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
+            <div className="px-4 pt-4 pb-2">
+              <div className="flex items-center justify-between mb-3">
+                <h1 className="text-xl font-bold">Finance</h1>
+                <div className="flex gap-2">
+                  <button
+                    onClick={syncTransactions}
+                    disabled={syncing}
+                    className="text-xs px-3 py-1.5 rounded-full bg-muted text-muted-foreground active:bg-accent"
+                  >
+                    {syncing ? '⟳ Syncing…' : '⟳ Sync'}
+                  </button>
+                  <button
+                    onClick={() => plaidReady && openPlaidLink()}
+                    disabled={!plaidReady}
+                    className="text-xs px-3 py-1.5 rounded-full bg-primary text-primary-foreground"
+                  >
+                    + Account
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-1 overflow-x-auto scrollbar-hide -mx-4 px-4">
+                {tabs.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActivePage(tab.key)}
+                    className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${
+                      activePage === tab.key
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Tab Bar */}
-          <div className="flex gap-1 overflow-x-auto scrollbar-hide -mx-4 px-4">
-            {tabs.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActivePage(tab.key)}
-                className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${
-                  activePage === tab.key
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="px-4 pt-4">
+            {activePage === 'overview' && (
+              <OverviewPage
+                accounts={accounts}
+                totalBalance={totalBalance}
+                totalCredit={totalCredit}
+                thisMonthSpend={thisMonthSpend}
+                upcomingBills={upcomingBills}
+                transactions={transactions.slice(0, 5)}
+                goals={goals}
+                formatCurrency={formatCurrency}
+                lastSynced={lastSynced}
+                onConnectBank={() => plaidReady && openPlaidLink()}
+                plaidReady={plaidReady}
+              />
+            )}
+            {activePage === 'transactions' && (
+              <TransactionsPage
+                transactions={transactions}
+                formatCurrency={formatCurrency}
+                onRefresh={fetchTransactions}
+              />
+            )}
+            {activePage === 'bills' && (
+              <BillsPage
+                bills={bills}
+                formatCurrency={formatCurrency}
+                onRefresh={fetchBills}
+              />
+            )}
+            {activePage === 'budget' && (
+              <BudgetPage
+                transactions={transactions}
+                budgets={budgets}
+                formatCurrency={formatCurrency}
+              />
+            )}
+            {activePage === 'networth' && (
+              <NetWorthPage
+                accounts={accounts}
+                formatCurrency={formatCurrency}
+              />
+            )}
+            {activePage === 'subscriptions' && (
+              <SubscriptionsPage
+                transactions={transactions}
+                formatCurrency={formatCurrency}
+              />
+            )}
+            {activePage === 'cashback' && (
+              <CashBackPage
+                transactions={transactions}
+                formatCurrency={formatCurrency}
+              />
+            )}
+            {activePage === 'goals' && (
+              <GoalsPage
+                goals={goals}
+                formatCurrency={formatCurrency}
+                onRefresh={fetchGoals}
+              />
+            )}
           </div>
         </div>
-      </div>
-
-      {/* Page Content */}
-      <div className="px-4 pt-4">
-        {activePage === 'overview' && (
-          <OverviewPage
-            accounts={accounts}
-            totalBalance={totalBalance}
-            totalCredit={totalCredit}
-            thisMonthSpend={thisMonthSpend}
-            upcomingBills={upcomingBills}
-            transactions={transactions.slice(0, 5)}
-            goals={goals}
-            formatCurrency={formatCurrency}
-            lastSynced={lastSynced}
-            onConnectBank={() => plaidReady && openPlaidLink()}
-            plaidReady={plaidReady}
-          />
-        )}
-        {activePage === 'transactions' && (
-          <TransactionsPage
-            transactions={transactions}
-            formatCurrency={formatCurrency}
-            onRefresh={fetchTransactions}
-          />
-        )}
-        {activePage === 'bills' && (
-          <BillsPage
-            bills={bills}
-            formatCurrency={formatCurrency}
-            onRefresh={fetchBills}
-          />
-        )}
-        {activePage === 'budget' && (
-          <BudgetPage
-            transactions={transactions}
-            budgets={budgets}
-            formatCurrency={formatCurrency}
-          />
-        )}
-        {activePage === 'networth' && (
-          <NetWorthPage
-            accounts={accounts}
-            formatCurrency={formatCurrency}
-          />
-        )}
-        {activePage === 'subscriptions' && (
-          <SubscriptionsPage
-            transactions={transactions}
-            formatCurrency={formatCurrency}
-          />
-        )}
-        {activePage === 'cashback' && (
-          <CashBackPage
-            transactions={transactions}
-            formatCurrency={formatCurrency}
-          />
-        )}
-        {activePage === 'goals' && (
-          <GoalsPage
-            goals={goals}
-            formatCurrency={formatCurrency}
-            onRefresh={fetchGoals}
-          />
-        )}
-      </div>
-    </div>
       </PullToRefresh>
     </div>
   );
@@ -326,7 +285,6 @@ export default function FinancePage() {
 function OverviewPage({ accounts, totalBalance, totalCredit, thisMonthSpend, upcomingBills, transactions, goals, formatCurrency, lastSynced, onConnectBank, plaidReady }: any) {
   return (
     <div className="space-y-4">
-      {/* Balance Summary Cards */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card rounded-2xl p-4 border border-border">
           <p className="text-xs text-muted-foreground mb-1">Cash & Checking</p>
@@ -346,7 +304,6 @@ function OverviewPage({ accounts, totalBalance, totalCredit, thisMonthSpend, upc
         {lastSynced && <p className="text-xs text-muted-foreground mt-1">Last synced {lastSynced}</p>}
       </div>
 
-      {/* Connected Accounts */}
       {accounts.length === 0 ? (
         <div className="bg-card rounded-2xl p-6 border border-border text-center">
           <p className="text-3xl mb-2">🏦</p>
@@ -380,7 +337,6 @@ function OverviewPage({ accounts, totalBalance, totalCredit, thisMonthSpend, upc
         </div>
       )}
 
-      {/* Upcoming Bills */}
       {upcomingBills.length > 0 && (
         <div className="bg-card rounded-2xl border border-border overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
@@ -395,7 +351,6 @@ function OverviewPage({ accounts, totalBalance, totalCredit, thisMonthSpend, upc
         </div>
       )}
 
-      {/* Recent Transactions */}
       {transactions.length > 0 && (
         <div className="bg-card rounded-2xl border border-border overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
@@ -415,7 +370,6 @@ function OverviewPage({ accounts, totalBalance, totalCredit, thisMonthSpend, upc
         </div>
       )}
 
-      {/* Savings Goals Preview */}
       {goals.length > 0 && (
         <div className="bg-card rounded-2xl border border-border overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
@@ -470,7 +424,6 @@ function TransactionsPage({ transactions, formatCurrency, onRefresh }: any) {
 
   return (
     <div className="space-y-3">
-      {/* Search */}
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">🔍</span>
         <input
@@ -482,7 +435,6 @@ function TransactionsPage({ transactions, formatCurrency, onRefresh }: any) {
         />
       </div>
 
-      {/* Filter pills */}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide">
         {(['all', 'personal', 'shared'] as const).map(f => (
           <button
@@ -509,7 +461,6 @@ function TransactionsPage({ transactions, formatCurrency, onRefresh }: any) {
         ))}
       </div>
 
-      {/* Transaction list */}
       {filtered.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-3xl mb-2">💳</p>
@@ -538,7 +489,6 @@ function TransactionsPage({ transactions, formatCurrency, onRefresh }: any) {
                   <p className={`text-sm font-semibold tabular-nums ${txn.amount < 0 ? 'text-emerald-500' : ''}`}>
                     {txn.amount < 0 ? '+' : ''}{formatCurrency(Math.abs(txn.amount))}
                   </p>
-                  {/* Ownership tag */}
                   <select
                     value={txn.ownership || 'personal'}
                     onChange={e => updateOwnership(txn.id, e.target.value)}
@@ -597,7 +547,7 @@ function BillsPage({ bills, formatCurrency, onRefresh }: any) {
   const BillSection = ({ title, items, color }: { title: string; items: any[]; color: string }) => (
     items.length > 0 ? (
       <div className="bg-card rounded-2xl border border-border overflow-hidden">
-        <div className={`px-4 py-2 border-b border-border`}>
+        <div className="px-4 py-2 border-b border-border">
           <p className={`text-xs font-semibold uppercase tracking-wide ${color}`}>{title}</p>
         </div>
         {items.map((bill: any, i: number) => (
@@ -626,14 +576,12 @@ function BillsPage({ bills, formatCurrency, onRefresh }: any) {
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
       <div className="bg-card rounded-2xl p-4 border border-border">
         <p className="text-xs text-muted-foreground mb-1">Monthly Bills Total</p>
         <p className="text-3xl font-bold tabular-nums">{formatCurrency(totalMonthly)}</p>
         <p className="text-xs text-muted-foreground mt-1">{bills.length} bills tracked</p>
       </div>
 
-      {/* Add Bill Button */}
       <button
         onClick={() => setShowAddForm(!showAddForm)}
         className="w-full py-3 bg-primary text-primary-foreground rounded-2xl text-sm font-medium"
@@ -641,7 +589,6 @@ function BillsPage({ bills, formatCurrency, onRefresh }: any) {
         {showAddForm ? '✕ Cancel' : '+ Add Bill'}
       </button>
 
-      {/* Add Bill Form */}
       {showAddForm && (
         <div className="bg-card rounded-2xl border border-border p-4 space-y-3">
           <p className="font-semibold text-sm">New Bill</p>
@@ -705,7 +652,6 @@ function BudgetPage({ transactions, budgets, formatCurrency }: any) {
   const dayOfMonth = now.getDate();
   const monthProgress = dayOfMonth / daysInMonth;
 
-  // Calculate spending by category this month
   const spendByCategory: Record<string, number> = {};
   transactions
     .filter((t: any) => {
@@ -762,10 +708,7 @@ function BudgetPage({ transactions, budgets, formatCurrency }: any) {
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${pct}%`,
-                    backgroundColor: overBudget ? '#ef4444' : cat.color,
-                  }}
+                  style={{ width: `${pct}%`, backgroundColor: overBudget ? '#ef4444' : cat.color }}
                 />
               </div>
               <div className="flex justify-between mt-1.5">
@@ -786,7 +729,7 @@ function BudgetPage({ transactions, budgets, formatCurrency }: any) {
 // NET WORTH PAGE
 // ═══════════════════════════════════════════════════════════
 function NetWorthPage({ accounts, formatCurrency }: any) {
-  const [manualAssets, setManualAssets] = useState([
+  const [manualAssets] = useState([
     { name: 'Home Value (est.)', amount: 285000, type: 'asset' },
     { name: 'HELOC Balance', amount: -15000, type: 'liability' },
   ]);
@@ -813,7 +756,6 @@ function NetWorthPage({ accounts, formatCurrency }: any) {
 
   return (
     <div className="space-y-4">
-      {/* Net Worth Hero */}
       <div className="bg-card rounded-2xl p-6 border border-border text-center">
         <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Net Worth</p>
         <p className={`text-4xl font-bold tabular-nums ${netWorth >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
@@ -821,13 +763,12 @@ function NetWorthPage({ accounts, formatCurrency }: any) {
         </p>
       </div>
 
-      {/* Assets */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex justify-between">
           <p className="font-semibold text-sm text-emerald-500">Assets</p>
           <p className="font-semibold text-sm text-emerald-500">{formatCurrency(totalAssets)}</p>
         </div>
-        {accounts.filter((a: any) => a.type === 'depository').map((acct: any, i: number) => (
+        {accounts.filter((a: any) => a.type === 'depository').map((acct: any) => (
           <div key={acct.account_id} className="px-4 py-3 border-b border-border flex justify-between">
             <p className="text-sm">{acct.name} <span className="text-muted-foreground text-xs">•••{acct.mask}</span></p>
             <p className="text-sm font-medium">{formatCurrency(acct.balance_current)}</p>
@@ -841,13 +782,12 @@ function NetWorthPage({ accounts, formatCurrency }: any) {
         ))}
       </div>
 
-      {/* Liabilities */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex justify-between">
           <p className="font-semibold text-sm text-red-500">Liabilities</p>
           <p className="font-semibold text-sm text-red-500">{formatCurrency(totalLiabilities)}</p>
         </div>
-        {accounts.filter((a: any) => a.type === 'credit').map((acct: any, i: number) => (
+        {accounts.filter((a: any) => a.type === 'credit').map((acct: any) => (
           <div key={acct.account_id} className="px-4 py-3 border-b border-border flex justify-between">
             <p className="text-sm">{acct.name} <span className="text-muted-foreground text-xs">•••{acct.mask}</span></p>
             <p className="text-sm font-medium text-red-500">{formatCurrency(acct.balance_current)}</p>
@@ -868,7 +808,6 @@ function NetWorthPage({ accounts, formatCurrency }: any) {
 // SUBSCRIPTIONS PAGE
 // ═══════════════════════════════════════════════════════════
 function SubscriptionsPage({ transactions, formatCurrency }: any) {
-  // Auto-detect recurring transactions (same merchant, multiple months)
   const merchantCounts: Record<string, { count: number; amount: number; dates: string[]; last: string }> = {};
 
   transactions.forEach((t: any) => {
@@ -926,7 +865,6 @@ function SubscriptionsPage({ transactions, formatCurrency }: any) {
 // CASH BACK PAGE
 // ═══════════════════════════════════════════════════════════
 function CashBackPage({ transactions, formatCurrency }: any) {
-  // Simple cash back estimate based on 1.5% on all spend
   const thisMonth = new Date();
   const monthlySpend = transactions
     .filter((t: any) => {
@@ -1081,17 +1019,12 @@ function GoalsPage({ goals, formatCurrency, onRefresh }: any) {
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold tabular-nums text-emerald-500">
-                      {Math.round(pct)}%
-                    </p>
+                    <p className="text-lg font-bold tabular-nums text-emerald-500">{Math.round(pct)}%</p>
                   </div>
                 </div>
 
                 <div className="h-2 bg-muted rounded-full overflow-hidden mb-3">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
+                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                 </div>
 
                 <div className="flex justify-between text-sm">
@@ -1102,7 +1035,6 @@ function GoalsPage({ goals, formatCurrency, onRefresh }: any) {
                   <span>Target: {formatCurrency(goal.target_amount)}</span>
                 </div>
 
-                {/* Quick add amount */}
                 <div className="flex gap-2 mt-3">
                   {[50, 100, 250, 500].map(amt => (
                     <button
