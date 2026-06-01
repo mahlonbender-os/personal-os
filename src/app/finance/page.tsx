@@ -1,5 +1,6 @@
 'use client';
 
+import PullToRefresh from '@/components/PullToRefresh';
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { usePlaidLink } from 'react-plaid-link';
@@ -168,7 +169,11 @@ export default function FinancePage() {
 
   // ─── RENDER ───────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background">
+      <PullToRefresh onRefresh={async () => {
+        await Promise.all([fetchAccounts(), fetchTransactions(), fetchBills(), fetchGoals()]);
+      }}>
+        <div className="pb-24">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
         <div className="px-4 pt-4 pb-2">
@@ -276,6 +281,13 @@ export default function FinancePage() {
         )}
       </div>
     </div>
+      </PullToRefresh>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// OVERVIEW PAGE
   );
 }
 

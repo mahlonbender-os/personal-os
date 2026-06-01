@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import LocationAutocomplete from '@/components/LocationAutocomplete';
+import PullToRefresh from '@/components/PullToRefresh';
 
 interface CalendarEvent {
   id: string;
@@ -222,7 +223,9 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background">
+      <PullToRefresh onRefresh={async () => { await fetchEvents(); }}>
+        <div className="pb-24">
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
         <div className="flex items-center justify-between px-4 pt-12 pb-3">
           <div>
@@ -485,6 +488,8 @@ export default function CalendarPage() {
         </div>
       ) : null}
 
+      </div>
+      </PullToRefresh>
       <BottomNav />
     </div>
   );

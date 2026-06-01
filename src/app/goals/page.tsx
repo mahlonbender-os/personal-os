@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Target, Check, Trash2, ChevronRight, X, TrendingUp } from 'lucide-react';
+import PullToRefresh from '@/components/PullToRefresh';
 
 interface Milestone {
   id: string;
@@ -93,7 +94,9 @@ export default function GoalsPage() {
   const activeCount = goals.filter(g => g.status === 'active').length;
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background">
+      <PullToRefresh onRefresh={async () => { await fetchGoals(); }}>
+        <div className="pb-24">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
         <div className="flex items-center gap-3 px-4 pt-14 pb-3">
@@ -211,7 +214,7 @@ export default function GoalsPage() {
         />
       )}
 
-      {/* Goal Detail Sheet */}
+       {/* Goal Detail Sheet */}
       {selectedGoal && (
         <GoalDetailSheet
           goal={selectedGoal}
@@ -221,6 +224,8 @@ export default function GoalsPage() {
           onToggleMilestone={toggleMilestone}
         />
       )}
+        </div>
+      </PullToRefresh>
     </div>
   );
 }

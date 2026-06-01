@@ -1,5 +1,6 @@
 'use client';
 
+import PullToRefresh from '@/components/PullToRefresh';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -141,7 +142,9 @@ if (fetchedLists.length > 0) {
     : tasks.filter(t => t.status === 'needsAction');
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background">
+      <PullToRefresh onRefresh={async () => { await fetchTasks(); }}>
+        <div className="pb-24">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
         <div className="flex items-center gap-3 px-4 pt-14 pb-3">
@@ -369,6 +372,8 @@ if (fetchedLists.length > 0) {
           showCompleted={showCompleted}
         />
       )}
+        </div>
+      </PullToRefresh>
     </div>
   );
 }
