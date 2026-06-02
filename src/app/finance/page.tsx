@@ -107,13 +107,13 @@ function monthLabel(key: string): string {
 
 // ─── Sync function ────────────────────────────────────────────────────────────
 
+const CACHE_VERSION = 'v2';
+
 async function syncSheets(): Promise<void> {
   await fetch('/api/sync/sheets', { method: 'POST' });
-  // Clear cache so fresh data loads
   try {
-    localStorage.removeItem('finance_overview');
-    localStorage.removeItem('finance_transactions');
-    localStorage.removeItem('finance_bills');
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('finance_'));
+    keys.forEach(k => localStorage.removeItem(k));
   } catch {}
 }
 
@@ -128,7 +128,7 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
 
   const load = useCallback(async () => {
     try {
-      const cached = localStorage.getItem('finance_overview');
+      const cached = localStorage.getItem(`finance_overview_${CACHE_VERSION}`);
       if (cached) {
         const { cf, nw, tx, bl } = JSON.parse(cached);
         if (cf) setCashFlow(cf);
@@ -166,7 +166,7 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
       setBills(blData.bills || []);
 
       try {
-        localStorage.setItem('finance_overview', JSON.stringify({
+        localStorage.setItem(`finance_overview_${CACHE_VERSION}`, JSON.stringify({
           cf, nw: nwData, tx: txData.transactions || [], bl: blData.bills || [],
         }));
       } catch {}
@@ -535,7 +535,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
 
   const load = useCallback(async () => {
     try {
-      const cached = localStorage.getItem('finance_transactions');
+      const cached = localStorage.getItem(`finance_transactions_${CACHE_VERSION}`);
       if (cached) {
         setTransactions(JSON.parse(cached));
         setLoading(false);
@@ -547,7 +547,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
       const data = await res.json();
       const txs = data.transactions || [];
       setTransactions(txs);
-      try { localStorage.setItem('finance_transactions', JSON.stringify(txs)); } catch {}
+      try { localStorage.setItem(`finance_transactions_${CACHE_VERSION}`, JSON.stringify(txs)); } catch {}
     } finally {
       setLoading(false);
     }
@@ -677,7 +677,7 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
 
   const load = useCallback(async () => {
     try {
-      const cached = localStorage.getItem('finance_bills');
+      const cached = localStorage.getItem(`finance_bills_${CACHE_VERSION}`);
       if (cached) {
         setBills(JSON.parse(cached));
         setLoading(false);
@@ -689,7 +689,7 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
       const data = await res.json();
       const bills = data.bills || [];
       setBills(bills);
-      try { localStorage.setItem('finance_bills', JSON.stringify(bills)); } catch {}
+      try { localStorage.setItem(`finance_bills_${CACHE_VERSION}`, JSON.stringify(bills)); } catch {}
     } finally {
       setLoading(false);
     }
