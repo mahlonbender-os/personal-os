@@ -107,7 +107,7 @@ function monthLabel(key: string): string {
 
 // ─── Sync function ────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 
 async function syncSheets(): Promise<void> {
   await fetch('/api/sync/sheets', { method: 'POST' });
