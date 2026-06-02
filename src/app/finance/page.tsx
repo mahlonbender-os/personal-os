@@ -1045,10 +1045,21 @@ function FinancePageInner() {
                 className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
               >
                 <option value="">Select account...</option>
-                <option>Checking</option>
-                <option>Savings</option>
-                <option>Credit Card</option>
-                <option>Cash</option>
+                <option>1stFinancial</option>
+                <option>401K</option>
+                <option>AidVantage</option>
+                <option>American Express Blue Cash Preferred</option>
+                <option>Apple</option>
+                <option>Capital One BJ's</option>
+                <option>Capital One Savor</option>
+                <option>Chase Sapphire Preferred</option>
+                <option>Fidelity</option>
+                <option>Home — Zestimate</option>
+                <option>HSA</option>
+                <option>Members 1st Checking</option>
+                <option>Members 1st HELOC</option>
+                <option>Roth IRA</option>
+                <option>Wells Fargo</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -1070,30 +1081,30 @@ function FinancePageInner() {
                 className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
               >
                 <option value="">Select category...</option>
-                <option>Knox 🐾</option>
-                <option>Housing</option>
+                <option>401K</option>
+                <option>Bree</option>
+                <option>Car Insurance</option>
                 <option>Dining Out</option>
-                <option>Transportation</option>
-                <option>Groceries</option>
                 <option>Electric</option>
-                <option>Internet</option>
-                <option>Phone</option>
+                <option>Entertainment</option>
+                <option>Groceries</option>
                 <option>Gym</option>
+                <option>Housing</option>
+                <option>HSA</option>
+                <option>Income</option>
+                <option>Internet</option>
+                <option>Knox 🐾</option>
+                <option>Other Exp.</option>
+                <option>Other Inc.</option>
+                <option>Personal</option>
+                <option>Phone</option>
+                <option>Roth IRA</option>
                 <option>Student Loan</option>
+                <option>Subscriptions</option>
+                <option>Transfer</option>
+                <option>Transportation</option>
                 <option>UGI Gas</option>
                 <option>Water</option>
-                <option>Car Insurance</option>
-                <option>Subscriptions</option>
-                <option>Personal</option>
-                <option>Entertainment</option>
-                <option>Other Exp.</option>
-                <option>Income</option>
-                <option>Other Inc.</option>
-                <option>Bree</option>
-                <option>HSA</option>
-                <option>Roth IRA</option>
-                <option>401K</option>
-                <option>Transfer</option>
               </select>
             </div>
             {txError && <p className="text-red-500 text-sm">{txError}</p>}
