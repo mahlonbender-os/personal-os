@@ -1011,110 +1011,130 @@ function FinancePageInner() {
       )}
 
       {/* Add Transaction Modal */}
+      {/* Add Transaction Modal */}
       {showAddTx && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-t-2xl p-6 pb-10 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Add Transaction</h2>
-              <button onClick={() => setShowAddTx(false)} className="text-zinc-400 text-2xl leading-none">&times;</button>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-500 uppercase tracking-wide">Date</label>
-              <input
-                type="date"
-                value={txForm.date}
-                onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
-                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-500 uppercase tracking-wide">Merchant</label>
-              <input
-                type="text"
-                placeholder="e.g. Wegmans"
-                value={txForm.merchant}
-                onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
-                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-500 uppercase tracking-wide">Account</label>
-              <select
-                value={txForm.account}
-                onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
-                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={() => setShowAddTx(false)}>
+          <div
+            className="bg-[#1c1c1e] w-full max-w-lg rounded-t-2xl pb-10"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-4">
+              <button onClick={() => setShowAddTx(false)} className="text-blue-400 text-sm">Cancel</button>
+              <h2 className="text-base font-semibold text-white">New Transaction</h2>
+              <button
+                onClick={handleAddTransaction}
+                disabled={txSaving}
+                className="text-blue-400 text-sm font-semibold disabled:opacity-40"
               >
-                <option value="">Select account...</option>
-                <option>1stFinancial</option>
-                <option>401K</option>
-                <option>AidVantage</option>
-                <option>American Express Blue Cash Preferred</option>
-                <option>Apple</option>
-                <option>Capital One BJ's</option>
-                <option>Capital One Savor</option>
-                <option>Chase Sapphire Preferred</option>
-                <option>Fidelity</option>
-                <option>Home — Zestimate</option>
-                <option>HSA</option>
-                <option>Members 1st Checking</option>
-                <option>Members 1st HELOC</option>
-                <option>Roth IRA</option>
-                <option>Wells Fargo</option>
-              </select>
+                {txSaving ? 'Saving…' : 'Add'}
+              </button>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-500 uppercase tracking-wide">Amount</label>
-              <input
-                type="number"
-                placeholder="0.00"
-                step="0.01"
-                value={txForm.amount}
-                onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
-                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
-              />
+
+            <div className="px-4 space-y-3">
+              {/* Date + Merchant grouped */}
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center px-4 py-3 border-b border-white/10">
+                  <span className="text-sm text-gray-400 w-24 flex-shrink-0">Date</span>
+                  <input
+                    type="date"
+                    value={txForm.date}
+                    onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none"
+                  />
+                </div>
+                <div className="flex items-center px-4 py-3">
+                  <span className="text-sm text-gray-400 w-24 flex-shrink-0">Merchant</span>
+                  <input
+                    type="text"
+                    placeholder="Name"
+                    value={txForm.merchant}
+                    onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-gray-600"
+                  />
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center px-4 py-3">
+                  <span className="text-sm text-gray-400 w-24 flex-shrink-0">Amount</span>
+                  <input
+                    type="number"
+                    placeholder="0.00"
+                    step="0.01"
+                    value={txForm.amount}
+                    onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-gray-600"
+                  />
+                </div>
+              </div>
+
+              {/* Account + Category grouped */}
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center px-4 py-3 border-b border-white/10">
+                  <span className="text-sm text-gray-400 w-24 flex-shrink-0">Account</span>
+                  <select
+                    value={txForm.account}
+                    onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none"
+                  >
+                    <option value="" className="bg-[#2c2c2e]">Select…</option>
+                    <option className="bg-[#2c2c2e]">1stFinancial</option>
+                    <option className="bg-[#2c2c2e]">401K</option>
+                    <option className="bg-[#2c2c2e]">AidVantage</option>
+                    <option className="bg-[#2c2c2e]">American Express Blue Cash Preferred</option>
+                    <option className="bg-[#2c2c2e]">Apple</option>
+                    <option className="bg-[#2c2c2e]">Capital One BJ's</option>
+                    <option className="bg-[#2c2c2e]">Capital One Savor</option>
+                    <option className="bg-[#2c2c2e]">Chase Sapphire Preferred</option>
+                    <option className="bg-[#2c2c2e]">Fidelity</option>
+                    <option className="bg-[#2c2c2e]">Home — Zestimate</option>
+                    <option className="bg-[#2c2c2e]">HSA</option>
+                    <option className="bg-[#2c2c2e]">Members 1st Checking</option>
+                    <option className="bg-[#2c2c2e]">Members 1st HELOC</option>
+                    <option className="bg-[#2c2c2e]">Roth IRA</option>
+                    <option className="bg-[#2c2c2e]">Wells Fargo</option>
+                  </select>
+                </div>
+                <div className="flex items-center px-4 py-3">
+                  <span className="text-sm text-gray-400 w-24 flex-shrink-0">Category</span>
+                  <select
+                    value={txForm.category}
+                    onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none"
+                  >
+                    <option value="" className="bg-[#2c2c2e]">Select…</option>
+                    <option className="bg-[#2c2c2e]">401K</option>
+                    <option className="bg-[#2c2c2e]">Bree</option>
+                    <option className="bg-[#2c2c2e]">Car Insurance</option>
+                    <option className="bg-[#2c2c2e]">Dining Out</option>
+                    <option className="bg-[#2c2c2e]">Electric</option>
+                    <option className="bg-[#2c2c2e]">Entertainment</option>
+                    <option className="bg-[#2c2c2e]">Groceries</option>
+                    <option className="bg-[#2c2c2e]">Gym</option>
+                    <option className="bg-[#2c2c2e]">Housing</option>
+                    <option className="bg-[#2c2c2e]">HSA</option>
+                    <option className="bg-[#2c2c2e]">Income</option>
+                    <option className="bg-[#2c2c2e]">Internet</option>
+                    <option className="bg-[#2c2c2e]">Knox 🐾</option>
+                    <option className="bg-[#2c2c2e]">Other Exp.</option>
+                    <option className="bg-[#2c2c2e]">Other Inc.</option>
+                    <option className="bg-[#2c2c2e]">Personal</option>
+                    <option className="bg-[#2c2c2e]">Phone</option>
+                    <option className="bg-[#2c2c2e]">Roth IRA</option>
+                    <option className="bg-[#2c2c2e]">Student Loan</option>
+                    <option className="bg-[#2c2c2e]">Subscriptions</option>
+                    <option className="bg-[#2c2c2e]">Transfer</option>
+                    <option className="bg-[#2c2c2e]">Transportation</option>
+                    <option className="bg-[#2c2c2e]">UGI Gas</option>
+                    <option className="bg-[#2c2c2e]">Water</option>
+                  </select>
+                </div>
+              </div>
+
+              {txError && <p className="text-red-400 text-xs px-1">{txError}</p>}
             </div>
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-500 uppercase tracking-wide">Category</label>
-              <select
-                value={txForm.category}
-                onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
-                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
-              >
-                <option value="">Select category...</option>
-                <option>401K</option>
-                <option>Bree</option>
-                <option>Car Insurance</option>
-                <option>Dining Out</option>
-                <option>Electric</option>
-                <option>Entertainment</option>
-                <option>Groceries</option>
-                <option>Gym</option>
-                <option>Housing</option>
-                <option>HSA</option>
-                <option>Income</option>
-                <option>Internet</option>
-                <option>Knox 🐾</option>
-                <option>Other Exp.</option>
-                <option>Other Inc.</option>
-                <option>Personal</option>
-                <option>Phone</option>
-                <option>Roth IRA</option>
-                <option>Student Loan</option>
-                <option>Subscriptions</option>
-                <option>Transfer</option>
-                <option>Transportation</option>
-                <option>UGI Gas</option>
-                <option>Water</option>
-              </select>
-            </div>
-            {txError && <p className="text-red-500 text-sm">{txError}</p>}
-            <button
-              onClick={handleAddTransaction}
-              disabled={txSaving}
-              className="w-full bg-blue-500 text-white rounded-xl py-3 font-semibold text-sm active:scale-95 transition-transform disabled:opacity-50"
-            >
-              {txSaving ? 'Saving...' : 'Save Transaction'}
-            </button>
           </div>
         </div>
       )}
