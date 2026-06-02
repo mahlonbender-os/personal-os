@@ -11,8 +11,13 @@ function parseAmount(val: string): number {
   return parseFloat(val.replace(/[$,\s()-]/g, '')) || 0;
 }
 
-// Row index (0-based) → category name
-// Skips totals, headers, and blank rows
+function parseAmountSigned(val: string): number {
+  if (!val) return 0;
+  const negative = val.includes('(') || val.trim().startsWith('-');
+  const abs = parseFloat(val.replace(/[$,\s()-]/g, '')) || 0;
+  return negative ? -abs : abs;
+}
+
 const CATEGORY_ROWS: { index: number; name: string; section: 'income' | 'essentials' | 'discretionary' }[] = [
   { index: 2, name: 'Bonus', section: 'income' },
   { index: 3, name: 'Income', section: 'income' },
@@ -36,9 +41,13 @@ const CATEGORY_ROWS: { index: number; name: string; section: 'income' | 'essenti
   { index: 27, name: 'Subscriptions', section: 'discretionary' },
 ];
 
+// These categories exist in transactions but not in Flow tab
+// They show as income categories on transactions page only
+const EXTRA_INCOME_CATEGORIES = ['Roth IRA', 'HSA', '401K', 'Bree'];
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const month = searchParams.get('month'); // e.g. "2026-06"
+  const month = searchParams.get('month');
 
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
@@ -55,10 +64,8 @@ export async function GET(request: Request) {
     const data = await res.json();
     const rows: string[][] = data.values || [];
 
-    // Row 0 = headers: [blank, Proj., 2026-04, 2026-05, ...]
     const headerRow = rows[0] || [];
 
-    // Build list of available months and their column indices
     const availableMonths: string[] = [];
     const monthColMap: Record<string, number> = {};
     for (let i = 2; i < headerRow.length; i++) {
@@ -69,14 +76,12 @@ export async function GET(request: Request) {
       }
     }
 
-    // Determine target month
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const targetMonth = month || currentMonth;
     const targetColIndex = monthColMap[targetMonth];
-    const projColIndex = 1; // Column B = Proj.
+    const projColIndex = 1;
 
-    // Build budget items
     const items = CATEGORY_ROWS.map(({ index, name, section }) => {
       const row = rows[index] || [];
       const budget = parseAmount(row[projColIndex] || '0');
@@ -91,9 +96,8 @@ export async function GET(request: Request) {
         over: Math.max(0, actual - budget),
         percent: budget > 0 ? Math.min(Math.round((actual / budget) * 100), 999) : 0,
       };
-    }).filter((item) => item.budget > 0 || item.actual > 0); // hide rows with no data
+    }).filter((item) => item.budget > 0 || item.actual > 0);
 
-    // Section totals
     const incomeItems = items.filter((i) => i.section === 'income');
     const expenseItems = items.filter((i) => i.section !== 'income');
 
@@ -102,10 +106,12 @@ export async function GET(request: Request) {
     const totalExpenseBudget = expenseItems.reduce((s, i) => s + i.budget, 0);
     const totalExpenseActual = expenseItems.reduce((s, i) => s + i.actual, 0);
 
-    // Read cash flow row (row 32 = index 31)
+    // Cash flow row 32 = index 31 — preserve sign
     const cashFlowRow = rows[31] || [];
-    const projectedCashFlow = parseAmount(cashFlowRow[projColIndex] || '0');
-    const actualCashFlow = targetColIndex !== undefined ? parseAmount(cashFlowRow[targetColIndex] || '0') : 0;
+    const projectedCashFlow = parseAmountSigned(cashFlowRow[projColIndex] || '0');
+    const actualCashFlow = targetColIndex !== undefined
+      ? parseAmountSigned(cashFlowRow[targetColIndex] || '0')
+      : 0;
 
     return NextResponse.json({
       month: targetMonth,
@@ -118,6 +124,7 @@ export async function GET(request: Request) {
       totalExpenseActual,
       projectedCashFlow,
       actualCashFlow,
+      extraIncomeCategories: EXTRA_INCOME_CATEGORIES,
     });
   } catch (e: unknown) {
     return NextResponse.json(

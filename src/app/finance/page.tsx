@@ -109,6 +109,12 @@ function monthLabel(key: string): string {
 
 async function syncSheets(): Promise<void> {
   await fetch('/api/sync/sheets', { method: 'POST' });
+  // Clear cache so fresh data loads
+  try {
+    localStorage.removeItem('finance_overview');
+    localStorage.removeItem('finance_transactions');
+    localStorage.removeItem('finance_bills');
+  } catch {}
 }
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
@@ -521,31 +527,15 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
 
 // ── Transactions Tab ──────────────────────────────────────────────────────────
 
-function TransactionsTab({ onRefresh }: { onRefresh: number }) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const load = useCallback(async () => {
-    try {
-      const cached = localStorage.getItem('finance_transactions');
-      if (cached) {
-        setTransactions(JSON.parse(cached));
-        setLoading(false);
-      }
-    } catch {}
-
-    try {
-      const res = await fetch('/api/finance/transactions?limit=300');
-      const data = await res.json();
-      const txs = data.transactions || [];
-      setTransactions(txs);
-      try { localStorage.setItem('finance_transactions', JSON.stringify(txs)); } catch {}
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+async function syncSheets(): Promise<void> {
+  await fetch('/api/sync/sheets', { method: 'POST' });
+  // Clear cache so fresh data loads
+  try {
+    localStorage.removeItem('finance_overview');
+    localStorage.removeItem('finance_transactions');
+    localStorage.removeItem('finance_bills');
+  } catch {}
+}
 
   // Reset search when tab refreshes
   useEffect(() => {

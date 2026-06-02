@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, ReactNode } from 'react';
+import { useState, useRef, useCallback, ReactNode, useEffect } from 'react';
 
 interface Tab {
   id: string;
@@ -26,6 +26,14 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
   const touchStartTime = useRef<number | null>(null);
   const isHorizontal = useRef<boolean | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Scroll active panel to top whenever tab changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    const panel = panelRefs.current[activeIndex];
+    if (panel) panel.scrollTop = 0;
+  }, [activeIndex]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -54,7 +62,6 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
 
     if (!isHorizontal.current) return;
 
-    // Prevent default to stop vertical scroll interference
     e.preventDefault();
 
     if (dx > 0 && activeIndex === 0) return;
@@ -80,7 +87,6 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
 
     if ((isPastThreshold || isFlick) && Math.abs(dx) > 5) {
       if (dx < 0 && activeIndex < tabs.length - 1) {
-        // Haptic feedback
         if (navigator.vibrate) navigator.vibrate(8);
         onTabChange(tabs[activeIndex + 1].id);
       } else if (dx > 0 && activeIndex > 0) {
@@ -97,33 +103,32 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
   }, [activeIndex, tabs, onTabChange]);
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div
+      ref={containerRef}
+      className="overflow-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ touchAction: 'pan-y' }}
+    >
       <div
-        ref={containerRef}
-        className="relative overflow-hidden"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        style={{ touchAction: 'pan-y' }}
+        className="flex"
+        style={{
+          width: `${tabs.length * 100}%`,
+          transform: `translateX(calc(${-activeIndex * (100 / tabs.length)}% + ${dragOffset / tabs.length}px))`,
+          transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+        }}
       >
-        <div
-          className="flex"
-          style={{
-            width: `${tabs.length * 100}%`,
-            transform: `translateX(calc(${-activeIndex * (100 / tabs.length)}% + ${dragOffset / tabs.length}px))`,
-            transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-          }}
-        >
-          {children.map((child, idx) => (
-            <div
-              key={tabs[idx]?.id || idx}
-              style={{ width: `${100 / tabs.length}%` }}
-              className="flex-shrink-0"
-            >
-              {child}
-            </div>
-          ))}
-        </div>
+        {children.map((child, idx) => (
+          <div
+            key={tabs[idx]?.id || idx}
+            ref={(el) => { panelRefs.current[idx] = el; }}
+            style={{ width: `${100 / tabs.length}%` }}
+            className="flex-shrink-0 min-w-0"
+          >
+            {child}
+          </div>
+        ))}
       </div>
     </div>
   );
