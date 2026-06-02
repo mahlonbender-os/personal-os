@@ -527,17 +527,32 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
 
 // ── Transactions Tab ──────────────────────────────────────────────────────────
 
-async function syncSheets(): Promise<void> {
-  await fetch('/api/sync/sheets', { method: 'POST' });
-  // Clear cache so fresh data loads
-  try {
-    localStorage.removeItem('finance_overview');
-    localStorage.removeItem('finance_transactions');
-    localStorage.removeItem('finance_bills');
-  } catch {}
-}
+function TransactionsTab({ onRefresh }: { onRefresh: number }) {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Reset search when tab refreshes
+  const load = useCallback(async () => {
+    try {
+      const cached = localStorage.getItem('finance_transactions');
+      if (cached) {
+        setTransactions(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {}
+
+    try {
+      const res = await fetch('/api/finance/transactions?limit=300');
+      const data = await res.json();
+      const txs = data.transactions || [];
+      setTransactions(txs);
+      try { localStorage.setItem('finance_transactions', JSON.stringify(txs)); } catch {}
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setSearchQuery('');
     setSelectedCategory('All');
@@ -561,8 +576,10 @@ async function syncSheets(): Promise<void> {
 
   const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
-  const totalFiltered = filtered.reduce((sum, tx) =>
-    INCOME_CATEGORIES.includes(tx.category) ? sum + tx.amount : sum - tx.amount, 0);
+  function monthTotal(txs: Transaction[]): number {
+    return txs.reduce((sum, tx) =>
+      INCOME_CATEGORIES.includes(tx.category) ? sum + tx.amount : sum - tx.amount, 0);
+  }
 
   return (
     <div className="space-y-3">
@@ -577,30 +594,15 @@ async function syncSheets(): Promise<void> {
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+      <select
+        value={selectedCategory}
+        onChange={(e) => setSelectedCategory(e.target.value)}
+        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
         {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-              selectedCategory === cat
-                ? 'bg-blue-500 text-white shadow-sm'
-                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
-            }`}
-          >
-            {cat}
-          </button>
+          <option key={cat} value={cat}>{cat}</option>
         ))}
-      </div>
-
-      {filtered.length > 0 && (
-        <div className="flex justify-between items-center px-1">
-          <span className="text-xs text-gray-400">{filtered.length} transactions</span>
-          <span className={`text-sm font-semibold ${totalFiltered >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-            {formatCurrency(Math.abs(totalFiltered))}
-          </span>
-        </div>
-      )}
+      </select>
 
       {loading ? (
         <div className="flex items-center justify-center h-32">
@@ -612,42 +614,55 @@ async function syncSheets(): Promise<void> {
         </div>
       ) : (
         <div className="space-y-4">
-          {sortedMonths.map((monthKey) => (
-            <div key={monthKey}>
-              <div className="flex justify-between items-baseline mb-2">
-                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  {monthLabel(monthKey)}
-                </p>
-                <p className="text-xs text-gray-400">{grouped[monthKey].length} tx</p>
-              </div>
-              <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-                {grouped[monthKey].map((tx, idx) => (
-                  <div
-                    key={tx.id}
-                    className={`flex items-center px-4 py-3 gap-3 ${idx !== grouped[monthKey].length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
-                  >
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor(tx.category) }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{tx.merchant}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span
-                          className="text-xs px-1.5 py-0.5 rounded-full"
-                          style={{ backgroundColor: categoryColor(tx.category) + '20', color: categoryColor(tx.category) }}
-                        >
-                          {tx.category}
-                        </span>
-                        <span className="text-xs text-gray-400">{formatDate2(tx.date)}</span>
-                        {tx.account && <span className="text-xs text-gray-300 dark:text-gray-500 truncate">{tx.account}</span>}
-                      </div>
-                    </div>
-                    <p className={`text-sm font-semibold flex-shrink-0 ${INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'}`}>
-                      {formatCurrency(tx.amount)}
+          {sortedMonths.map((monthKey) => {
+            const monthTxs = grouped[monthKey];
+            const total = monthTotal(monthTxs);
+            return (
+              <div key={monthKey}>
+                <div className="flex justify-between items-baseline mb-2 px-1">
+                  <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {monthLabel(monthKey)}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-gray-400">{monthTxs.length} tx</p>
+                    <p className={`text-xs font-semibold ${total >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      {formatCurrency(Math.abs(total))}
                     </p>
                   </div>
-                ))}
+                </div>
+                <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+                  {monthTxs.map((tx, idx) => (
+                    <div
+                      key={tx.id}
+                      className={`flex items-center px-4 py-3 gap-3 ${idx !== monthTxs.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
+                    >
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor(tx.category) }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{tx.merchant}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden">
+                          <span
+                            className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: categoryColor(tx.category) + '20', color: categoryColor(tx.category) }}
+                          >
+                            {tx.category}
+                          </span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(tx.date)}</span>
+                          {tx.account && (
+                            <span className="text-xs text-gray-300 dark:text-gray-500 truncate min-w-0">
+                              {tx.account}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 ${INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                        {formatCurrency(tx.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
