@@ -57,16 +57,21 @@ export async function POST() {
       const rows = await fetchSheet(accessToken, 'Transactions!A2:G1000');
       const transactions = rows
         .filter((r) => r[0] && r[2] && r[4])
-        .map((r) => ({
-          id: r[0].trim(),
-          user_id: USER_ID,
-          date: parseDate(r[1]),
-          merchant: r[2]?.trim() || '',
-          account: r[3]?.trim() || '',
-          amount: parseAmount(r[4]),
-          category: r[5]?.trim() || 'Other Exp.',
-          source: 'google_sheets',
-        }))
+        .map((r) => {
+  const account = r[3]?.trim() || '';
+  const rawCategory = r[5]?.trim() || 'Other Exp.';
+  const category = ['401K', 'HSA', 'Roth IRA'].includes(account) ? account : rawCategory;
+  return {
+    id: r[0].trim(),
+    user_id: USER_ID,
+    date: parseDate(r[1]),
+    merchant: r[2]?.trim() || '',
+    account,
+    amount: parseAmount(r[4]),
+    category,
+    source: 'google_sheets',
+  };
+})
         .filter((t) => t.date !== null);
 
       if (transactions.length > 0) {
