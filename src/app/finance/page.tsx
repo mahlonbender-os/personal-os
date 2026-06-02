@@ -1000,6 +1000,114 @@ function FinancePageInner() {
         </SwipeTabs>
       </PullToRefresh>
 
+      {/* Floating Add Button — only on Transactions tab */}
+      {activeTab === 'transactions' && (
+        <button
+          onClick={() => setShowAddTx(true)}
+          className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-blue-500 text-white text-3xl shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+        >
+          +
+        </button>
+      )}
+
+      {/* Add Transaction Modal */}
+      {showAddTx && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-t-2xl p-6 pb-10 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Add Transaction</h2>
+              <button onClick={() => setShowAddTx(false)} className="text-zinc-400 text-2xl leading-none">&times;</button>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500 uppercase tracking-wide">Date</label>
+              <input
+                type="date"
+                value={txForm.date}
+                onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
+                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500 uppercase tracking-wide">Merchant</label>
+              <input
+                type="text"
+                placeholder="e.g. Wegmans"
+                value={txForm.merchant}
+                onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
+                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500 uppercase tracking-wide">Account</label>
+              <select
+                value={txForm.account}
+                onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
+                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
+              >
+                <option value="">Select account...</option>
+                <option>Checking</option>
+                <option>Savings</option>
+                <option>Credit Card</option>
+                <option>Cash</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500 uppercase tracking-wide">Amount</label>
+              <input
+                type="number"
+                placeholder="0.00"
+                step="0.01"
+                value={txForm.amount}
+                onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
+                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500 uppercase tracking-wide">Category</label>
+              <select
+                value={txForm.category}
+                onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
+                className="w-full rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-sm"
+              >
+                <option value="">Select category...</option>
+                <option>Knox 🐾</option>
+                <option>Housing</option>
+                <option>Dining Out</option>
+                <option>Transportation</option>
+                <option>Groceries</option>
+                <option>Electric</option>
+                <option>Internet</option>
+                <option>Phone</option>
+                <option>Gym</option>
+                <option>Student Loan</option>
+                <option>UGI Gas</option>
+                <option>Water</option>
+                <option>Car Insurance</option>
+                <option>Subscriptions</option>
+                <option>Personal</option>
+                <option>Entertainment</option>
+                <option>Other Exp.</option>
+                <option>Income</option>
+                <option>Other Inc.</option>
+                <option>Bree</option>
+                <option>HSA</option>
+                <option>Roth IRA</option>
+                <option>401K</option>
+                <option>Transfer</option>
+              </select>
+            </div>
+            {txError && <p className="text-red-500 text-sm">{txError}</p>}
+            <button
+              onClick={handleAddTransaction}
+              disabled={txSaving}
+              className="w-full bg-blue-500 text-white rounded-xl py-3 font-semibold text-sm active:scale-95 transition-transform disabled:opacity-50"
+            >
+              {txSaving ? 'Saving...' : 'Save Transaction'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <BottomNav active="finance" />
     </div>
   );
