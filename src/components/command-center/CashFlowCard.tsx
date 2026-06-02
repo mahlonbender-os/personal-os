@@ -42,7 +42,7 @@ export default function CashFlowCard() {
   const spent = data ? data.essentials + data.discretionary : 0;
 
   return (
-    <Link href="/finance" className="block h-full">
+    <Link href="/finance?tab=transactions" className="block h-full">
       <div className="h-full rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm active:scale-[0.98] transition-transform">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">

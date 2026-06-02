@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
@@ -116,7 +117,18 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    // Show cached data instantly
+    try {
+      const cached = localStorage.getItem('finance_overview');
+      if (cached) {
+        const { cf, nw, tx } = JSON.parse(cached);
+        if (cf) setCashFlow(cf);
+        if (nw) setNetWorth(nw);
+        if (tx) setRecentTx(tx);
+        setLoading(false);
+      }
+    } catch {}
+
     try {
       const [cfRes, nwRes, txRes] = await Promise.all([
         fetch('/api/finance/cash-flow'),
@@ -203,11 +215,15 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
 
       {/* Recent Transactions */}
       <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+        <button
+          className="w-full px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between active:bg-gray-50 dark:active:bg-gray-700/50"
+          onClick={() => onNavigate('transactions')}
+        >
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             Recent Transactions
           </p>
-        </div>
+          <p className="text-xs text-blue-500">See all →</p>
+        </button>
         {recentTx.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-400">
             Pull down to sync latest data
@@ -227,7 +243,7 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
                 <p className={`text-sm font-semibold flex-shrink-0 ${
                   INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'
                 }`}>
-                  {INCOME_CATEGORIES.includes(tx.category) ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+                  {formatCurrency(Math.abs(tx.amount))}
                 </p>
               </div>
             ))}
@@ -247,11 +263,20 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true);
+    try {
+      const cached = localStorage.getItem('finance_transactions');
+      if (cached) {
+        setTransactions(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {}
+
     try {
       const res = await fetch('/api/finance/transactions?limit=300');
       const data = await res.json();
-      setTransactions(data.transactions || []);
+      const txs = data.transactions || [];
+      setTransactions(txs);
+      try { localStorage.setItem('finance_transactions', JSON.stringify(txs)); } catch {}
     } finally {
       setLoading(false);
     }
@@ -373,7 +398,6 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
                     <p className={`text-sm font-semibold flex-shrink-0 ${
                       INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'
                     }`}>
-                      {INCOME_CATEGORIES.includes(tx.category) ? '+' : ''}
                       {formatCurrency(Math.abs(tx.amount))}
                     </p>
                   </div>
@@ -394,11 +418,20 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    try {
+      const cached = localStorage.getItem('finance_bills');
+      if (cached) {
+        setBills(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {}
+
     try {
       const res = await fetch('/api/finance/bills');
       const data = await res.json();
-      setBills(data.bills || []);
+      const bills = data.bills || [];
+      setBills(bills);
+      try { localStorage.setItem('finance_bills', JSON.stringify(bills)); } catch {}
     } finally {
       setLoading(false);
     }
@@ -598,9 +631,11 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function FinancePage() {
+function FinancePageInner() {
   const { data: session, status } = useSession();
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get('tab') as Tab) || 'overview';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [refreshCount, setRefreshCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
@@ -687,4 +722,13 @@ export default function FinancePage() {
       <BottomNav active="finance" />
     </div>
   );
+}
+
+export default function FinancePage() {
+  return (
+    <Suspense fallback={null}>
+      <FinancePageInner />
+    </Suspense>
+  );
+}
 }
