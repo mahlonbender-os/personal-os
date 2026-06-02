@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
 import SwipeTabs from '@/components/SwipeTabs';
+import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -878,6 +878,47 @@ function FinancePageInner() {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [refreshCount, setRefreshCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [showAddTx, setShowAddTx] = useState(false);
+  const [txForm, setTxForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    merchant: '',
+    account: '',
+    amount: '',
+    category: '',
+  });
+  const [txSaving, setTxSaving] = useState(false);
+  const [txError, setTxError] = useState('');
+
+  async function handleAddTransaction() {
+    setTxError('');
+    if (!txForm.date || !txForm.merchant || !txForm.account || !txForm.amount || !txForm.category) {
+      setTxError('All fields are required.');
+      return;
+    }
+    setTxSaving(true);
+    try {
+      const res = await fetch('/api/finance/transactions/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(txForm),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      setShowAddTx(false);
+      setTxForm({
+        date: new Date().toISOString().split('T')[0],
+        merchant: '',
+        account: '',
+        amount: '',
+        category: '',
+      });
+      await syncSheets();
+      setRefreshCount((c) => c + 1);
+    } catch {
+      setTxError('Something went wrong. Try again.');
+    } finally {
+      setTxSaving(false);
+    }
+  }
 
   const handleRefresh = useCallback(async () => {
     setSyncing(true);
