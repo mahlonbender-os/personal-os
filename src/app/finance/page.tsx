@@ -109,7 +109,7 @@ async function syncSheets(): Promise<void> {
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
-function OverviewTab({ onRefresh }: { onRefresh: number }) {
+function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate: (tab: Tab) => void }) {
   const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number } | null>(null);
   const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number } | null>(null);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
@@ -156,6 +156,7 @@ function OverviewTab({ onRefresh }: { onRefresh: number }) {
   return (
     <div className="space-y-4">
       {/* Net Worth Card */}
+      <button className="w-full text-left active:scale-[0.98] transition-transform" onClick={() => onNavigate('networth')}>
       <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-900 p-5 text-white shadow-lg">
         <p className="text-blue-200 text-sm font-medium mb-1">Net Worth</p>
         <p className="text-3xl font-bold tracking-tight">
@@ -169,6 +170,7 @@ function OverviewTab({ onRefresh }: { onRefresh: number }) {
           </div>
         )}
       </div>
+      </button>
 
       {/* Cash Flow Card */}
       {cashFlow && (
@@ -673,7 +675,7 @@ export default function FinancePage() {
         >
           {tabs.map((tab) => (
             <div key={tab.id} className="px-4 py-4 pb-28">
-              {tab.id === 'overview' && <OverviewTab onRefresh={refreshCount} />}
+              {tab.id === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigate={(id) => setActiveTab(id as Tab)} />}
               {tab.id === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
               {tab.id === 'bills' && <BillsTab onRefresh={refreshCount} />}
               {tab.id === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
