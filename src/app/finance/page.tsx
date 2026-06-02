@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
+import SwipeTabs from '@/components/SwipeTabs';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -665,12 +666,20 @@ export default function FinancePage() {
 
       {/* Content */}
       <PullToRefresh onRefresh={handleRefresh}>
-        <div className="px-4 py-4 pb-28 min-h-screen">
-          {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} />}
-          {activeTab === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
-          {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
-          {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
-        </div>
+        <SwipeTabs
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={(id) => setActiveTab(id as Tab)}
+        >
+          {tabs.map((tab) => (
+            <div key={tab.id} className="px-4 py-4 pb-28">
+              {tab.id === 'overview' && <OverviewTab onRefresh={refreshCount} />}
+              {tab.id === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
+              {tab.id === 'bills' && <BillsTab onRefresh={refreshCount} />}
+              {tab.id === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
+            </div>
+          ))}
+        </SwipeTabs>
       </PullToRefresh>
 
       <BottomNav active="finance" />
