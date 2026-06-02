@@ -38,6 +38,7 @@ interface NetWorthAccount {
 
 interface BudgetItem {
   category: string;
+  section: 'income' | 'essentials' | 'discretionary';
   budget: number;
   actual: number;
   remaining: number;
@@ -301,8 +302,12 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
 
 function BudgetTab({ onRefresh }: { onRefresh: number }) {
   const [items, setItems] = useState<BudgetItem[]>([]);
-  const [totalBudget, setTotalBudget] = useState(0);
-  const [totalActual, setTotalActual] = useState(0);
+  const [totalIncomeBudget, setTotalIncomeBudget] = useState(0);
+  const [totalIncomeActual, setTotalIncomeActual] = useState(0);
+  const [totalExpenseBudget, setTotalExpenseBudget] = useState(0);
+  const [totalExpenseActual, setTotalExpenseActual] = useState(0);
+  const [projectedCashFlow, setProjectedCashFlow] = useState(0);
+  const [actualCashFlow, setActualCashFlow] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [currentMonth, setCurrentMonth] = useState('');
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
@@ -318,8 +323,12 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setItems(data.items || []);
-      setTotalBudget(data.totalBudget || 0);
-      setTotalActual(data.totalActual || 0);
+      setTotalIncomeBudget(data.totalIncomeBudget || 0);
+      setTotalIncomeActual(data.totalIncomeActual || 0);
+      setTotalExpenseBudget(data.totalExpenseBudget || 0);
+      setTotalExpenseActual(data.totalExpenseActual || 0);
+      setProjectedCashFlow(data.projectedCashFlow || 0);
+      setActualCashFlow(data.actualCashFlow || 0);
       setSelectedMonth(data.month);
       setCurrentMonth(data.currentMonth);
       setAvailableMonths(data.availableMonths || []);
@@ -332,52 +341,147 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
 
   useEffect(() => { load(); }, [load, onRefresh]);
 
-  const totalRemaining = Math.max(0, totalBudget - totalActual);
-  const totalOver = Math.max(0, totalActual - totalBudget);
-  const totalPercent = totalBudget > 0 ? Math.min(Math.round((totalActual / totalBudget) * 100), 100) : 0;
+  const incomeItems = items.filter((i) => i.section === 'income');
+  const expenseItems = items.filter((i) => i.section !== 'income');
+
+  function Section({
+    title,
+    rows,
+    totalBudget,
+    totalActual,
+  }: {
+    title: string;
+    rows: BudgetItem[];
+    totalBudget: number;
+    totalActual: number;
+  }) {
+    const percent = totalBudget > 0 ? Math.min(Math.round((totalActual / totalBudget) * 100), 100) : 0;
+    const isIncome = title === 'Income';
+
+    return (
+      <div>
+        <div className="flex items-baseline justify-between mb-2 px-1">
+          <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{title}</p>
+          <p className="text-xs text-gray-400">
+            {formatCurrency(totalActual)} / {formatCurrency(totalBudget)}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+          {rows.map((item, idx) => (
+            <div
+              key={item.category}
+              className={`px-4 py-3 ${idx !== rows.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: categoryColor(item.category) }}
+                  />
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{item.category}</p>
+                </div>
+                <div className="text-right flex-shrink-0 ml-2">
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    {formatCurrency(item.actual)}
+                    <span className="text-xs text-gray-400 font-normal"> / {formatCurrency(item.budget)}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    isIncome
+                      ? item.percent >= 100 ? 'bg-green-500' : 'bg-green-400'
+                      : item.percent >= 100 ? 'bg-red-500'
+                      : item.percent >= 80 ? 'bg-orange-400'
+                      : ''
+                  }`}
+                  style={{
+                    width: `${Math.min(item.percent, 100)}%`,
+                    backgroundColor: (!isIncome && item.percent < 80) ? categoryColor(item.category) : undefined,
+                  }}
+                />
+              </div>
+              {!isIncome && item.over > 0 && (
+                <p className="text-xs text-red-500 mt-0.5">{formatCurrency(item.over)} over</p>
+              )}
+            </div>
+          ))}
+          {/* Section total bar */}
+          <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-100 dark:border-gray-700">
+            <div className="h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${
+                  isIncome
+                    ? 'bg-green-500'
+                    : percent >= 100 ? 'bg-red-500' : percent >= 80 ? 'bg-orange-400' : 'bg-blue-500'
+                }`}
+                style={{ width: `${Math.min(percent, 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1">
+              <p className="text-xs text-gray-400">{percent}% used</p>
+              <p className={`text-xs font-medium ${
+                isIncome
+                  ? totalActual >= totalBudget ? 'text-green-600' : 'text-gray-400'
+                  : totalActual > totalBudget ? 'text-red-500' : 'text-green-600'
+              }`}>
+                {isIncome
+                  ? totalActual >= totalBudget
+                    ? `${formatCurrency(totalActual - totalBudget)} extra`
+                    : `${formatCurrency(totalBudget - totalActual)} remaining`
+                  : totalActual > totalBudget
+                    ? `${formatCurrency(totalActual - totalBudget)} over`
+                    : `${formatCurrency(totalBudget - totalActual)} left`
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {/* Header with month selector */}
-      <div className="flex items-center justify-between">
-        <div>
+      {/* Month selector + Cash Flow summary */}
+      <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             {selectedMonth === currentMonth ? 'This Month' : monthLabel(selectedMonth)}
           </p>
+          <select
+            value={selectedMonth}
+            onChange={(e) => load(e.target.value)}
+            className="text-xs text-blue-500 bg-transparent border-none outline-none cursor-pointer"
+          >
+            {availableMonths.map((m) => (
+              <option key={m} value={m}>{monthLabel(m)}</option>
+            ))}
+          </select>
         </div>
-        <select
-          value={selectedMonth}
-          onChange={(e) => load(e.target.value)}
-          className="text-xs text-blue-500 bg-transparent border-none outline-none cursor-pointer"
-        >
-          {availableMonths.map((m) => (
-            <option key={m} value={m}>{monthLabel(m)}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Total summary */}
-      <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
-        <div className="flex justify-between items-baseline mb-2">
-          <p className="text-xs text-gray-400">Total Spent</p>
-          <p className="text-xs text-gray-400">Budget</p>
-        </div>
-        <div className="flex justify-between items-baseline mb-3">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalActual)}</p>
-          <p className="text-sm font-medium text-gray-500">{formatCurrency(totalBudget)}</p>
-        </div>
-        {/* Progress bar */}
-        <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${totalPercent >= 100 ? 'bg-red-500' : totalPercent >= 80 ? 'bg-orange-400' : 'bg-blue-500'}`}
-            style={{ width: `${Math.min(totalPercent, 100)}%` }}
-          />
-        </div>
-        <div className="flex justify-between mt-2">
-          <p className="text-xs text-gray-400">{totalPercent}% used</p>
-          <p className={`text-xs font-medium ${totalOver > 0 ? 'text-red-500' : 'text-green-600'}`}>
-            {totalOver > 0 ? `${formatCurrency(totalOver)} over` : `${formatCurrency(totalRemaining)} left`}
-          </p>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-0.5">Income</p>
+            <p className="text-sm font-bold text-green-600 dark:text-green-400">
+              {formatCurrency(totalIncomeActual)}
+            </p>
+            <p className="text-xs text-gray-300 dark:text-gray-500">/ {formatCurrency(totalIncomeBudget)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-0.5">Expenses</p>
+            <p className="text-sm font-bold text-red-500 dark:text-red-400">
+              {formatCurrency(totalExpenseActual)}
+            </p>
+            <p className="text-xs text-gray-300 dark:text-gray-500">/ {formatCurrency(totalExpenseBudget)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-0.5">Cash Flow</p>
+            <p className={`text-sm font-bold ${actualCashFlow >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+              {formatCurrency(Math.abs(actualCashFlow))}
+            </p>
+            <p className="text-xs text-gray-300 dark:text-gray-500">/ {formatCurrency(Math.abs(projectedCashFlow))}</p>
+          </div>
         </div>
       </div>
 
@@ -387,48 +491,29 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
         </div>
       ) : error ? (
         <div className="rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-100 p-4 text-sm text-red-600">
-          {error}
+          {error} — pull down to refresh
         </div>
       ) : (
-        <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-          {items
-            .sort((a, b) => b.percent - a.percent)
-            .map((item, idx) => (
-              <div
-                key={item.category}
-                className={`px-4 py-3 ${idx !== items.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: categoryColor(item.category) }}
-                    />
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{item.category}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                      {formatCurrency(item.actual)}
-                      <span className="text-xs text-gray-400 font-normal"> / {formatCurrency(item.budget)}</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      item.percent >= 100 ? 'bg-red-500' :
-                      item.percent >= 80 ? 'bg-orange-400' :
-                      'bg-blue-400'
-                    }`}
-                    style={{ width: `${Math.min(item.percent, 100)}%`, backgroundColor: item.percent < 80 ? categoryColor(item.category) : undefined }}
-                  />
-                </div>
-                {item.over > 0 && (
-                  <p className="text-xs text-red-500 mt-0.5">{formatCurrency(item.over)} over budget</p>
-                )}
-              </div>
-            ))}
-        </div>
+        <>
+          <Section
+            title="Income"
+            rows={incomeItems}
+            totalBudget={totalIncomeBudget}
+            totalActual={totalIncomeActual}
+          />
+          <Section
+            title="Essentials"
+            rows={expenseItems.filter((i) => i.section === 'essentials')}
+            totalBudget={expenseItems.filter((i) => i.section === 'essentials').reduce((s, i) => s + i.budget, 0)}
+            totalActual={expenseItems.filter((i) => i.section === 'essentials').reduce((s, i) => s + i.actual, 0)}
+          />
+          <Section
+            title="Discretionary"
+            rows={expenseItems.filter((i) => i.section === 'discretionary')}
+            totalBudget={expenseItems.filter((i) => i.section === 'discretionary').reduce((s, i) => s + i.budget, 0)}
+            totalActual={expenseItems.filter((i) => i.section === 'discretionary').reduce((s, i) => s + i.actual, 0)}
+          />
+        </>
       )}
     </div>
   );
