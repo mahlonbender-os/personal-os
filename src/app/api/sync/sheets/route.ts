@@ -59,7 +59,7 @@ export async function POST() {
         .filter((r) => r[0] && r[2] && r[4])
         .map((r) => {
   const account = r[3]?.trim() || '';
-  const rawCategory = r[5]?.trim() || 'Other Exp.';
+  const rawCategory = r[5]?.trim() || 'Transfer';
   const category = ['401K', 'HSA', 'Roth IRA'].includes(account) ? account : rawCategory;
   return {
     id: r[0].trim(),
