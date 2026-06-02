@@ -34,6 +34,8 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+const MAX_VISIBLE = 4;
+
 export default function BillsCard() {
   const [todayBills, setTodayBills] = useState<Bill[]>([]);
   const [upcomingBills, setUpcomingBills] = useState<Bill[]>([]);
@@ -70,6 +72,11 @@ export default function BillsCard() {
       .catch(() => setLoading(false));
   }, []);
 
+  // Combine today first, then upcoming, cap at MAX_VISIBLE
+  const allBills = [...todayBills, ...upcomingBills];
+  const visibleBills = allBills.slice(0, MAX_VISIBLE);
+  const hiddenCount = Math.max(0, allBills.length - MAX_VISIBLE);
+
   return (
     <div
       className="h-full rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm active:scale-[0.98] transition-transform cursor-pointer"
@@ -103,50 +110,49 @@ export default function BillsCard() {
             <p className="text-xs text-gray-400">{count} bill{count !== 1 ? 's' : ''}</p>
           </div>
 
-          {/* Scrollable list — not inside a Link so iOS scroll works */}
-          <div
-            className="overflow-y-auto max-h-40 space-y-1.5"
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-          >
-            {/* Today's bills — highlighted */}
-            {todayBills.map((bill) => (
-              <div
-                key={bill.id}
-                className="flex items-center justify-between gap-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg px-2 py-1.5"
-              >
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 truncate">
-                    {bill.name}
-                  </p>
-                  <p className="text-xs text-orange-500">Due today</p>
-                </div>
-                <p className="text-xs font-bold text-orange-700 dark:text-orange-400 flex-shrink-0">
-                  {formatAmount(bill.amount)}
-                </p>
-              </div>
-            ))}
-
-            {/* Upcoming bills — compact */}
-            {upcomingBills.map((bill) => (
-              <div
-                key={bill.id}
-                className="flex items-center justify-between gap-2 px-1"
-              >
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                    {bill.name}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {bill.due_date ? formatDate(bill.due_date) : ''}
+          {/* Bill list — max 4 visible, no scroll */}
+          <div className="space-y-1.5">
+            {visibleBills.map((bill) => {
+              const today = bill.due_date && isToday(bill.due_date);
+              return (
+                <div
+                  key={bill.id}
+                  className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 ${
+                    today
+                      ? 'bg-orange-50 dark:bg-orange-900/20'
+                      : ''
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className={`text-xs font-medium truncate ${
+                      today
+                        ? 'text-orange-700 dark:text-orange-400'
+                        : 'text-gray-700 dark:text-gray-300'
+                    }`}>
+                      {bill.name}
+                    </p>
+                    <p className={`text-xs ${today ? 'text-orange-500' : 'text-gray-400'}`}>
+                      {today ? 'Due today' : bill.due_date ? formatDate(bill.due_date) : ''}
+                    </p>
+                  </div>
+                  <p className={`text-xs font-semibold flex-shrink-0 ${
+                    today
+                      ? 'text-orange-700 dark:text-orange-400'
+                      : 'text-gray-600 dark:text-gray-300'
+                  }`}>
+                    {formatAmount(bill.amount)}
                   </p>
                 </div>
-                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex-shrink-0">
-                  {formatAmount(bill.amount)}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
+
+          {/* View all link */}
+          {hiddenCount > 0 && (
+            <p className="text-xs text-blue-500 mt-2 text-right">
+              +{hiddenCount} more →
+            </p>
+          )}
         </>
       )}
     </div>

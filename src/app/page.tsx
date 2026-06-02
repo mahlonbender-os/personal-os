@@ -31,9 +31,5 @@ export default async function CommandCenter() {
     console.error('User upsert failed silently:', err);
   }
 
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-
-  return <CommandCenterCards greeting={greeting} />;
+  return <CommandCenterCards />;
 }

@@ -12,7 +12,9 @@ import KnoxCard from '@/components/command-center/KnoxCard';
 import NestRingCard from '@/components/command-center/NestRingCard';
 import SpotifyCard from '@/components/command-center/SpotifyCard';
 
-export default function CommandCenterCards({ greeting }: { greeting: string }) {
+export default function CommandCenterCards() {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const handleRefresh = async () => {
     await new Promise(resolve => setTimeout(resolve, 800));
     window.location.reload();
