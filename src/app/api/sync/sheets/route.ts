@@ -70,9 +70,14 @@ export async function POST() {
         .filter((t) => t.date !== null);
 
       if (transactions.length > 0) {
+        await supabase
+          .from('transactions')
+          .delete()
+          .eq('user_id', USER_ID)
+          .eq('source', 'google_sheets');
         const { error } = await supabase
           .from('transactions')
-          .upsert(transactions, { onConflict: 'id' });
+          .insert(transactions);
         if (error) throw new Error(error.message);
         txSynced = transactions.length;
       }
