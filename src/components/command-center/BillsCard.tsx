@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Bill {
   id: string;
@@ -40,6 +40,7 @@ export default function BillsCard() {
   const [total, setTotal] = useState(0);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     fetch('/api/finance/bills')
@@ -70,79 +71,84 @@ export default function BillsCard() {
   }, []);
 
   return (
-    <Link href="/finance" className="block h-full">
-      <div className="h-full rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm active:scale-[0.98] transition-transform">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            Bills Due Soon
-          </span>
-          <span className="text-xs text-gray-400">7 days</span>
-        </div>
-
-        {loading && (
-          <div className="h-20 flex items-center">
-            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
-
-        {!loading && count === 0 && (
-          <p className="text-xs text-gray-400">No bills due in the next 7 days</p>
-        )}
-
-        {!loading && count > 0 && (
-          <>
-            {/* Summary */}
-            <div className="mb-3">
-              <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
-                {formatAmount(total)}
-              </p>
-              <p className="text-xs text-gray-400">{count} bill{count !== 1 ? 's' : ''}</p>
-            </div>
-
-            {/* Scrollable bill list */}
-            <div className="overflow-y-auto max-h-36 space-y-1.5 -mx-1 px-1">
-              {/* Today's bills — expanded */}
-              {todayBills.map((bill) => (
-                <div
-                  key={bill.id}
-                  className="flex items-center justify-between gap-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg px-2 py-1.5"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 truncate">
-                      {bill.name}
-                    </p>
-                    <p className="text-xs text-orange-500">Due today</p>
-                  </div>
-                  <p className="text-xs font-bold text-orange-700 dark:text-orange-400 flex-shrink-0">
-                    {formatAmount(bill.amount)}
-                  </p>
-                </div>
-              ))}
-
-              {/* Upcoming bills — compact */}
-              {upcomingBills.map((bill) => (
-                <div
-                  key={bill.id}
-                  className="flex items-center justify-between gap-2 px-1"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                      {bill.name}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {bill.due_date ? formatDate(bill.due_date) : ''}
-                    </p>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex-shrink-0">
-                    {formatAmount(bill.amount)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+    <div
+      className="h-full rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm active:scale-[0.98] transition-transform cursor-pointer"
+      onClick={() => router.push('/finance')}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          Bills Due Soon
+        </span>
+        <span className="text-xs text-gray-400">7 days</span>
       </div>
-    </Link>
+
+      {loading && (
+        <div className="h-20 flex items-center">
+          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {!loading && count === 0 && (
+        <p className="text-xs text-gray-400">No bills due in the next 7 days</p>
+      )}
+
+      {!loading && count > 0 && (
+        <>
+          {/* Summary */}
+          <div className="mb-3">
+            <p className="text-base font-bold text-gray-800 dark:text-gray-100">
+              {formatAmount(total)}
+            </p>
+            <p className="text-xs text-gray-400">{count} bill{count !== 1 ? 's' : ''}</p>
+          </div>
+
+          {/* Scrollable list — not inside a Link so iOS scroll works */}
+          <div
+            className="overflow-y-auto max-h-40 space-y-1.5"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            {/* Today's bills — highlighted */}
+            {todayBills.map((bill) => (
+              <div
+                key={bill.id}
+                className="flex items-center justify-between gap-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg px-2 py-1.5"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 truncate">
+                    {bill.name}
+                  </p>
+                  <p className="text-xs text-orange-500">Due today</p>
+                </div>
+                <p className="text-xs font-bold text-orange-700 dark:text-orange-400 flex-shrink-0">
+                  {formatAmount(bill.amount)}
+                </p>
+              </div>
+            ))}
+
+            {/* Upcoming bills — compact */}
+            {upcomingBills.map((bill) => (
+              <div
+                key={bill.id}
+                className="flex items-center justify-between gap-2 px-1"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+                    {bill.name}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {bill.due_date ? formatDate(bill.due_date) : ''}
+                  </p>
+                </div>
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex-shrink-0">
+                  {formatAmount(bill.amount)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

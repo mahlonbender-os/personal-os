@@ -179,19 +179,19 @@ function OverviewTab({ onRefresh }: { onRefresh: number }) {
             <div className="text-center">
               <p className="text-xs text-gray-400 mb-0.5">Income</p>
               <p className="text-base font-bold text-green-600 dark:text-green-400">
-                {formatCurrency(cashFlow.income, true)}
+                {formatCurrency(cashFlow.income)}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-xs text-gray-400 mb-0.5">Spent</p>
+              <p className="text-xs text-gray-400 mb-0.5">Expenses</p>
               <p className="text-base font-bold text-red-500 dark:text-red-400">
-                {formatCurrency(cashFlow.expenses, true)}
+                {formatCurrency(cashFlow.expenses)}
               </p>
             </div>
             <div className="text-center">
               <p className="text-xs text-gray-400 mb-0.5">Net</p>
               <p className={`text-base font-bold ${cashFlow.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                {formatCurrency(Math.abs(cashFlow.net), true)}
+                {formatCurrency(Math.abs(cashFlow.net))}
               </p>
             </div>
           </div>
