@@ -14,8 +14,8 @@ interface Props {
   children: ReactNode[];
 }
 
-const SWIPE_THRESHOLD = 0.35; // 35% of screen width
-const SWIPE_VELOCITY_THRESHOLD = 0.3; // px/ms — fast flick counts even if short
+const SWIPE_THRESHOLD = 0.20; // 20% of screen width
+const SWIPE_VELOCITY_THRESHOLD = 0.15; // px/ms — easier flick
 
 export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Props) {
   const activeIndex = tabs.findIndex((t) => t.id === activeTab);
@@ -43,9 +43,9 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
 
     // Determine scroll direction on first move
     if (isHorizontal.current === null) {
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) {
         isHorizontal.current = true;
-      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 5) {
         isHorizontal.current = false;
         return;
       } else {
@@ -77,7 +77,7 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
     const isFlick = velocity > SWIPE_VELOCITY_THRESHOLD;
     const isPastThreshold = Math.abs(dx) > screenWidth * SWIPE_THRESHOLD;
 
-    if ((isPastThreshold || isFlick) && Math.abs(dx) > 20) {
+    if ((isPastThreshold || isFlick) && Math.abs(dx) > 10) {
       if (dx < 0 && activeIndex < tabs.length - 1) {
         onTabChange(tabs[activeIndex + 1].id);
       } else if (dx > 0 && activeIndex > 0) {
