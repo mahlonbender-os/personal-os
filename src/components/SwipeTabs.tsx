@@ -41,7 +41,6 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
     const dx = e.touches[0].clientX - touchStartX.current;
     const dy = e.touches[0].clientY - touchStartY.current;
 
-    // Determine scroll direction on first move
     if (isHorizontal.current === null) {
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 3) {
         isHorizontal.current = true;
@@ -55,7 +54,9 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
 
     if (!isHorizontal.current) return;
 
-    // Prevent swiping past first/last tab
+    // Prevent default to stop vertical scroll interference
+    e.preventDefault();
+
     if (dx > 0 && activeIndex === 0) return;
     if (dx < 0 && activeIndex === tabs.length - 1) return;
 
@@ -79,8 +80,11 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
 
     if ((isPastThreshold || isFlick) && Math.abs(dx) > 5) {
       if (dx < 0 && activeIndex < tabs.length - 1) {
+        // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate(8);
         onTabChange(tabs[activeIndex + 1].id);
       } else if (dx > 0 && activeIndex > 0) {
+        if (navigator.vibrate) navigator.vibrate(8);
         onTabChange(tabs[activeIndex - 1].id);
       }
     }
@@ -100,6 +104,7 @@ export default function SwipeTabs({ tabs, activeTab, onTabChange, children }: Pr
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        style={{ touchAction: 'pan-y' }}
       >
         <div
           className="flex"

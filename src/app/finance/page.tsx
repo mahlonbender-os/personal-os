@@ -36,7 +36,16 @@ interface NetWorthAccount {
   type: 'asset' | 'liability';
 }
 
-type Tab = 'overview' | 'transactions' | 'bills' | 'networth';
+interface BudgetItem {
+  category: string;
+  budget: number;
+  actual: number;
+  remaining: number;
+  over: number;
+  percent: number;
+}
+
+type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth';
 
 // ─── Category Config ──────────────────────────────────────────────────────────
 
@@ -72,16 +81,8 @@ function categoryColor(cat: string): string {
   return CATEGORY_COLORS[cat] || '#94a3b8';
 }
 
-function formatCurrency(n: number, compact = false): string {
-  if (compact && Math.abs(n) >= 1000) {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      notation: 'compact',
-      maximumFractionDigits: 1,
-    }).format(n);
-  }
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+function formatCurrency(n: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n));
 }
 
 function formatDate(dateStr: string): string {
@@ -90,16 +91,17 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function formatBillDate(bill: Bill): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-based
-  if (bill.due_day) {
-    const d = new Date(year, month, bill.due_day);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-  if (bill.due_date) return formatDate(bill.due_date);
-  return '';
+function formatDate2(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function monthLabel(key: string): string {
+  if (!key) return '';
+  const [y, m] = key.split('-');
+  const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+  return d.toLocaleString('default', { month: 'long', year: 'numeric' });
 }
 
 // ─── Sync function ────────────────────────────────────────────────────────────
@@ -114,50 +116,71 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
   const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number } | null>(null);
   const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number } | null>(null);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    // Show cached data instantly
     try {
       const cached = localStorage.getItem('finance_overview');
       if (cached) {
-        const { cf, nw, tx } = JSON.parse(cached);
+        const { cf, nw, tx, bl } = JSON.parse(cached);
         if (cf) setCashFlow(cf);
         if (nw) setNetWorth(nw);
         if (tx) setRecentTx(tx);
+        if (bl) setBills(bl);
         setLoading(false);
       }
     } catch {}
 
     try {
-      const [cfRes, nwRes, txRes] = await Promise.all([
+      const [cfRes, nwRes, txRes, blRes] = await Promise.all([
         fetch('/api/finance/cash-flow'),
         fetch('/api/finance/net-worth'),
         fetch('/api/finance/transactions?limit=5'),
+        fetch('/api/finance/bills'),
       ]);
-      const [cfData, nwData, txData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json()]);
+      const [cfData, nwData, txData, blData] = await Promise.all([
+        cfRes.json(), nwRes.json(), txRes.json(), blRes.json(),
+      ]);
 
       const now = new Date();
       const monthName = now.toLocaleString('default', { month: 'long' });
       const currentMonthData = cfData.months?.find((m: { month: string }) =>
         m.month.toLowerCase().includes(monthName.toLowerCase())
       );
-      if (currentMonthData) {
-        setCashFlow({
-          income: currentMonthData.income,
-          expenses: currentMonthData.essentials + currentMonthData.discretionary,
-          net: currentMonthData.net,
-        });
-      }
-
+      const cf = currentMonthData ? {
+        income: currentMonthData.income,
+        expenses: currentMonthData.essentials + currentMonthData.discretionary,
+        net: currentMonthData.net,
+      } : null;
+      if (cf) setCashFlow(cf);
       setNetWorth(nwData);
       setRecentTx(txData.transactions || []);
+      setBills(blData.bills || []);
+
+      try {
+        localStorage.setItem('finance_overview', JSON.stringify({
+          cf, nw: nwData, tx: txData.transactions || [], bl: blData.bills || [],
+        }));
+      } catch {}
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load, onRefresh]);
+
+  // Bills due within 7 days
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const in7Days = new Date(today);
+  in7Days.setDate(today.getDate() + 7);
+  const upcomingBills = bills.filter((b) => {
+    if (!b.due_date) return false;
+    const d = new Date(b.due_date + 'T00:00:00');
+    return d <= in7Days;
+  });
+  const upcomingTotal = upcomingBills.reduce((s, b) => s + Math.abs(b.amount), 0);
 
   if (loading) return (
     <div className="flex items-center justify-center h-40">
@@ -168,49 +191,76 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
   return (
     <div className="space-y-4">
       {/* Net Worth Card */}
-      <button className="w-full text-left active:scale-[0.98] transition-transform" onClick={() => onNavigate('networth')}>
-      <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-900 p-5 text-white shadow-lg">
-        <p className="text-blue-200 text-sm font-medium mb-1">Net Worth</p>
-        <p className="text-3xl font-bold tracking-tight">
-          {netWorth ? formatCurrency(netWorth.netWorth) : '—'}
-        </p>
-        {netWorth && (
-          <div className="flex gap-4 mt-3 text-sm text-blue-100">
-            <span>Assets {formatCurrency(netWorth.totalAssets, true)}</span>
-            <span>·</span>
-            <span>Liabilities {formatCurrency(netWorth.totalLiabilities, true)}</span>
-          </div>
-        )}
-      </div>
+      <button
+        className="w-full text-left active:scale-[0.98] transition-transform"
+        onClick={() => onNavigate('networth')}
+      >
+        <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-900 p-5 text-white shadow-lg">
+          <p className="text-blue-200 text-sm font-medium mb-1">Net Worth</p>
+          <p className="text-3xl font-bold tracking-tight">
+            {netWorth ? formatCurrency(netWorth.netWorth) : '—'}
+          </p>
+          {netWorth && (
+            <div className="flex gap-4 mt-3 text-sm text-blue-100">
+              <span>Assets {formatCurrency(netWorth.totalAssets)}</span>
+              <span>·</span>
+              <span>Liabilities {formatCurrency(netWorth.totalLiabilities)}</span>
+            </div>
+          )}
+        </div>
       </button>
 
       {/* Cash Flow Card */}
       {cashFlow && (
-        <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-            This Month
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="text-center">
-              <p className="text-xs text-gray-400 mb-0.5">Income</p>
-              <p className="text-base font-bold text-green-600 dark:text-green-400">
-                {formatCurrency(cashFlow.income)}
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-gray-400 mb-0.5">Expenses</p>
-              <p className="text-base font-bold text-red-500 dark:text-red-400">
-                {formatCurrency(cashFlow.expenses)}
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-gray-400 mb-0.5">Net</p>
-              <p className={`text-base font-bold ${cashFlow.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                {formatCurrency(Math.abs(cashFlow.net))}
-              </p>
+        <button
+          className="w-full text-left active:scale-[0.98] transition-transform"
+          onClick={() => onNavigate('budget')}
+        >
+          <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+              This Month
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="text-center">
+                <p className="text-xs text-gray-400 mb-0.5">Income</p>
+                <p className="text-base font-bold text-green-600 dark:text-green-400">
+                  {formatCurrency(cashFlow.income)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400 mb-0.5">Expenses</p>
+                <p className="text-base font-bold text-red-500 dark:text-red-400">
+                  {formatCurrency(cashFlow.expenses)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400 mb-0.5">Net</p>
+                <p className={`text-base font-bold ${cashFlow.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                  {formatCurrency(Math.abs(cashFlow.net))}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        </button>
+      )}
+
+      {/* Upcoming Bills */}
+      {upcomingBills.length > 0 && (
+        <button
+          className="w-full text-left active:scale-[0.98] transition-transform"
+          onClick={() => onNavigate('bills')}
+        >
+          <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Bills Due Soon
+              </p>
+              <p className="text-xs text-blue-500">See all →</p>
+            </div>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(upcomingTotal)}</p>
+            <p className="text-xs text-gray-400">{upcomingBills.length} bill{upcomingBills.length !== 1 ? 's' : ''} in next 7 days</p>
+          </div>
+        </button>
       )}
 
       {/* Recent Transactions */}
@@ -225,31 +275,161 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
           <p className="text-xs text-blue-500">See all →</p>
         </button>
         {recentTx.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-gray-400">
-            Pull down to sync latest data
-          </p>
+          <p className="px-4 py-6 text-center text-sm text-gray-400">Pull down to sync latest data</p>
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-gray-700/50">
             {recentTx.map((tx) => (
               <div key={tx.id} className="flex items-center px-4 py-3 gap-3">
-                <div
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: categoryColor(tx.category) }}
-                />
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor(tx.category) }} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{tx.merchant}</p>
                   <p className="text-xs text-gray-400">{tx.category} · {formatDate(tx.date)}</p>
                 </div>
-                <p className={`text-sm font-semibold flex-shrink-0 ${
-                  INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'
-                }`}>
-                  {formatCurrency(Math.abs(tx.amount))}
+                <p className={`text-sm font-semibold flex-shrink-0 ${INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                  {formatCurrency(tx.amount)}
                 </p>
               </div>
             ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Budget Tab ────────────────────────────────────────────────────────────────
+
+function BudgetTab({ onRefresh }: { onRefresh: number }) {
+  const [items, setItems] = useState<BudgetItem[]>([]);
+  const [totalBudget, setTotalBudget] = useState(0);
+  const [totalActual, setTotalActual] = useState(0);
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [currentMonth, setCurrentMonth] = useState('');
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (month?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const url = month ? `/api/finance/budget?month=${month}` : '/api/finance/budget';
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setItems(data.items || []);
+      setTotalBudget(data.totalBudget || 0);
+      setTotalActual(data.totalActual || 0);
+      setSelectedMonth(data.month);
+      setCurrentMonth(data.currentMonth);
+      setAvailableMonths(data.availableMonths || []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load, onRefresh]);
+
+  const totalRemaining = Math.max(0, totalBudget - totalActual);
+  const totalOver = Math.max(0, totalActual - totalBudget);
+  const totalPercent = totalBudget > 0 ? Math.min(Math.round((totalActual / totalBudget) * 100), 100) : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Header with month selector */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            {selectedMonth === currentMonth ? 'This Month' : monthLabel(selectedMonth)}
+          </p>
+        </div>
+        <select
+          value={selectedMonth}
+          onChange={(e) => load(e.target.value)}
+          className="text-xs text-blue-500 bg-transparent border-none outline-none cursor-pointer"
+        >
+          {availableMonths.map((m) => (
+            <option key={m} value={m}>{monthLabel(m)}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Total summary */}
+      <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
+        <div className="flex justify-between items-baseline mb-2">
+          <p className="text-xs text-gray-400">Total Spent</p>
+          <p className="text-xs text-gray-400">Budget</p>
+        </div>
+        <div className="flex justify-between items-baseline mb-3">
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalActual)}</p>
+          <p className="text-sm font-medium text-gray-500">{formatCurrency(totalBudget)}</p>
+        </div>
+        {/* Progress bar */}
+        <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${totalPercent >= 100 ? 'bg-red-500' : totalPercent >= 80 ? 'bg-orange-400' : 'bg-blue-500'}`}
+            style={{ width: `${Math.min(totalPercent, 100)}%` }}
+          />
+        </div>
+        <div className="flex justify-between mt-2">
+          <p className="text-xs text-gray-400">{totalPercent}% used</p>
+          <p className={`text-xs font-medium ${totalOver > 0 ? 'text-red-500' : 'text-green-600'}`}>
+            {totalOver > 0 ? `${formatCurrency(totalOver)} over` : `${formatCurrency(totalRemaining)} left`}
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-32">
+          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-100 p-4 text-sm text-red-600">
+          {error}
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+          {items
+            .sort((a, b) => b.percent - a.percent)
+            .map((item, idx) => (
+              <div
+                key={item.category}
+                className={`px-4 py-3 ${idx !== items.length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: categoryColor(item.category) }}
+                    />
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{item.category}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                      {formatCurrency(item.actual)}
+                      <span className="text-xs text-gray-400 font-normal"> / {formatCurrency(item.budget)}</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      item.percent >= 100 ? 'bg-red-500' :
+                      item.percent >= 80 ? 'bg-orange-400' :
+                      'bg-blue-400'
+                    }`}
+                    style={{ width: `${Math.min(item.percent, 100)}%`, backgroundColor: item.percent < 80 ? categoryColor(item.category) : undefined }}
+                  />
+                </div>
+                {item.over > 0 && (
+                  <p className="text-xs text-red-500 mt-0.5">{formatCurrency(item.over)} over budget</p>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -282,7 +462,12 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  // Reset search when tab refreshes
+  useEffect(() => {
+    setSearchQuery('');
+    setSelectedCategory('All');
+    load();
+  }, [load, onRefresh]);
 
   const categories = ['All', ...Array.from(new Set(transactions.map((t) => t.category))).sort()];
 
@@ -300,13 +485,6 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
   }, {});
 
   const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-
-  function monthLabel(key: string): string {
-    if (key === 'Unknown') return 'Unknown';
-    const [y, m] = key.split('-');
-    const d = new Date(parseInt(y), parseInt(m) - 1, 1);
-    return d.toLocaleString('default', { month: 'long', year: 'numeric' });
-  }
 
   const totalFiltered = filtered.reduce((sum, tx) =>
     INCOME_CATEGORIES.includes(tx.category) ? sum + tx.amount : sum - tx.amount, 0);
@@ -344,7 +522,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
         <div className="flex justify-between items-center px-1">
           <span className="text-xs text-gray-400">{filtered.length} transactions</span>
           <span className={`text-sm font-semibold ${totalFiltered >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-            {totalFiltered >= 0 ? '+' : ''}{formatCurrency(totalFiltered)}
+            {formatCurrency(Math.abs(totalFiltered))}
           </span>
         </div>
       )}
@@ -371,34 +549,24 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
                 {grouped[monthKey].map((tx, idx) => (
                   <div
                     key={tx.id}
-                    className={`flex items-center px-4 py-3 gap-3 ${
-                      idx !== grouped[monthKey].length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''
-                    }`}
+                    className={`flex items-center px-4 py-3 gap-3 ${idx !== grouped[monthKey].length - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
                   >
-                    <div
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: categoryColor(tx.category) }}
-                    />
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor(tx.category) }} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{tx.merchant}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span
                           className="text-xs px-1.5 py-0.5 rounded-full"
-                          style={{
-                            backgroundColor: categoryColor(tx.category) + '20',
-                            color: categoryColor(tx.category),
-                          }}
+                          style={{ backgroundColor: categoryColor(tx.category) + '20', color: categoryColor(tx.category) }}
                         >
                           {tx.category}
                         </span>
-                        <span className="text-xs text-gray-400">{formatDate(tx.date)}</span>
+                        <span className="text-xs text-gray-400">{formatDate2(tx.date)}</span>
                         {tx.account && <span className="text-xs text-gray-300 dark:text-gray-500 truncate">{tx.account}</span>}
                       </div>
                     </div>
-                    <p className={`text-sm font-semibold flex-shrink-0 ${
-                      INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'
-                    }`}>
-                      {formatCurrency(Math.abs(tx.amount))}
+                    <p className={`text-sm font-semibold flex-shrink-0 ${INCOME_CATEGORIES.includes(tx.category) ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                      {formatCurrency(tx.amount)}
                     </p>
                   </div>
                 ))}
@@ -459,13 +627,12 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
   });
 
   function BillRow({ bill, idx, total }: { bill: Bill; idx: number; total: number }) {
-    const dateLabel = bill.due_date ? formatDate(bill.due_date) : '';
     return (
-      <div
-        className={`flex items-center px-4 py-3 gap-3 ${idx !== total - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}
-      >
+      <div className={`flex items-center px-4 py-3 gap-3 ${idx !== total - 1 ? 'border-b border-gray-50 dark:border-gray-700/50' : ''}`}>
         <div className="w-12 flex-shrink-0 text-center">
-          <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{dateLabel}</span>
+          <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+            {bill.due_date ? formatDate(bill.due_date) : ''}
+          </span>
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{bill.name}</p>
@@ -480,11 +647,8 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
 
   return (
     <div className="space-y-4">
-      {/* Monthly Total */}
       <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-          Upcoming Bills Total
-        </p>
+        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Upcoming Bills Total</p>
         <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalMonthly)}</p>
         <p className="text-xs text-gray-400 mt-0.5">{bills.length} unpaid bills</p>
       </div>
@@ -494,35 +658,22 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : bills.length === 0 ? (
-        <div className="text-center py-10 text-gray-400 text-sm">
-          No upcoming bills — pull down to sync
-        </div>
+        <div className="text-center py-10 text-gray-400 text-sm">No upcoming bills — pull down to sync</div>
       ) : (
         <>
-          {/* Due within 7 days */}
           {dueSoon.length > 0 && (
             <div>
-              <p className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-2 px-1">
-                Due Within 7 Days
-              </p>
+              <p className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-2 px-1">Due Within 7 Days</p>
               <div className="rounded-2xl bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-900/50 overflow-hidden shadow-sm">
-                {dueSoon.map((bill, idx) => (
-                  <BillRow key={bill.id} bill={bill} idx={idx} total={dueSoon.length} />
-                ))}
+                {dueSoon.map((bill, idx) => <BillRow key={bill.id} bill={bill} idx={idx} total={dueSoon.length} />)}
               </div>
             </div>
           )}
-
-          {/* Coming up */}
           {dueLater.length > 0 && (
             <div>
-              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
-                Coming Up
-              </p>
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">Coming Up</p>
               <div className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
-                {dueLater.map((bill, idx) => (
-                  <BillRow key={bill.id} bill={bill} idx={idx} total={dueLater.length} />
-                ))}
+                {dueLater.map((bill, idx) => <BillRow key={bill.id} bill={bill} idx={idx} total={dueLater.length} />)}
               </div>
             </div>
           )}
@@ -569,8 +720,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
   if (error) return (
     <div className="rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 p-4 text-sm text-red-600 dark:text-red-400">
-      {error}
-      <br /><span className="text-xs text-gray-400">Pull down to refresh — token may have expired</span>
+      Unable to load — pull down to refresh
     </div>
   );
 
@@ -587,11 +737,11 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="bg-white/10 rounded-xl p-3">
             <p className="text-blue-200 text-xs">Total Assets</p>
-            <p className="text-white font-bold">{formatCurrency(data.totalAssets, true)}</p>
+            <p className="text-white font-bold">{formatCurrency(data.totalAssets)}</p>
           </div>
           <div className="bg-white/10 rounded-xl p-3">
             <p className="text-blue-200 text-xs">Total Liabilities</p>
-            <p className="text-white font-bold">{formatCurrency(data.totalLiabilities, true)}</p>
+            <p className="text-white font-bold">{formatCurrency(data.totalLiabilities)}</p>
           </div>
         </div>
       </div>
@@ -664,6 +814,7 @@ function FinancePageInner() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
+    { id: 'budget', label: 'Budget' },
     { id: 'transactions', label: 'Transactions' },
     { id: 'bills', label: 'Bills' },
     { id: 'networth', label: 'Net Worth' },
@@ -671,7 +822,6 @@ function FinancePageInner() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Header */}
       <div className="sticky top-0 z-30 bg-gray-50/90 dark:bg-gray-950/90 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-800/50">
         <div className="px-4 pt-4 pb-0">
           <div className="flex items-center justify-between mb-3">
@@ -701,7 +851,6 @@ function FinancePageInner() {
         </div>
       </div>
 
-      {/* Content */}
       <PullToRefresh onRefresh={handleRefresh}>
         <SwipeTabs
           tabs={tabs}
@@ -711,6 +860,7 @@ function FinancePageInner() {
           {tabs.map((tab) => (
             <div key={tab.id} className="px-4 py-4 pb-28">
               {tab.id === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigate={(id) => setActiveTab(id as Tab)} />}
+              {tab.id === 'budget' && <BudgetTab onRefresh={refreshCount} />}
               {tab.id === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
               {tab.id === 'bills' && <BillsTab onRefresh={refreshCount} />}
               {tab.id === 'networth' && <NetWorthTab onRefresh={refreshCount} />}

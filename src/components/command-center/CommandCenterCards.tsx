@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 import WeatherHeader from '@/components/command-center/WeatherHeader';
 import HealthCard from '@/components/command-center/HealthCard';
@@ -15,10 +15,12 @@ import SpotifyCard from '@/components/command-center/SpotifyCard';
 export default function CommandCenterCards() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const handleRefresh = async () => {
-    await new Promise(resolve => setTimeout(resolve, 800));
+
+  const handleRefresh = useCallback(async () => {
+    // Sync sheets then reload all cards
+    await fetch('/api/sync/sheets', { method: 'POST' });
     window.location.reload();
-  };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
