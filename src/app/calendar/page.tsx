@@ -491,6 +491,136 @@ export default function CalendarPage() {
       </div>
       </PullToRefresh>
       <BottomNav active="more" />
+
+      {selectedEvent ? (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4" onClick={() => setSelectedEvent(null)}>
+          <div className="w-full bg-[#1c1c1e] rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-1 rounded-full mx-auto mb-6" style={{ backgroundColor: selectedEvent.calendarColor || '#818cf8' }} />
+            <h2 className="text-xl font-semibold text-white mb-1">{selectedEvent.title}</h2>
+            <p className="text-sm text-[#666] mb-4">{selectedEvent.calendarName}</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <span className="text-base">🗓️</span>
+                <div>
+                  <p className="text-sm text-white">
+                    {new Date(selectedEvent.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                  {selectedEvent.allDay ? (
+                    <p className="text-xs text-[#666]">All day</p>
+                  ) : (
+                    <p className="text-xs text-[#666]">{formatTime(selectedEvent.start, false)} – {formatTime(selectedEvent.end, false)}</p>
+                  )}
+                </div>
+              </div>
+              {selectedEvent.location && (
+                <div className="flex items-start gap-3">
+                  <span className="text-base">📍</span>
+                  <p className="text-sm text-white">{selectedEvent.location}</p>
+                </div>
+              )}
+              {selectedEvent.description && (
+                <div className="flex items-start gap-3">
+                  <span className="text-base">📝</span>
+                  <p className="text-sm text-white whitespace-pre-wrap">{selectedEvent.description}</p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6">
+              {selectedEvent.htmlLink && (
+                <a href={selectedEvent.htmlLink} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 text-center py-3 rounded-xl border border-[#2a2a2a] text-sm font-medium text-white">
+                  Open in Google
+                </a>
+              )}
+              <button onClick={() => handleDeleteEvent(selectedEvent)} disabled={deleting}
+                className="flex-1 py-3 rounded-xl bg-red-500/10 text-red-500 text-sm font-medium disabled:opacity-50">
+                {deleting ? 'Deleting…' : 'Delete Event'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={() => setShowAddModal(false)}>
+          <div className="bg-[#1c1c1e] w-full rounded-t-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
+              <button onClick={() => setShowAddModal(false)} className="text-[#f0a050] text-sm">Cancel</button>
+              <h2 className="text-base font-semibold text-white">New Event</h2>
+              <button onClick={handleAddEvent} disabled={saving || !newEvent.title || !newEvent.date}
+                className="text-[#f0a050] text-sm font-semibold disabled:opacity-30">
+                {saving ? 'Saving…' : 'Add'}
+              </button>
+            </div>
+            <div className="px-4 py-4 space-y-3 pb-12">
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <input type="text" value={newEvent.title}
+                  onChange={(e) => setNewEvent(p => ({ ...p, title: e.target.value }))}
+                  placeholder="Title"
+                  className="w-full px-4 py-3.5 bg-transparent text-white text-base placeholder-[#555] outline-none"
+                />
+              </div>
+              <div className="rounded-xl bg-[#2c2c2e]">
+                <LocationAutocomplete
+                  value={newEvent.location}
+                  onChange={(val) => setNewEvent(p => ({ ...p, location: val }))}
+                  placeholder="Location"
+                />
+              </div>
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
+                  <span className="text-sm text-white">All-day</span>
+                  <button onClick={() => setNewEvent(p => ({ ...p, allDay: !p.allDay }))}
+                    className={`w-12 h-7 rounded-full transition-colors relative ${newEvent.allDay ? 'bg-[#f0a050]' : 'bg-[#3a3a3c]'}`}>
+                    <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${newEvent.allDay ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
+                  <span className="text-sm text-white">Date</span>
+                  <input type="date" value={newEvent.date}
+                    onChange={(e) => setNewEvent(p => ({ ...p, date: e.target.value }))}
+                    className="text-sm text-[#f0a050] bg-transparent outline-none text-right"
+                  />
+                </div>
+                {!newEvent.allDay && (
+                  <>
+                    <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
+                      <span className="text-sm text-white">Start</span>
+                      <TimeSelect value={newEvent.startTime} onChange={(v) => setNewEvent(p => ({ ...p, startTime: v }))} />
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-3.5">
+                      <span className="text-sm text-white">End</span>
+                      <TimeSelect value={newEvent.endTime} onChange={(v) => setNewEvent(p => ({ ...p, endTime: v }))} />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <textarea value={newEvent.description}
+                  onChange={(e) => setNewEvent(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Notes" rows={3}
+                  className="w-full px-4 py-3.5 bg-transparent text-white text-sm placeholder-[#555] outline-none resize-none"
+                />
+              </div>
+              {calendars.length > 0 && (
+                <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3.5">
+                    <span className="text-sm text-white">Calendar</span>
+                    <select value={newEvent.calendarId}
+                      onChange={(e) => setNewEvent(p => ({ ...p, calendarId: e.target.value }))}
+                      className="text-sm text-[#f0a050] bg-transparent outline-none text-right max-w-[55%]">
+                      <option value="primary" className="bg-[#2c2c2e]">Primary</option>
+                      {calendars.map((cal: any) => (
+                        <option key={cal.id} value={cal.id} className="bg-[#2c2c2e]">{cal.summary}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

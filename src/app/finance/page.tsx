@@ -1004,7 +1004,8 @@ function FinancePageInner() {
       {activeTab === 'transactions' && (
         <button
           onClick={() => setShowAddTx(true)}
-          className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-blue-500 text-white text-3xl shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+          className="fixed z-40 w-14 h-14 rounded-full bg-[#f0a050] text-black text-3xl shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 72px)', right: '20px' }}
         >
           +
         </button>
