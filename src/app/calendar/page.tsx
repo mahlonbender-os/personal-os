@@ -542,8 +542,8 @@ export default function CalendarPage() {
       ) : null}
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={() => setShowAddModal(false)}>
-          <div className="bg-[#1c1c1e] w-full rounded-t-2xl max-h-[92vh] overflow-y-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddModal(false)}>
+          <div className="bg-[#1c1c1e] w-full rounded-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
               <button onClick={() => setShowAddModal(false)} className="text-[#f0a050] text-sm">Cancel</button>
               <h2 className="text-base font-semibold text-white">New Event</h2>

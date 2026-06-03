@@ -1014,10 +1014,9 @@ function FinancePageInner() {
       {/* Add Transaction Modal */}
       {/* Add Transaction Modal */}
       {showAddTx && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={() => setShowAddTx(false)}>
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddTx(false)}>
           <div
-            className="bg-[#1c1c1e] w-full max-w-lg rounded-t-2xl"
-            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}
+            className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
