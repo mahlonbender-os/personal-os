@@ -52,3 +52,20 @@ html, body {
     --popover-foreground: 210 40% 98%;
   }
 }
+/* ── Personal OS Design Tokens ── */
+:root {
+  --amber: #f0a050;
+  --amber-dim: rgba(240, 160, 80, 0.12);
+  --amber-border: rgba(240, 160, 80, 0.2);
+  --green: #22c55e;
+  --red: #ef4444;
+  --surface: #111111;
+  --surface2: #161616;
+  --divider: #1a1a1a;
+  --text-primary: #ffffff;
+  --text-secondary: #666666;
+  --text-muted: #333333;
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }

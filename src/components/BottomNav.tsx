@@ -5,100 +5,98 @@ import { usePathname } from 'next/navigation';
 
 const tabs = [
   {
+    id: 'home',
     label: 'Home',
     href: '/',
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" />
-        <path d="M9 21V12h6v9" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M3 9.5L12 3L21 9.5V20C21 20.55 20.55 21 20 21H15V15H9V21H4C3.45 21 3 20.55 3 20V9.5Z"
+          fill={active ? 'var(--amber)' : 'none'}
+          stroke={active ? 'var(--amber)' : '#444'}
+          strokeWidth="1.5" strokeLinejoin="round"/>
       </svg>
     ),
   },
   {
+    id: 'finance',
     label: 'Finance',
     href: '/finance',
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="5" width="20" height="14" rx="2" />
-        <path d="M2 10h20" />
-        <circle cx="12" cy="15" r="1.5" fill="currentColor" stroke="none" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="2" y="5" width="20" height="14" rx="2"
+          fill={active ? 'var(--amber)' : 'none'}
+          stroke={active ? 'var(--amber)' : '#444'}
+          strokeWidth="1.5"/>
+        <path d="M2 10H22" stroke={active ? '#000' : '#444'} strokeWidth="1.5"/>
+        <path d="M6 15H10" stroke={active ? '#000' : '#444'} strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
     ),
   },
   {
+    id: 'health',
     label: 'Health',
     href: '/health',
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M12 21C12 21 3 14.5 3 8.5C3 5.42 5.42 3 8.5 3C10.24 3 11.91 3.81 13 5.08C14.09 3.81 15.76 3 17.5 3C20.58 3 23 5.42 23 8.5C23 14.5 14 21 12 21Z"
+          fill={active ? 'var(--amber)' : 'none'}
+          stroke={active ? 'var(--amber)' : '#444'}
+          strokeWidth="1.5"/>
       </svg>
     ),
   },
   {
-    label: 'Work',
-    href: '/work',
+    id: 'goals',
+    label: 'Goals',
+    href: '/goals',
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="7" width="20" height="14" rx="2" />
-        <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
-        <path d="M12 12v4M10 14h4" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9"
+          stroke={active ? 'var(--amber)' : '#444'}
+          strokeWidth="1.5"/>
+        <circle cx="12" cy="12" r="5"
+          stroke={active ? 'var(--amber)' : '#444'}
+          strokeWidth="1.5"/>
+        <circle cx="12" cy="12" r="1.5"
+          fill={active ? 'var(--amber)' : '#444'}/>
       </svg>
     ),
   },
   {
+    id: 'more',
     label: 'More',
     href: '/more',
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
-        <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-        <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="5" cy="12" r="1.5" fill={active ? 'var(--amber)' : '#444'}/>
+        <circle cx="12" cy="12" r="1.5" fill={active ? 'var(--amber)' : '#444'}/>
+        <circle cx="19" cy="12" r="1.5" fill={active ? 'var(--amber)' : '#444'}/>
       </svg>
     ),
   },
 ];
 
-export default function BottomNav() {
+export default function BottomNav({ active }: { active: string }) {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800">
-      {/* Safe area padding for iPhone home indicator */}
-      <div className="flex items-center justify-around px-2 pt-2 pb-safe">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-black border-t border-[#1a1a1a]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="flex justify-around items-center h-14 max-w-lg mx-auto px-2">
         {tabs.map((tab) => {
-          const isActive =
-            tab.href === '/'
-              ? pathname === '/'
-              : pathname.startsWith(tab.href);
-
+          const isActive = active === tab.id;
           return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className="flex flex-col items-center gap-0.5 min-w-[60px] py-1"
-            >
-              <span
-                className={
-                  isActive
-                    ? 'text-blue-500'
-                    : 'text-zinc-400 dark:text-zinc-500'
-                }
-              >
-                {tab.icon(isActive)}
-              </span>
-              <span
-                className={`text-[10px] font-medium tracking-tight ${
-                  isActive
-                    ? 'text-blue-500'
-                    : 'text-zinc-400 dark:text-zinc-500'
-                }`}
-              >
+            <Link key={tab.id} href={tab.href}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 active:opacity-70 transition-opacity">
+              {tab.icon(isActive)}
+              <span className="text-[10px] font-medium"
+                style={{ color: isActive ? 'var(--amber)' : '#444' }}>
                 {tab.label}
               </span>
             </Link>
           );
         })}
       </div>
-    </nav>
+    </div>
   );
 }
