@@ -58,20 +58,23 @@ export async function POST() {
       const transactions = rows
         .filter((r) => r[0] && r[2] && r[4])
         .map((r) => {
-  const account = r[3]?.trim() || '';
-  const rawCategory = r[5]?.trim() || 'Transfer';
-  const category = ['401K', 'HSA', 'Roth IRA'].includes(account) ? account : rawCategory;
-  return {
-    id: r[0].trim(),
-    user_id: USER_ID,
-    date: parseDate(r[1]),
-    merchant: r[2]?.trim() || '',
-    account,
-    amount: parseAmount(r[4]),
-    category,
-    source: 'google_sheets',
-  };
-})
+          const account = r[3]?.trim() || '';
+          const rawCategory = r[5]?.trim() || 'Transfer';
+          const category = ['401K', 'HSA', 'Roth IRA'].includes(account) ? account : rawCategory;
+          const date = parseDate(r[1]);
+          const month = date ? date.substring(0, 7) : null; // ← THE FIX: derive YYYY-MM from date
+          return {
+            id: r[0].trim(),
+            user_id: USER_ID,
+            date,
+            merchant: r[2]?.trim() || '',
+            account,
+            amount: parseAmount(r[4]),
+            category,
+            month,
+            source: 'google_sheets',
+          };
+        })
         .filter((t) => t.date !== null);
 
       if (transactions.length > 0) {
