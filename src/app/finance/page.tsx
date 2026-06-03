@@ -50,7 +50,7 @@ type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const AMBER = '#f0a050';
 const GREEN = '#22c55e';
 const RED = '#ef4444';
