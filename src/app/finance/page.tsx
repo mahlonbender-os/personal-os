@@ -1016,7 +1016,8 @@ function FinancePageInner() {
       {showAddTx && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" onClick={() => setShowAddTx(false)}>
           <div
-            className="bg-[#1c1c1e] w-full max-w-lg rounded-t-2xl pb-10"
+            className="bg-[#1c1c1e] w-full max-w-lg rounded-t-2xl"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
