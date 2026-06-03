@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Target, Check, Trash2, ChevronRight, X, TrendingUp } from 'lucide-react';
+import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
 
 interface Milestone {
@@ -31,13 +30,9 @@ interface Goal {
 
 const CATEGORIES = ['personal', 'work', 'health', 'finance', 'home', 'fitness', 'learning', 'other'];
 const GOAL_ICONS = ['🎯', '💪', '💰', '🏠', '📚', '🏋️', '✈️', '🎸', '🌱', '⭐', '🚀', '❤️'];
-const GOAL_COLORS = [
-  '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
-  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
-];
+const GOAL_COLORS = ['#f0a050', '#22c55e', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function GoalsPage() {
-  const router = useRouter();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'active' | 'completed' | 'all'>('active');
@@ -82,7 +77,6 @@ export default function GoalsPage() {
       body: JSON.stringify({ id: milestone.id, is_completed: !milestone.is_completed }),
     });
     fetchGoals();
-    // Refresh selected goal
     if (selectedGoal) {
       const res = await fetch('/api/goals');
       const data = await res.json();
@@ -94,129 +88,111 @@ export default function GoalsPage() {
   const activeCount = goals.filter(g => g.status === 'active').length;
 
   return (
-    <div className="min-h-screen bg-background">
-      <PullToRefresh onRefresh={async () => { await fetchGoals(); }}>
+    <div className="min-h-screen bg-black">
+      <PullToRefresh onRefresh={fetchGoals}>
         <div className="pb-24">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
-        <div className="flex items-center gap-3 px-4 pt-14 pb-3">
-          <button onClick={() => router.back()} className="p-2 -ml-2 rounded-full hover:bg-muted">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-xl font-semibold">Goals</h1>
-            {activeCount > 0 && (
-              <p className="text-xs text-muted-foreground">{activeCount} active</p>
+
+          {/* Header */}
+          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+            <div className="flex items-center justify-between px-4 pt-14 pb-3">
+              <div>
+                <h1 className="text-xl font-bold text-white">Goals</h1>
+                {activeCount > 0 && (
+                  <p className="text-[10px] text-[#555] mt-0.5">{activeCount} active</p>
+                )}
+              </div>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="w-9 h-9 rounded-full bg-[#f0a050] text-black flex items-center justify-center text-xl font-light"
+              >
+                +
+              </button>
+            </div>
+            <div className="flex gap-2 px-4 pb-3">
+              {(['active', 'all', 'completed'] as const).map(s => (
+                <button
+                  key={s}
+                  onClick={() => setFilter(s)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    filter === s
+                      ? 'bg-[#f0a050] text-black'
+                      : 'bg-[#111] text-[#555] border border-[#1a1a1a]'
+                  }`}
+                >
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Goals list */}
+          <div className="px-4 py-3 space-y-3">
+            {loading ? (
+              [...Array(3)].map((_, i) => (
+                <div key={i} className="h-24 bg-[#111] rounded-2xl animate-pulse" />
+              ))
+            ) : goals.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="text-4xl mb-3">🎯</div>
+                <p className="text-[#555] text-sm">No goals yet</p>
+                <p className="text-[#333] text-xs mt-1">Tap + to set a goal</p>
+              </div>
+            ) : (
+              goals.map(goal => {
+                const milestonesDone = goal.goal_milestones?.filter(m => m.is_completed).length || 0;
+                const milestonesTotal = goal.goal_milestones?.length || 0;
+                return (
+                  <button
+                    key={goal.id}
+                    onClick={() => setSelectedGoal(goal)}
+                    className="w-full bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 text-left active:opacity-70 transition-opacity"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                        style={{ backgroundColor: goal.color + '20' }}
+                      >
+                        {goal.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <p className="text-sm font-medium text-white leading-snug">{goal.title}</p>
+                          <span className="text-xs font-bold flex-shrink-0 font-mono" style={{ color: goal.color }}>
+                            {goal.progress}%
+                          </span>
+                        </div>
+                        <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden mb-2">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${goal.progress}%`, backgroundColor: goal.color }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] text-[#555] capitalize">{goal.category}</span>
+                          {milestonesTotal > 0 && (
+                            <span className="text-[10px] text-[#444]">{milestonesDone}/{milestonesTotal} milestones</span>
+                          )}
+                          {goal.target_date && (
+                            <span className="text-[10px] text-[#444]">
+                              Due {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
-          <button
-            onClick={() => { setShowAddModal(true); }}
-            className="bg-primary text-primary-foreground rounded-full p-2"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
         </div>
+      </PullToRefresh>
 
-        {/* Filters */}
-        <div className="flex gap-2 px-4 pb-3">
-          {(['active', 'all', 'completed'] as const).map(s => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                filter === s
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
+      <BottomNav active="goals" />
 
-      {/* Goals list */}
-      <div className="px-4 py-3 space-y-3">
-        {loading ? (
-          [...Array(3)].map((_, i) => (
-            <div key={i} className="h-24 bg-muted rounded-2xl animate-pulse" />
-          ))
-        ) : goals.length === 0 ? (
-          <div className="text-center py-16">
-            <Target className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
-            <p className="text-muted-foreground">No goals yet</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Tap + to set a goal</p>
-          </div>
-        ) : (
-          goals.map(goal => {
-            const milestonesDone = goal.goal_milestones?.filter(m => m.is_completed).length || 0;
-            const milestonesTotal = goal.goal_milestones?.length || 0;
-
-            return (
-              <button
-                key={goal.id}
-                onClick={() => setSelectedGoal(goal)}
-                className="w-full bg-card border border-border rounded-2xl p-4 text-left"
-              >
-                <div className="flex items-start gap-3">
-                  {/* Icon with color background */}
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
-                    style={{ backgroundColor: goal.color + '20' }}
-                  >
-                    {goal.icon}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-sm leading-snug">{goal.title}</p>
-                      <span className="text-xs font-bold shrink-0" style={{ color: goal.color }}>
-                        {goal.progress}%
-                      </span>
-                    </div>
-
-                    {/* Progress bar */}
-                    <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${goal.progress}%`, backgroundColor: goal.color }}
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="text-xs text-muted-foreground capitalize">{goal.category}</span>
-                      {milestonesTotal > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {milestonesDone}/{milestonesTotal} milestones
-                        </span>
-                      )}
-                      {goal.target_date && (
-                        <span className="text-xs text-muted-foreground">
-                          Due {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-1" />
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-
-      {/* Add Goal Modal */}
-      {showAddModal && (
-        <GoalModal
-          onClose={() => setShowAddModal(false)}
-          onSave={() => { setShowAddModal(false); fetchGoals(); }}
-        />
-      )}
-
-       {/* Goal Detail Sheet */}
+      {/* Goal Detail Modal */}
       {selectedGoal && (
-        <GoalDetailSheet
+        <GoalDetailModal
           goal={selectedGoal}
           onClose={() => { setSelectedGoal(null); fetchGoals(); }}
           onDelete={() => deleteGoal(selectedGoal.id)}
@@ -224,15 +200,20 @@ export default function GoalsPage() {
           onToggleMilestone={toggleMilestone}
         />
       )}
-        </div>
-      </PullToRefresh>
+
+      {/* Add Goal Modal */}
+      {showAddModal && (
+        <GoalAddModal
+          onClose={() => setShowAddModal(false)}
+          onSave={() => { setShowAddModal(false); fetchGoals(); }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Goal Detail Sheet ────────────────────────────────────────────────────────
-
-function GoalDetailSheet({ goal, onClose, onDelete, onProgressChange, onToggleMilestone }: {
+// ─── Goal Detail Modal ────────────────────────────────────────────────────────
+function GoalDetailModal({ goal, onClose, onDelete, onProgressChange, onToggleMilestone }: {
   goal: Goal;
   onClose: () => void;
   onDelete: () => void;
@@ -251,66 +232,47 @@ function GoalDetailSheet({ goal, onClose, onDelete, onProgressChange, onToggleMi
   const sortedMilestones = [...(goal.goal_milestones || [])].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end">
-      <div className="w-full bg-background rounded-t-2xl max-h-[85vh] overflow-y-auto">
-        <div className="w-10 h-1 bg-muted-foreground/20 rounded-full mx-auto mt-3" />
-
-        <div className="px-4 pt-4 pb-8">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
+      <div className="bg-[#1c1c1e] w-full rounded-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-6">
           {/* Header */}
           <div className="flex items-start justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
-                style={{ backgroundColor: goal.color + '20' }}
-              >
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
+                style={{ backgroundColor: goal.color + '20' }}>
                 {goal.icon}
               </div>
               <div>
-                <h2 className="font-semibold text-base">{goal.title}</h2>
-                <p className="text-xs text-muted-foreground capitalize">{goal.category}</p>
+                <h2 className="font-semibold text-base text-white">{goal.title}</h2>
+                <p className="text-xs text-[#555] capitalize">{goal.category}</p>
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={onDelete} className="p-2 text-muted-foreground hover:text-destructive">
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button onClick={onClose} className="p-2 rounded-full hover:bg-muted">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={onDelete} className="p-2 text-[#ef4444]">🗑</button>
+              <button onClick={onClose} className="p-2 text-[#555]">✕</button>
             </div>
           </div>
 
-          {/* Description */}
           {goal.description && (
-            <p className="text-sm text-muted-foreground mb-4">{goal.description}</p>
+            <p className="text-sm text-[#666] mb-4">{goal.description}</p>
           )}
 
           {/* Progress */}
-          <div className="bg-muted rounded-2xl p-4 mb-4">
+          <div className="bg-[#2c2c2e] rounded-2xl p-4 mb-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium">Progress</span>
-              <span className="text-sm font-bold" style={{ color: goal.color }}>{localProgress}%</span>
+              <span className="text-sm font-medium text-white">Progress</span>
+              <span className="text-sm font-bold font-mono" style={{ color: goal.color }}>{localProgress}%</span>
             </div>
-            <div className="h-2 bg-background rounded-full overflow-hidden mb-3">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{ width: `${localProgress}%`, backgroundColor: goal.color }}
-              />
+            <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden mb-3">
+              <div className="h-full rounded-full transition-all"
+                style={{ width: `${localProgress}%`, backgroundColor: goal.color }} />
             </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={localProgress}
+            <input type="range" min={0} max={100} value={localProgress}
               onChange={e => setLocalProgress(Number(e.target.value))}
-              className="w-full"
-            />
+              className="w-full accent-[#f0a050]" />
             {localProgress !== goal.progress && (
-              <button
-                onClick={handleProgressSave}
-                disabled={saving}
-                className="mt-3 w-full bg-primary text-primary-foreground rounded-xl py-2 text-sm font-medium"
-              >
+              <button onClick={handleProgressSave} disabled={saving}
+                className="mt-3 w-full bg-[#f0a050] text-black rounded-xl py-2 text-sm font-semibold disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save Progress'}
               </button>
             )}
@@ -318,21 +280,18 @@ function GoalDetailSheet({ goal, onClose, onDelete, onProgressChange, onToggleMi
 
           {/* Milestones */}
           {sortedMilestones.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3">Milestones</h3>
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-[#444] uppercase tracking-widest mb-3">Milestones</h3>
               <div className="space-y-2">
                 {sortedMilestones.map(milestone => (
-                  <button
-                    key={milestone.id}
-                    onClick={() => onToggleMilestone(milestone)}
-                    className="w-full flex items-center gap-3 bg-muted rounded-xl px-3 py-2.5 text-left"
-                  >
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      milestone.is_completed ? 'bg-primary border-primary' : 'border-muted-foreground/40'
+                  <button key={milestone.id} onClick={() => onToggleMilestone(milestone)}
+                    className="w-full flex items-center gap-3 bg-[#2c2c2e] rounded-xl px-3 py-2.5 text-left active:opacity-70">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                      milestone.is_completed ? 'border-[#f0a050] bg-[#f0a050]' : 'border-[#444]'
                     }`}>
-                      {milestone.is_completed && <Check className="w-3 h-3 text-primary-foreground" />}
+                      {milestone.is_completed && <span className="text-black text-[10px]">✓</span>}
                     </div>
-                    <span className={`text-sm ${milestone.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+                    <span className={`text-sm ${milestone.is_completed ? 'line-through text-[#444]' : 'text-[#ccc]'}`}>
                       {milestone.title}
                     </span>
                   </button>
@@ -341,10 +300,9 @@ function GoalDetailSheet({ goal, onClose, onDelete, onProgressChange, onToggleMi
             </div>
           )}
 
-          {/* Target date */}
           {goal.target_date && (
-            <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-              <TrendingUp className="w-4 h-4" />
+            <div className="flex items-center gap-2 text-xs text-[#555]">
+              <span>🎯</span>
               Target: {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', {
                 weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
               })}
@@ -357,24 +315,15 @@ function GoalDetailSheet({ goal, onClose, onDelete, onProgressChange, onToggleMi
 }
 
 // ─── Goal Add Modal ───────────────────────────────────────────────────────────
-
-function GoalModal({ onClose, onSave }: { onClose: () => void; onSave: () => void }) {
+function GoalAddModal({ onClose, onSave }: { onClose: () => void; onSave: () => void }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('personal');
   const [icon, setIcon] = useState('🎯');
-  const [color, setColor] = useState('#3b82f6');
+  const [color, setColor] = useState('#f0a050');
   const [targetDate, setTargetDate] = useState('');
   const [milestoneInputs, setMilestoneInputs] = useState<string[]>(['']);
   const [saving, setSaving] = useState(false);
-
-  const addMilestoneField = () => setMilestoneInputs([...milestoneInputs, '']);
-  const updateMilestone = (i: number, val: string) => {
-    const updated = [...milestoneInputs];
-    updated[i] = val;
-    setMilestoneInputs(updated);
-  };
-  const removeMilestone = (i: number) => setMilestoneInputs(milestoneInputs.filter((_, idx) => idx !== i));
 
   const handleSave = async () => {
     if (!title.trim()) return;
@@ -387,9 +336,7 @@ function GoalModal({ onClose, onSave }: { onClose: () => void; onSave: () => voi
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || null,
-          category,
-          icon,
-          color,
+          category, icon, color,
           target_date: targetDate || null,
           milestones,
         }),
@@ -401,147 +348,107 @@ function GoalModal({ onClose, onSave }: { onClose: () => void; onSave: () => voi
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end">
-      <div className="w-full bg-background rounded-t-2xl max-h-[90vh] overflow-y-auto">
-        <div className="w-10 h-1 bg-muted-foreground/20 rounded-full mx-auto mt-3" />
-        <div className="px-4 pt-4 pb-8">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-semibold">New Goal</h2>
-            <button onClick={onClose} className="p-2 rounded-full hover:bg-muted">
-              <X className="w-5 h-5" />
-            </button>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
+      <div className="bg-[#1c1c1e] w-full rounded-2xl max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
+          <button onClick={onClose} className="text-[#f0a050] text-sm">Cancel</button>
+          <h2 className="text-base font-semibold text-white">New Goal</h2>
+          <button onClick={handleSave} disabled={!title.trim() || saving}
+            className="text-[#f0a050] text-sm font-semibold disabled:opacity-30">
+            {saving ? 'Saving…' : 'Add'}
+          </button>
+        </div>
+
+        <div className="px-4 py-4 space-y-4 pb-8">
+          {/* Title */}
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="What do you want to achieve?"
+              className="w-full px-4 py-3.5 bg-transparent text-white text-sm placeholder-[#555] outline-none" autoFocus />
           </div>
 
-          <div className="space-y-4">
-            {/* Title */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title *</label>
-              <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="What do you want to achieve?"
-                className="w-full mt-1.5 bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
-                autoFocus
-              />
-            </div>
+          {/* Description */}
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <textarea value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="Why does this matter?" rows={2}
+              className="w-full px-4 py-3.5 bg-transparent text-white text-sm placeholder-[#555] outline-none resize-none" />
+          </div>
 
-            {/* Description */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
-              <textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder="Why does this matter?"
-                rows={2}
-                className="w-full mt-1.5 bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary resize-none"
-              />
-            </div>
-
-            {/* Icon */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Icon</label>
-              <div className="flex flex-wrap gap-2 mt-1.5">
-                {GOAL_ICONS.map(i => (
-                  <button
-                    key={i}
-                    onClick={() => setIcon(i)}
-                    className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-colors ${
-                      icon === i ? 'bg-primary/20 ring-2 ring-primary' : 'bg-muted'
-                    }`}
-                  >
-                    {i}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Color */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Color</label>
-              <div className="flex gap-2 mt-1.5">
-                {GOAL_COLORS.map(c => (
-                  <button
-                    key={c}
-                    onClick={() => setColor(c)}
-                    className={`w-8 h-8 rounded-full transition-all ${
-                      color === c ? 'ring-2 ring-offset-2 ring-offset-background scale-110' : ''
-                    }`}
-                    style={{ backgroundColor: c, ringColor: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Category</label>
-              <div className="flex flex-wrap gap-2 mt-1.5">
-                {CATEGORIES.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setCategory(cat)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium capitalize ${
-                      category === cat ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Target Date */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Target Date</label>
-              <input
-                type="date"
-                value={targetDate}
-                onChange={e => setTargetDate(e.target.value)}
-                className="w-full mt-1.5 bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-
-            {/* Milestones */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Milestones</label>
-              <div className="space-y-2 mt-1.5">
-                {milestoneInputs.map((m, i) => (
-                  <div key={i} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={m}
-                      onChange={e => updateMilestone(i, e.target.value)}
-                      placeholder={`Milestone ${i + 1}`}
-                      className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary"
-                    />
-                    {milestoneInputs.length > 1 && (
-                      <button
-                        onClick={() => removeMilestone(i)}
-                        className="p-2 text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  onClick={addMilestoneField}
-                  className="text-xs text-primary flex items-center gap-1 pl-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add milestone
+          {/* Icon */}
+          <div>
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Icon</p>
+            <div className="flex flex-wrap gap-2">
+              {GOAL_ICONS.map(i => (
+                <button key={i} onClick={() => setIcon(i)}
+                  className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center ${
+                    icon === i ? 'bg-[#f0a050]/20 ring-2 ring-[#f0a050]' : 'bg-[#2c2c2e]'
+                  }`}>
+                  {i}
                 </button>
-              </div>
+              ))}
             </div>
+          </div>
 
-            <button
-              onClick={handleSave}
-              disabled={!title.trim() || saving}
-              className="w-full bg-primary text-primary-foreground rounded-xl py-3.5 text-sm font-semibold disabled:opacity-50 mt-2"
-            >
-              {saving ? 'Creating…' : 'Create Goal'}
-            </button>
+          {/* Color */}
+          <div>
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Color</p>
+            <div className="flex gap-3">
+              {GOAL_COLORS.map(c => (
+                <button key={c} onClick={() => setColor(c)}
+                  className={`w-8 h-8 rounded-full transition-all ${color === c ? 'ring-2 ring-offset-2 ring-offset-[#1c1c1e] scale-110' : ''}`}
+                  style={{ backgroundColor: c, outlineColor: c }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Category */}
+          <div>
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Category</p>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map(cat => (
+                <button key={cat} onClick={() => setCategory(cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium capitalize ${
+                    category === cat ? 'bg-[#f0a050] text-black' : 'bg-[#2c2c2e] text-[#555]'
+                  }`}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Target Date */}
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3.5">
+              <span className="text-sm text-white">Target Date</span>
+              <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)}
+                className="text-sm text-[#f0a050] bg-transparent outline-none text-right" />
+            </div>
+          </div>
+
+          {/* Milestones */}
+          <div>
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Milestones</p>
+            <div className="space-y-2">
+              {milestoneInputs.map((m, i) => (
+                <div key={i} className="flex gap-2">
+                  <input type="text" value={m} onChange={e => {
+                    const updated = [...milestoneInputs];
+                    updated[i] = e.target.value;
+                    setMilestoneInputs(updated);
+                  }}
+                    placeholder={`Milestone ${i + 1}`}
+                    className="flex-1 bg-[#2c2c2e] rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#555] outline-none" />
+                  {milestoneInputs.length > 1 && (
+                    <button onClick={() => setMilestoneInputs(milestoneInputs.filter((_, idx) => idx !== i))}
+                      className="px-3 text-[#ef4444] text-sm">✕</button>
+                  )}
+                </div>
+              ))}
+              <button onClick={() => setMilestoneInputs([...milestoneInputs, ''])}
+                className="text-xs text-[#f0a050] flex items-center gap-1 pl-1">
+                + Add milestone
+              </button>
+            </div>
           </div>
         </div>
       </div>
