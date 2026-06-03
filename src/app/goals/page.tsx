@@ -349,7 +349,7 @@ function GoalAddModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-[#1c1c1e] w-full rounded-2xl max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1c1c1e] w-full rounded-2xl" style={{ maxHeight: '88vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
           <button onClick={onClose} className="text-[#f0a050] text-sm">Cancel</button>
           <h2 className="text-base font-semibold text-white">New Goal</h2>
@@ -359,7 +359,7 @@ function GoalAddModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
           </button>
         </div>
 
-        <div className="px-4 py-4 space-y-4 pb-8">
+        <div className="px-4 py-4 space-y-4 pb-12">
           {/* Title */}
           <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
             <input type="text" value={title} onChange={e => setTitle(e.target.value)}

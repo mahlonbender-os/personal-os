@@ -265,7 +265,7 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
                   <p className="text-sm font-medium text-[#e0e0e0] truncate">{tx.merchant}</p>
                   <p className="text-[10px] text-[#444]">{tx.category} · {fmtDate(tx.date)}</p>
                 </div>
-                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : 'text-[#ccc]'}`}>{fmt(tx.amount)}</p>
+                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(tx.amount)}</p>
               </div>
             ))}
           </div>
@@ -499,7 +499,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
                           {tx.account && <span className="text-[10px] text-[#333] truncate min-w-0">{tx.account}</span>}
                         </div>
                       </div>
-                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : 'text-[#ccc]'}`}>{fmt(tx.amount)}</p>
+                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(tx.amount)}</p>
                     </div>
                   ))}
                 </Card>
@@ -640,7 +640,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
               <div key={idx} className={`flex items-center px-4 py-3 gap-3 ${idx !== assets.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
                 <div className="w-2 h-2 rounded-full bg-[#22c55e] flex-shrink-0" />
                 <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
-                <p className="text-sm font-semibold text-[#e0e0e0] font-mono">{fmt(acct.value)}</p>
+                <p className="text-sm font-semibold text-[#22c55e] font-mono">{fmt(acct.value)}</p>
               </div>
             ))}
           </Card>
