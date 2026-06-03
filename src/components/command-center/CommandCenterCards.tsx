@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import PullToRefresh from '@/components/PullToRefresh';
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n));
@@ -39,19 +40,19 @@ function HealthCard() {
     fetch('/api/health/latest')
       .then(r => r.json())
       .then(d => {
-        setData(d);
-        try { localStorage.setItem('cc_health_v1', JSON.stringify(d)); } catch {}
+        setData(d.log || null);
+        try { localStorage.setItem('cc_health_v1', JSON.stringify(d.log || null)); } catch {}
       })
       .catch(() => {});
   }, []);
 
   const steps = data?.steps ?? 0;
-  const hr = data?.heart_rate ?? 0;
-  const active = data?.active_minutes ?? 0;
-  const cal = data?.calories ?? 0;
+  const hr = data?.resting_heart_rate ?? 0;
+  const active = data?.activity_minutes ?? 0;
+  const cal = data?.active_calories ?? 0;
   const stepGoal = 10000;
   const stepPct = Math.min((steps / stepGoal) * 100, 100);
-  const dateStr = data?.date ? new Date(data.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const dateStr = data?.log_date ? new Date(data.log_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
   return (
     <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4">
@@ -233,10 +234,16 @@ function TasksCard() {
       const c = localStorage.getItem('cc_tasks_v1');
       if (c) setTasks(JSON.parse(c));
     } catch {}
-    fetch('/api/tasks/items?limit=4')
+    fetch('/api/tasks/lists')
       .then(r => r.json())
-      .then(d => {
-        const t = (d.items || []).slice(0, 4);
+      .then(async d => {
+        const lists = d.lists || [];
+        if (lists.length === 0) return;
+        const preferred = lists.find((l: any) => l.title === 'Personal OS');
+        const listId = (preferred || lists[0]).id;
+        const res = await fetch(`/api/tasks/items?listId=${listId}&showCompleted=false`);
+        const data = await res.json();
+        const t = (data.tasks || []).slice(0, 4);
         setTasks(t);
         try { localStorage.setItem('cc_tasks_v1', JSON.stringify(t)); } catch {}
       })
@@ -245,7 +252,7 @@ function TasksCard() {
 
   return (
     <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] overflow-hidden">
-      <a href="/more" className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] active:bg-[#161616]">
+      <a href="/tasks" className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] active:bg-[#161616]">
         <div className="flex items-center gap-2">
           <span className="text-sm">☑</span>
           <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Tasks</span>
@@ -336,28 +343,37 @@ function SpotifyCard() {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function CommandCenterCards() {
-  return (
-    <div className="min-h-screen bg-black pb-24">
-      <div className="px-4 pt-12 pb-4 space-y-3">
-        {/* Greeting */}
-        <div className="flex items-start justify-between mb-1">
-          <div>
-            <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
-            <div className="text-[26px] font-extrabold text-white leading-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
-              {getGreeting()},<br />Mahlon
-            </div>
-          </div>
-          <WeatherWidget />
-        </div>
+  const handleRefresh = useCallback(async () => {
+    await fetch('/api/sync/sheets', { method: 'POST' });
+    try {
+      ['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1']
+        .forEach(k => localStorage.removeItem(k));
+    } catch {}
+    window.location.reload();
+  }, []);
 
-        <HealthCard />
-        <FinanceRow />
-        <CalendarCard />
-        <TasksCard />
-        <KnoxHomeRow />
-        <SpotifyCard />
+  return (
+    <PullToRefresh onRefresh={handleRefresh}>
+      <div className="min-h-screen bg-black pb-24">
+        <div className="px-4 pt-12 pb-4 space-y-3">
+          <div className="flex items-start justify-between mb-1">
+            <div>
+              <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
+              <div className="text-[26px] font-extrabold text-white leading-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
+                {getGreeting()},<br />Mahlon
+              </div>
+            </div>
+            <WeatherWidget />
+          </div>
+          <HealthCard />
+          <FinanceRow />
+          <CalendarCard />
+          <TasksCard />
+          <KnoxHomeRow />
+          <SpotifyCard />
+        </div>
       </div>
-    </div>
+    </PullToRefresh>
   );
 }
 

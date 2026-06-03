@@ -490,7 +490,7 @@ export default function CalendarPage() {
 
       </div>
       </PullToRefresh>
-      <BottomNav />
+      <BottomNav active="more" />
     </div>
   );
 }
