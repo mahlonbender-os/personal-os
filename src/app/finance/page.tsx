@@ -694,10 +694,19 @@ function FinancePageInner() {
         body: JSON.stringify(txForm),
       });
       if (!res.ok) throw new Error('Failed to save');
+
+      // Close modal and reset form immediately
       setShowAddTx(false);
       setTxForm({ date: new Date().toISOString().split('T')[0], merchant: '', account: '', amount: '', category: '' });
-      await syncSheets();
+
+      // Clear cache and refresh now — transaction is already in Supabase so it shows instantly
+      try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
       setRefreshCount(c => c + 1);
+
+      // Sync sheets in background — updates bills paid status, budget, etc.
+      // A second refresh after sync picks up those changes
+      syncSheets().then(() => setRefreshCount(c => c + 1));
+
     } catch { setTxError('Something went wrong. Try again.'); }
     finally { setTxSaving(false); }
   }
