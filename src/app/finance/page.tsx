@@ -265,7 +265,7 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
                   <p className="text-sm font-medium text-[#e0e0e0] truncate">{tx.merchant}</p>
                   <p className="text-[10px] text-[#444]">{tx.category} · {fmtDate(tx.date)}</p>
                 </div>
-                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : tx.category === 'Transfer' ? 'text-[#888]' : 'text-[#ef4444]`}>{fmt(tx.amount)}</p>
+                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : tx.category === 'Transfer' ? 'text-[#888]' : 'text-[#ef4444]'}`}>{fmt(tx.amount)}</p>
               </div>
             ))}
           </div>
