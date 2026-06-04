@@ -8,6 +8,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+export const dynamic = 'force-dynamic';
+
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
 export async function GET(request: Request) {
