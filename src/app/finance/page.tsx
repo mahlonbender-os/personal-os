@@ -416,16 +416,16 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const load = useCallback(async () => {
-    try {
-      const cached = localStorage.getItem(`finance_transactions_${CACHE_VERSION}`);
-      if (cached) { setTransactions(JSON.parse(cached)); setLoading(false); }
-    } catch {}
+    setLoading(true);
     try {
       const data = await fetch(`/api/finance/transactions?limit=300&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
       const txs = data.transactions || [];
       setTransactions(txs);
-      try { localStorage.setItem(`finance_transactions_${CACHE_VERSION}`, JSON.stringify(txs)); } catch {}
-    } finally { setLoading(false); }
+    } catch (e) {
+      console.error('Failed to load transactions:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { setSearchQuery(''); setSelectedCategory('All'); load(); }, [load, onRefresh]);
