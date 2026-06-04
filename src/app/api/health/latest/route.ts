@@ -68,12 +68,17 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const latest  = data?.[0] ?? null;               // most recent day
+  const latest  = data?.[0] ?? null;                  // most recent day
   const history = (data ?? []).slice(0, 7).reverse(); // 7 days oldest-first for charts
 
+  // BACKWARD COMPATIBLE:
+  // - latest day's fields are spread at the TOP LEVEL so the existing
+  //   Activity tab (reading data.steps, data.active_calories, etc.) keeps working
+  // - latest / history / all are also provided for the new Sleep/Vitals/Trends tabs
   return NextResponse.json({
-    latest,
-    history,  // 7 days for sparklines
-    all: data, // 30 days for Trends tab
+    ...(latest ?? {}),  // top-level fields: steps, active_calories, etc.
+    latest,             // structured access for new tabs
+    history,            // 7 days for sparklines
+    all: data,          // 30 days for Trends tab
   });
 }
