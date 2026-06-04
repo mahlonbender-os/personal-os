@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
+const INCOME_CATEGORIES = ['Income', 'Other Inc.', 'Roth IRA', '401K', 'HSA', 'Transfer'];
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,12 +25,16 @@ export async function POST(req: NextRequest) {
     const sheetMonth = dateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     const supabaseMonth = date.substring(0, 7);
     const id = `manual-${Date.now()}`;
-    const row = [id, formattedDate, merchant, account, amount, category, sheetMonth];
+
+    // Expenses are negative, income/transfers are positive
+    const rawAmount = parseFloat(amount);
+    const signedAmount = INCOME_CATEGORIES.includes(category) ? rawAmount : -Math.abs(rawAmount);
+
+    const row = [id, formattedDate, merchant, account, signedAmount, category, sheetMonth];
 
     const sheetId = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
     const range = 'Transactions!A:G';
 
-    // 1. Write to Google Sheets
     const sheetsResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
       {
@@ -47,7 +52,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Sheets error: ${err}` }, { status: 500 });
     }
 
-    // 2. Write to Supabase
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -58,7 +62,7 @@ export async function POST(req: NextRequest) {
       date,
       merchant,
       account,
-      amount: parseFloat(amount),
+      amount: signedAmount,
       category,
       month: supabaseMonth,
       source: 'manual',
