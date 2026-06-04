@@ -421,7 +421,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
       if (cached) { setTransactions(JSON.parse(cached)); setLoading(false); }
     } catch {}
     try {
-      const data = await fetch('/api/finance/transactions?limit=300').then(r => r.json());
+      const data = await fetch(`/api/finance/transactions?limit=300&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
       const txs = data.transactions || [];
       setTransactions(txs);
       try { localStorage.setItem(`finance_transactions_${CACHE_VERSION}`, JSON.stringify(txs)); } catch {}
