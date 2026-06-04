@@ -693,7 +693,10 @@ function FinancePageInner() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(txForm),
       });
-      if (!res.ok) throw new Error('Failed to save');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Failed to save' }));
+        throw new Error(errData.error || 'Failed to save');
+      }
 
       // Close modal and reset form immediately
       setShowAddTx(false);
@@ -707,7 +710,9 @@ function FinancePageInner() {
       // A second refresh after sync picks up those changes
       syncSheets().then(() => setRefreshCount(c => c + 1));
 
-    } catch { setTxError('Something went wrong. Try again.'); }
+    } catch (e: unknown) {
+      setTxError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
+    }
     finally { setTxSaving(false); }
   }
 
