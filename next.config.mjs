@@ -5,6 +5,15 @@ const pwaConfig = withPWA({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
+  runtimeCaching: [
+    {
+      urlPattern: /^https:\/\/personal-os-delta-cyan\.vercel\.app\/api\/.*/i,
+      handler: 'NetworkOnly',
+      options: {
+        cacheName: 'api-cache',
+      },
+    },
+  ],
 });
 
 /** @type {import('next').NextConfig} */
