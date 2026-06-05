@@ -58,9 +58,10 @@ export default function NewsCard() {
     fetchNews();
   }, []);
 
-  const filtered = activeSource === 'All'
-    ? articles
-    : articles.filter((a) => a.source === activeSource);
+  const filtered =
+    activeSource === 'All'
+      ? articles
+      : articles.filter((a) => a.source === activeSource);
 
   return (
     <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
@@ -73,7 +74,7 @@ export default function NewsCard() {
         </div>
         <button
           onClick={() => fetchNews(true)}
-          className="p-1.5 rounded-full hover:bg-[#1a1a1a] text-[#555] hover:text-[#f0a050] transition-colors"
+          className="p-1.5 rounded-full text-[#555] hover:text-[#f0a050] transition-colors"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
@@ -126,7 +127,7 @@ export default function NewsCard() {
                 className="flex items-start gap-3 px-4 py-3 active:bg-[#1a1a1a]"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-xs font-medium leading-snug" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  <p className="text-white text-xs font-medium leading-snug line-clamp-3">
                     {article.title}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1.5">
@@ -136,7 +137,9 @@ export default function NewsCard() {
                     {article.pubDate && (
                       <>
                         <span className="text-[#333] text-[10px]">·</span>
-                        <span className="text-[#555] text-[10px]">{timeAgo(article.pubDate)}</span>
+                        <span className="text-[#555] text-[10px]">
+                          {timeAgo(article.pubDate)}
+                        </span>
                       </>
                     )}
                   </div>
