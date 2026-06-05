@@ -12,8 +12,8 @@ interface Article {
   source: string;
 }
 
-const SOURCES = ['All', 'NPR', 'BBC', 'BBC Sport', 'ESPN', 'ABC News'];
-const CACHE_KEY = 'news_articles_v1';
+const SOURCES = ['All', 'Fox News', 'CNN', 'Reuters', 'NBC News', 'Politico', 'CNBC', 'MarketWatch', 'TechCrunch'];
+const CACHE_KEY = 'news_articles_v2';
 
 function timeAgo(dateStr: string): string {
   if (!dateStr) return '';

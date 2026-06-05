@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 
 const FEEDS = [
-  { url: 'https://feeds.npr.org/1001/rss.xml', source: 'NPR' },
-  { url: 'https://feeds.bbci.co.uk/news/rss.xml', source: 'BBC' },
-  { url: 'https://feeds.bbci.co.uk/sport/rss.xml', source: 'BBC Sport' },
-  { url: 'https://www.espn.com/espn/rss/news', source: 'ESPN' },
-  { url: 'https://abcnews.go.com/abcnews/topstories', source: 'ABC News' },
+  { url: 'https://moxie.foxnews.com/google-publisher/latest.xml', source: 'Fox News' },
+  { url: 'http://rss.cnn.com/rss/cnn_topstories.rss', source: 'CNN' },
+  { url: 'https://feeds.reuters.com/reuters/topNews', source: 'Reuters' },
+  { url: 'https://feeds.nbcnews.com/nbcnews/public/news', source: 'NBC News' },
+  { url: 'https://www.politico.com/rss/politicopicks.xml', source: 'Politico' },
+  { url: 'https://www.cnbc.com/id/10001147/device/rss/rss.html', source: 'CNBC' },
+  { url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories', source: 'MarketWatch' },
+  { url: 'https://techcrunch.com/feed/', source: 'TechCrunch' },
 ];
 
 function extractTag(xml: string, tag: string): string {
@@ -19,7 +22,6 @@ function extractTag(xml: string, tag: string): string {
 }
 
 function extractImage(itemXml: string): string {
-  // Try media:content, enclosure, then og image
   const media = itemXml.match(/url="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
   if (media) return media[1];
   const enclosure = itemXml.match(/<enclosure[^>]+url="([^"]+)"/i);
@@ -36,7 +38,10 @@ function parseItems(xml: string, source: string) {
   while ((match = itemPattern.exec(xml)) !== null && items.length < 5) {
     const item = match[1];
     const title = extractTag(item, 'title');
-    const link = extractTag(item, 'link') || item.match(/<link>([^<]+)<\/link>/)?.[1] || '';
+    const link =
+      extractTag(item, 'link') ||
+      item.match(/<link>([^<]+)<\/link>/)?.[1] ||
+      '';
     const pubDate = extractTag(item, 'pubDate');
     const description = extractTag(item, 'description').slice(0, 120);
     const image = extractImage(item);
@@ -52,7 +57,7 @@ export async function GET() {
     FEEDS.map(async ({ url, source }) => {
       const res = await fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PersonalOS/1.0)' },
-        next: { revalidate: 900 }, // cache 15 min
+        next: { revalidate: 900 },
       });
       if (!res.ok) throw new Error(`${source}: ${res.status}`);
       const xml = await res.text();
@@ -62,9 +67,9 @@ export async function GET() {
 
   const articles = results
     .filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled')
-    .flatMap(r => r.value)
+    .flatMap((r) => r.value)
     .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
-    .slice(0, 20);
+    .slice(0, 25);
 
   return NextResponse.json({ articles });
 }
