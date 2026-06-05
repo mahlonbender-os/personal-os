@@ -121,11 +121,11 @@ export default function NewsCard() {
             {filtered.slice(0, 8).map((article, i) => (
               
                 {filtered.slice(0, 8).map((article, i) => (
-  <div
-    key={i}
-    onClick={() => window.open(article.link, '_blank')}
-    className="flex items-start gap-3 px-4 py-3 active:bg-[#1a1a1a] cursor-pointer"
-  >
+                    <div
+                        key={i}
+                        onClick={() => window.open(article.link, '_blank')}
+                        className="flex items-start gap-3 px-4 py-3 active:bg-[#1a1a1a] cursor-pointer"
+                    >
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-xs font-medium leading-snug line-clamp-3">
                     {article.title}
