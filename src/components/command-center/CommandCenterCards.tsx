@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import NewsCard from '@/components/command-center/NewsCard';
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n));
@@ -274,6 +275,8 @@ function TasksCard() {
     </div>
   );
 }
+
+<NewsCard />
 
 // ── Knox + Home Row ───────────────────────────────────────────────────────────
 function KnoxHomeRow() {
