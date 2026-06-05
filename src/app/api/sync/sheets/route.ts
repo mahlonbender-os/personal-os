@@ -6,7 +6,6 @@ import { createClient } from '@supabase/supabase-js';
 const SHEET_ID = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
-// Convert M/D/YYYY → YYYY-MM-DD for Postgres date column
 function parseSheetDate(raw: string): string | null {
   if (!raw) return null;
   const parts = raw.trim().split('/');
@@ -27,7 +26,7 @@ export async function POST() {
   );
 
   try {
-    // 1. Fetch Transactions tab from Google Sheets
+    //── 1. Sync Transactions ─────────────────────────────────────────────────
     const sheetRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Transactions!A2:G`,
       { headers: { Authorization: `Bearer ${session.accessToken}` } }
@@ -41,7 +40,6 @@ export async function POST() {
     const sheetData = await sheetRes.json();
     const rows: string[][] = sheetData.values || [];
 
-    // 2. Delete all previously synced sheet rows
     const { error: deleteError } = await supabase
       .from('transactions')
       .delete()
@@ -51,10 +49,6 @@ export async function POST() {
       return NextResponse.json({ error: `Delete failed: ${deleteError.message}` }, { status: 500 });
     }
 
-    // 3. Build insert rows
-    //    - Skip rows with no ID
-    //    - Skip manual- rows (those already live in Supabase as source='manual')
-    //    - Parse M/D/YYYY dates to YYYY-MM-DD
     const toInsert = rows
       .filter(row => {
         const id = (row[0] || '').trim();
@@ -69,7 +63,6 @@ export async function POST() {
         const category = (row[5] || '').trim();
         const month = (row[6] || '').trim();
 
-        // Force category from account for investment accounts
         let finalCategory = category;
         if (account === '401K') finalCategory = '401K';
         else if (account === 'HSA') finalCategory = 'HSA';
@@ -78,7 +71,7 @@ export async function POST() {
 
         return {
           id,
-          date,         // YYYY-MM-DD — matches Postgres date column type
+          date,
           merchant,
           account,
           amount: isNaN(rawAmount) ? 0 : rawAmount,
@@ -88,9 +81,8 @@ export async function POST() {
           source: 'google_sheets',
         };
       })
-      .filter(row => row.date !== null); // drop any rows with unparseable dates
+      .filter(row => row.date !== null);
 
-    // 4. Insert in batches of 500
     const BATCH = 500;
     let inserted = 0;
     for (let i = 0; i < toInsert.length; i += BATCH) {
@@ -108,11 +100,60 @@ export async function POST() {
       inserted += batch.length;
     }
 
+    // ── 2. Sync Recurring Bills ──────────────────────────────────────────────
+    const recurringRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Recurring!A2:G`,
+      { headers: { Authorization: `Bearer ${session.accessToken}` } }
+    );
+
+    let billsSynced = 0;
+
+    if (recurringRes.ok) {
+      const recurringData = await recurringRes.json();
+      const recurringRows: string[][] = recurringData.values || [];
+
+      await supabase
+        .from('bills')
+        .delete()
+        .eq('source', 'google_sheets');
+
+      const billsToInsert = recurringRows
+        .filter(row => (row[0] || '').trim())
+        .map((row, index) => {
+          const rawAmount = parseFloat((row[2] || '0').replace(/[$,]/g, ''));
+          const status = (row[6] || 'Upcoming').trim();
+
+          return {
+            id: `sheets-bill-${index + 1}`,
+            name: (row[0] || '').trim(),
+            category: (row[1] || '').trim(),
+            amount: isNaN(rawAmount) ? 0 : rawAmount,
+            due_day: parseInt(row[3] || '0', 10) || null,
+            due_date: (row[4] || '').trim() || null,
+            payment_account: (row[5] || '').trim(),
+            status,
+            user_id: USER_ID,
+            source: 'google_sheets',
+          };
+        });
+
+      if (billsToInsert.length > 0) {
+        const { error: billsInsertError } = await supabase
+          .from('bills')
+          .insert(billsToInsert);
+
+        if (!billsInsertError) {
+          billsSynced = billsToInsert.length;
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       synced: inserted,
+      bills_synced: billsSynced,
       skipped_manual: rows.filter(r => (r[0] || '').startsWith('manual-')).length,
-      message: `Synced ${inserted} transactions from Google Sheets`,
+      message: `Synced ${inserted} transactions and ${billsSynced} bills from Google Sheets`,
     });
 
   } catch (err: any) {
