@@ -26,6 +26,47 @@ function timeAgo(dateStr: string): string {
   return 'Just now';
 }
 
+function ArticleRow({ article }: { article: Article }) {
+  function handleClick() {
+    window.open(article.link, '_blank');
+  }
+  return (
+    <div
+      onClick={handleClick}
+      className="flex items-start gap-3 px-4 py-3 active:bg-[#1a1a1a] cursor-pointer border-b border-[#1a1a1a] last:border-0"
+    >
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-xs font-medium leading-snug line-clamp-3">
+          {article.title}
+        </p>
+        <div className="flex items-center gap-1.5 mt-1.5">
+          <span className="text-[#f0a050] text-[10px] font-semibold uppercase tracking-wide">
+            {article.source}
+          </span>
+          {article.pubDate && (
+            <>
+              <span className="text-[#333] text-[10px]">·</span>
+              <span className="text-[#555] text-[10px]">{timeAgo(article.pubDate)}</span>
+            </>
+          )}
+        </div>
+      </div>
+      {article.image ? (
+        <img
+          src={article.image}
+          alt=""
+          className="w-14 h-14 rounded-xl object-cover shrink-0 bg-[#1a1a1a]"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      ) : (
+        <div className="w-14 h-14 rounded-xl bg-[#1a1a1a] shrink-0 flex items-center justify-center">
+          <Newspaper className="w-5 h-5 text-[#333]" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function NewsCard() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,20 +94,20 @@ export default function NewsCard() {
       try {
         setArticles(JSON.parse(cached));
         setLoading(false);
-      } catch (_) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
     fetchNews();
   }, []);
 
-  const filtered =
-    activeSource === 'All'
-      ? articles
-      : articles.filter((a) => a.source === activeSource);
+  const filtered = activeSource === 'All'
+    ? articles
+    : articles.filter((a) => a.source === activeSource);
 
   return (
     <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
 
-      {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <div className="flex items-center gap-2">
           <Newspaper className="w-4 h-4 text-[#f0a050]" />
@@ -80,7 +121,6 @@ export default function NewsCard() {
         </button>
       </div>
 
-      {/* Source filter tabs */}
       <div className="flex gap-2 px-4 pb-3 overflow-x-auto">
         {SOURCES.map((src) => (
           <button
@@ -97,12 +137,11 @@ export default function NewsCard() {
         ))}
       </div>
 
-      {/* Articles */}
-      <div className="divide-y divide-[#1a1a1a]">
+      <div>
         {loading ? (
           <div>
             {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="px-4 py-3 flex gap-3 animate-pulse">
+              <div key={i} className="px-4 py-3 flex gap-3 animate-pulse border-b border-[#1a1a1a]">
                 <div className="flex-1 space-y-2">
                   <div className="h-3 bg-[#1a1a1a] rounded w-full" />
                   <div className="h-3 bg-[#1a1a1a] rounded w-3/4" />
@@ -119,53 +158,12 @@ export default function NewsCard() {
         ) : (
           <div>
             {filtered.slice(0, 8).map((article, i) => (
-              
-                {filtered.slice(0, 8).map((article, i) => (
-                    <div
-                        key={i}
-                        onClick={() => window.open(article.link, '_blank')}
-                        className="flex items-start gap-3 px-4 py-3 active:bg-[#1a1a1a] cursor-pointer"
-                    >
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-xs font-medium leading-snug line-clamp-3">
-                    {article.title}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <span className="text-[#f0a050] text-[10px] font-semibold uppercase tracking-wide">
-                      {article.source}
-                    </span>
-                    {article.pubDate && (
-                      <>
-                        <span className="text-[#333] text-[10px]">·</span>
-                        <span className="text-[#555] text-[10px]">
-                          {timeAgo(article.pubDate)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {article.image ? (
-                  <img
-                    src={article.image}
-                    alt=""
-                    className="w-14 h-14 rounded-xl object-cover shrink-0 bg-[#1a1a1a]"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-xl bg-[#1a1a1a] shrink-0 flex items-center justify-center">
-                    <Newspaper className="w-5 h-5 text-[#333]" />
-                  </div>
-                )}
-              </div>
+              <ArticleRow key={i} article={article} />
             ))}
           </div>
         )}
       </div>
 
-      {/* Footer */}
       {!loading && filtered.length > 0 && (
         <div className="px-4 py-3 border-t border-[#1a1a1a]">
           <p className="text-[#555] text-[10px] text-center">
