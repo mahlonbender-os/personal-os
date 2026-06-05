@@ -8,7 +8,7 @@ import SwipeTabs from '@/components/SwipeTabs';
 
 interface WeightEntry {
   id: string;
-  date: string;
+  log_date: string; // existing table uses log_date, not date
   weight_lbs: number;
   notes: string | null;
 }
@@ -377,7 +377,7 @@ export default function KnoxPage() {
                     return (
                       <div key={entry.id} className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 flex items-center justify-between">
                         <div>
-                          <p className="text-white font-medium">{formatDate(entry.date)}</p>
+                          <p className="text-white font-medium">{formatDate(entry.log_date)}</p>
                           {entry.notes && <p className="text-[#555] text-xs mt-0.5">{entry.notes}</p>}
                         </div>
                         <div className="flex items-center gap-3">

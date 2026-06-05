@@ -18,7 +18,7 @@ export async function GET() {
     .from('knox_weight_log')
     .select('*')
     .eq('user_id', USER_ID)
-    .order('date', { ascending: false });
+    .order('log_date', { ascending: false }); // column is log_date, not date
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
@@ -42,7 +42,12 @@ export async function POST(req: Request) {
 
   const { data, error } = await supabase
     .from('knox_weight_log')
-    .insert({ user_id: USER_ID, date, weight_lbs: parseFloat(weight_lbs), notes: notes || null })
+    .insert({
+      user_id: USER_ID,
+      log_date: date,        // map incoming "date" to column "log_date"
+      weight_lbs: parseFloat(weight_lbs),
+      notes: notes || null,
+    })
     .select()
     .single();
 
