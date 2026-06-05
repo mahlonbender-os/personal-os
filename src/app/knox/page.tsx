@@ -101,7 +101,7 @@ function VetCard({ visit, onDelete }: { visit: VetVisit; onDelete: (id: string) 
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {visit.cost !== null && (
-            <p className="text-[#888] text-sm font-mono">{fmtCurrency(visit.cost)}</p>
+            <p className="text-[#888] text-sm font-mono">{fmtCurrency(parseFloat(String(visit.cost)))}</p>
           )}
           <button
             onClick={(e) => {
@@ -348,8 +348,8 @@ export default function KnoxPage() {
                   { label: 'Vet visits this year', value: vetVisits.filter((v) => v.date.startsWith('2026')).length },
                   {
                     label: 'Total vet spend',
-                    value: vetVisits.reduce((s, v) => s + (v.cost || 0), 0) > 0
-                      ? fmtCurrency(vetVisits.reduce((s, v) => s + (v.cost || 0), 0))
+                    value: vetVisits.reduce((s, v) => s + (parseFloat(String(v.cost ?? 0)) || 0), 0) > 0
+                      ? fmtCurrency(vetVisits.reduce((s, v) => s + (parseFloat(String(v.cost ?? 0)) || 0), 0))
                       : '—',
                   },
                 ].map(({ label, value }) => (
@@ -373,7 +373,7 @@ export default function KnoxPage() {
                 <div className="space-y-2">
                   {weights.map((entry, i) => {
                     const prev = weights[i + 1];
-                    const change = prev ? entry.weight_lbs - prev.weight_lbs : null;
+                    const change = prev ? parseFloat(String(entry.weight_lbs)) - parseFloat(String(prev.weight_lbs)) : null;
                     return (
                       <div key={entry.id} className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 flex items-center justify-between">
                         <div>
