@@ -276,7 +276,6 @@ function TasksCard() {
   );
 }
 
-<NewsCard />
 
 // ── Knox + Home Row ───────────────────────────────────────────────────────────
 function KnoxHomeRow() {
@@ -372,6 +371,7 @@ export default function CommandCenterCards() {
           <FinanceRow />
           <CalendarCard />
           <TasksCard />
+          <NewsCard />
           <KnoxHomeRow />
           <SpotifyCard />
         </div>
