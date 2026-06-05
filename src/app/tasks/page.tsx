@@ -3,9 +3,10 @@
 import PullToRefresh from '@/components/PullToRefresh';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import EditTaskModal from '@/components/EditTaskModal';
 import {
   ArrowLeft, Plus, Check, Trash2, ChevronDown,
-  X, Clock, Eye, EyeOff, List, CheckSquare
+  X, Clock, Eye, EyeOff, List, CheckSquare, Pencil
 } from 'lucide-react';
 
 interface GoogleTask {
@@ -52,6 +53,7 @@ export default function TasksPage() {
   const [newListTitle, setNewListTitle] = useState('');
   const [selectedTask, setSelectedTask] = useState<GoogleTask | null>(null);
   const [creatingList, setCreatingList] = useState(false);
+  const [editingTask, setEditingTask] = useState<GoogleTask | null>(null);
 
   // Fetch lists on mount
   useEffect(() => {
@@ -363,15 +365,31 @@ if (fetchedLists.length > 0) {
 
       {/* Task Detail Sheet */}
       {selectedTask && activeListId && (
-        <TaskDetailSheet
-          task={selectedTask}
-          listId={activeListId}
-          onClose={() => { setSelectedTask(null); fetchTasks(); }}
-          onDelete={() => deleteTask(selectedTask.id)}
-          onToggleSubtask={(sub) => toggleComplete(sub)}
-          showCompleted={showCompleted}
-        />
-      )}
+  <TaskDetailSheet
+    task={selectedTask}
+    listId={activeListId}
+    onClose={() => { setSelectedTask(null); fetchTasks(); }}
+    onDelete={() => deleteTask(selectedTask.id)}
+    onToggleSubtask={(sub) => toggleComplete(sub)}
+    showCompleted={showCompleted}
+    onEdit={() => { setEditingTask(selectedTask); setSelectedTask(null); }}
+  />
+)}
+
+{editingTask && activeListId && (
+  <EditTaskModal
+    task={editingTask}
+    taskListId={activeListId}
+    onClose={() => setEditingTask(null)}
+    onSaved={(updated) => {
+      setTasks(prev =>
+        prev.map(t => t.id === updated.id ? { ...t, ...updated } : t)
+      );
+      setEditingTask(null);
+      fetchTasks();
+    }}
+  />
+)}
         </div>
       </PullToRefresh>
     </div>
@@ -527,13 +545,14 @@ function AddTaskSheet({ listId, onClose, onSave }: {
 
 // ─── Task Detail Sheet ────────────────────────────────────────────────────────
 
-function TaskDetailSheet({ task, listId, onClose, onDelete, onToggleSubtask, showCompleted }: {
+function TaskDetailSheet({ task, listId, onClose, onDelete, onToggleSubtask, showCompleted, onEdit }: {
   task: GoogleTask;
   listId: string;
   onClose: () => void;
   onDelete: () => void;
   onToggleSubtask: (sub: GoogleTask) => void;
   showCompleted: boolean;
+  onEdit: () => void;
 }) {
   const due = task.due ? formatDue(task.due) : null;
   const sortedSubs = [...(task.subtasks || [])].filter(
@@ -549,13 +568,16 @@ function TaskDetailSheet({ task, listId, onClose, onDelete, onToggleSubtask, sho
           <div className="flex items-start justify-between mb-4">
             <h2 className="text-lg font-semibold flex-1 pr-4">{task.title}</h2>
             <div className="flex gap-2 shrink-0">
-              <button onClick={onDelete} className="p-2 text-muted-foreground hover:text-destructive">
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button onClick={onClose} className="p-2 rounded-full hover:bg-muted">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+  <button onClick={onEdit} className="p-2 text-muted-foreground hover:text-primary">
+    <Pencil className="w-4 h-4" />
+  </button>
+  <button onClick={onDelete} className="p-2 text-muted-foreground hover:text-destructive">
+    <Trash2 className="w-4 h-4" />
+  </button>
+  <button onClick={onClose} className="p-2 rounded-full hover:bg-muted">
+    <X className="w-5 h-5" />
+  </button>
+</div>
           </div>
 
           {/* Details */}
