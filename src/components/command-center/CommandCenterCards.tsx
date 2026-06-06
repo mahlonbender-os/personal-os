@@ -279,9 +279,49 @@ function TasksCard() {
 
 // ── Knox + Home Row ───────────────────────────────────────────────────────────
 function KnoxHomeRow() {
+  const [knox, setKnox] = useState<any>(null);
+
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem('cc_knox_v1');
+      if (c) setKnox(JSON.parse(c));
+    } catch {}
+    fetch('/api/knox/summary')
+      .then(r => r.json())
+      .then(d => {
+        setKnox(d);
+        try { localStorage.setItem('cc_knox_v1', JSON.stringify(d)); } catch {}
+      })
+      .catch(() => {});
+  }, []);
+
+  function knoxDayColor(dateStr: string) {
+    const days = Math.ceil((new Date(dateStr + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+    if (days < 0) return '#ef4444';
+    if (days <= 7) return '#f0a050';
+    return '#22c55e';
+  }
+
+  function fmtShortDate(dateStr: string) {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  function fmtTime(t: string) {
+    const [h, m] = t.split(':');
+    const hr = parseInt(h);
+    return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`;
+  }
+
+  const nextVet = knox?.nextVet;
+  const latestWeight = knox?.latestWeight;
+  const nextMed = knox?.medications?.[0];
+
   return (
     <div className="grid grid-cols-2 gap-3">
-      <a href="/more" className="block rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity">
+      <div
+        onClick={() => { window.location.href = '/knox'; }}
+        className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer"
+      >
         <div className="flex items-center gap-2 mb-2">
           <span className="text-base">🐺</span>
           <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Knox</span>
@@ -289,14 +329,34 @@ function KnoxHomeRow() {
         <div className="text-[12px] font-bold text-[#ccc]">Siberian Husky</div>
         <div className="text-[10px] text-[#555] mb-2">{getKnoxAge()}</div>
         <div className="space-y-1">
-          {['Next Vet', 'Meds Due', 'Weight'].map(k => (
-            <div key={k} className="flex justify-between">
-              <span className="text-[9px] text-[#444]">{k}</span>
+          <div className="flex justify-between items-center">
+            <span className="text-[9px] text-[#444]">Weight</span>
+            <span className="text-[9px] font-mono text-[#888]">
+              {latestWeight ? `${latestWeight.weight_lbs} lbs` : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[9px] text-[#444]">Next Vet</span>
+            {nextVet?.next_visit_date ? (
+              <span className="text-[9px] font-mono" style={{ color: knoxDayColor(nextVet.next_visit_date) }}>
+                {fmtShortDate(nextVet.next_visit_date)}{nextVet.next_visit_time ? ` · ${fmtTime(nextVet.next_visit_time)}` : ''}
+              </span>
+            ) : (
               <span className="text-[9px] text-[#2a2a2a]">—</span>
-            </div>
-          ))}
+            )}
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[9px] text-[#444]">Meds Due</span>
+            {nextMed?.next_due_date ? (
+              <span className="text-[9px] font-mono" style={{ color: knoxDayColor(nextMed.next_due_date) }}>
+                {fmtShortDate(nextMed.next_due_date)}
+              </span>
+            ) : (
+              <span className="text-[9px] text-[#2a2a2a]">—</span>
+            )}
+          </div>
         </div>
-      </a>
+      </div>
       <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3">
         <div className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Home</div>
         <div className="space-y-2">
@@ -348,7 +408,7 @@ export default function CommandCenterCards() {
   const handleRefresh = useCallback(async () => {
     await fetch('/api/sync/sheets', { method: 'POST' });
     try {
-      ['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1']
+      ['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v1']
         .forEach(k => localStorage.removeItem(k));
     } catch {}
     window.location.reload();
