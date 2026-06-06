@@ -1251,7 +1251,7 @@ export default function VehiclePage() {
 
         {/* Edit Fill-Up Modal */}
         {editingFuel && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
             <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
               <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
                 <p className="text-white font-semibold text-lg">Edit Fill-Up</p>
@@ -1303,7 +1303,7 @@ export default function VehiclePage() {
 
         {/* Edit Service Modal */}
         {editingMaint && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
             <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
               <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
                 <p className="text-white font-semibold text-lg">Edit Service Record</p>
