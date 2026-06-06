@@ -78,7 +78,10 @@ function PlacesInput({
       try {
         const res = await fetch(`/api/places?input=${encodeURIComponent(v)}`);
         const data = await res.json();
-        const preds: Array<{ place_id: string; description: string }> = data.predictions || [];
+        const preds = (data.predictions || []).map((p: { placeId?: string; place_id?: string; description: string }) => ({
+          place_id: p.placeId || p.place_id || '',
+          description: p.description,
+        }));
         setSuggestions(preds);
         setShowDrop(preds.length > 0);
       } catch { /* ignore */ }
