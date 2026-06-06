@@ -6,7 +6,7 @@ interface Task {
   id: string;
   title: string;
   notes?: string;
-  due?: string; // ISO string
+  due?: string;
   status: string;
 }
 
@@ -21,12 +21,11 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
   const [title, setTitle] = useState(task.title || '');
   const [notes, setNotes] = useState(task.notes || '');
   const [due, setDue] = useState(
-    task.due ? task.due.split('T')[0] : '' // convert ISO to YYYY-MM-DD for input
+    task.due ? task.due.split('T')[0] : ''
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Close on backdrop tap
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onClose();
   }
@@ -40,18 +39,16 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
     setError('');
 
     try {
-       const body: Record<string, string> = {
-  listId: taskListId,
-  taskId: task.id,
+      const body: Record<string, string> = {
+        listId: taskListId,
+        taskId: task.id,
         title: title.trim(),
         notes: notes.trim(),
       };
 
-      // Convert YYYY-MM-DD back to ISO string Google Tasks expects
       if (due) {
         body.due = `${due}T00:00:00.000Z`;
       } else {
-        // Passing empty string clears the due date
         body.due = '';
       }
 
@@ -77,7 +74,6 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
     }
   }
 
-  // Trap keyboard close on mobile
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -122,7 +118,6 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="Task title"
-              autoFocus
               className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-sm placeholder-[#555] focus:outline-none focus:border-[#f0a050]"
             />
           </div>
