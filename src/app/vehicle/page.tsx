@@ -188,6 +188,17 @@ export default function VehiclePage() {
   const [deletingMaint, setDeletingMaint] = useState<string | null>(null);
   const [expandedMaint, setExpandedMaint] = useState<Set<string>>(new Set());
 
+  // Edit fuel modal
+  const [editingFuel, setEditingFuel] = useState<FuelLog | null>(null);
+  const [editFuelForm, setEditFuelForm] = useState({ date: '', gallons: '', price_per_gallon: '', total_cost: '', odometer: '', station: '', notes: '' });
+  const [editFuelAutoCalc, setEditFuelAutoCalc] = useState(false);
+  const [editFuelLoading, setEditFuelLoading] = useState(false);
+
+  // Edit maintenance modal
+  const [editingMaint, setEditingMaint] = useState<MaintenanceLog | null>(null);
+  const [editMaintForm, setEditMaintForm] = useState({ date: '', service_type: 'Oil Change', mileage: '', cost: '', shop: '', notes: '' });
+  const [editMaintLoading, setEditMaintLoading] = useState(false);
+
   // Screenshot import
   const [showImport, setShowImport] = useState(false);
   const [importType, setImportType] = useState<'fuel' | 'maintenance'>('fuel');
@@ -384,6 +395,87 @@ export default function VehiclePage() {
       await fetchAll();
     } catch { /* ignore */ }
     setDeletingMaint(null);
+  }
+
+  function openEditFuel(log: FuelLog) {
+    setEditingFuel(log);
+    setEditFuelForm({
+      date: log.date || '',
+      gallons: log.gallons != null ? String(log.gallons) : '',
+      price_per_gallon: log.price_per_gallon != null ? String(log.price_per_gallon) : '',
+      total_cost: log.total_cost != null ? String(log.total_cost) : '',
+      odometer: log.odometer != null ? String(log.odometer) : '',
+      station: log.station || '',
+      notes: log.notes || '',
+    });
+    setEditFuelAutoCalc(false);
+  }
+
+  function handleEditFuelInput(field: string, val: string) {
+    const updated = { ...editFuelForm, [field]: val };
+    if (editFuelAutoCalc && (field === 'gallons' || field === 'price_per_gallon')) {
+      const g = parseFloat(field === 'gallons' ? val : editFuelForm.gallons);
+      const p = parseFloat(field === 'price_per_gallon' ? val : editFuelForm.price_per_gallon);
+      if (!isNaN(g) && !isNaN(p)) updated.total_cost = (g * p).toFixed(2);
+    }
+    setEditFuelForm(updated);
+  }
+
+  async function saveEditFuel() {
+    if (!editingFuel) return;
+    setEditFuelLoading(true);
+    try {
+      await fetch(`/api/vehicle/fuel?id=${editingFuel.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: editFuelForm.date,
+          gallons: parseFloat(editFuelForm.gallons) || null,
+          price_per_gallon: parseFloat(editFuelForm.price_per_gallon) || null,
+          total_cost: parseFloat(editFuelForm.total_cost) || null,
+          odometer: parseInt(editFuelForm.odometer) || null,
+          station: editFuelForm.station || null,
+          notes: editFuelForm.notes || null,
+        }),
+      });
+      await fetchAll();
+      setEditingFuel(null);
+    } catch { /* ignore */ }
+    setEditFuelLoading(false);
+  }
+
+  function openEditMaint(m: MaintenanceLog) {
+    setEditingMaint(m);
+    setEditMaintForm({
+      date: m.date || '',
+      service_type: m.service_type || 'Oil Change',
+      mileage: m.mileage != null ? String(m.mileage) : '',
+      cost: m.cost != null ? String(m.cost) : '',
+      shop: m.shop || '',
+      notes: m.notes || '',
+    });
+  }
+
+  async function saveEditMaint() {
+    if (!editingMaint) return;
+    setEditMaintLoading(true);
+    try {
+      await fetch(`/api/vehicle/maintenance?id=${editingMaint.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: editMaintForm.date,
+          service_type: editMaintForm.service_type,
+          mileage: parseInt(editMaintForm.mileage) || null,
+          cost: parseFloat(editMaintForm.cost) || null,
+          shop: editMaintForm.shop || null,
+          notes: editMaintForm.notes || null,
+        }),
+      });
+      await fetchAll();
+      setEditingMaint(null);
+    } catch { /* ignore */ }
+    setEditMaintLoading(false);
   }
 
   function openImport(type: 'fuel' | 'maintenance') {
@@ -713,11 +805,19 @@ export default function VehiclePage() {
                         </div>
                       ) : null}
                     </div>
-                    <button onClick={() => setDeletingFuel(log.id)} className="text-[#333] ml-2 shrink-0 active:text-[#ef4444]">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                        <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-2 ml-2 shrink-0">
+                      <button onClick={() => openEditFuel(log)} className="text-[#555] active:text-[#f0a050]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button onClick={() => setDeletingFuel(log.id)} className="text-[#333] active:text-[#ef4444]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -791,9 +891,14 @@ export default function VehiclePage() {
                           </div>
                         ) : null}
                         {m.notes ? <p className="text-[#555] text-sm">{m.notes}</p> : null}
-                        <button onClick={() => setDeletingMaint(m.id)} className="text-[#ef4444] text-sm font-medium">
-                          Delete record
-                        </button>
+                        <div className="flex items-center gap-4 pt-1">
+                          <button onClick={() => openEditMaint(m)} className="text-[#f0a050] text-sm font-medium">
+                            Edit record
+                          </button>
+                          <button onClick={() => setDeletingMaint(m.id)} className="text-[#ef4444] text-sm font-medium">
+                            Delete record
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -804,7 +909,7 @@ export default function VehiclePage() {
         )}
 
         {/* ═══════════════════ FIXED FABs ═══════════════════ */}
-        {activeTab === 1 && !showFuelModal && !showImport && !deletingFuel && (
+        {activeTab === 1 && !showFuelModal && !showImport && !deletingFuel && !editingFuel && (
           <button
             onClick={openFuelModal}
             className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center"
@@ -815,7 +920,7 @@ export default function VehiclePage() {
             </svg>
           </button>
         )}
-        {activeTab === 2 && !showMaintModal && !showImport && !deletingMaint && (
+        {activeTab === 2 && !showMaintModal && !showImport && !deletingMaint && !editingMaint && (
           <button
             onClick={openMaintModal}
             className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center"
@@ -1136,6 +1241,101 @@ export default function VehiclePage() {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Fill-Up Modal */}
+        {editingFuel && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
+              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+                <p className="text-white font-semibold text-lg">Edit Fill-Up</p>
+                <button onClick={() => setEditingFuel(null)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
+              </div>
+              <div className="px-5 pt-4 space-y-3">
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Date</label>
+                  <input type="date" value={editFuelForm.date} onChange={(e) => setEditFuelForm(f => ({ ...f, date: e.target.value }))} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Gallons</label>
+                  <input type="number" step="0.001" value={editFuelForm.gallons} onChange={(e) => handleEditFuelInput('gallons', e.target.value)} placeholder="12.543" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Price per Gallon</label>
+                  <input type="number" step="0.001" value={editFuelForm.price_per_gallon} onChange={(e) => handleEditFuelInput('price_per_gallon', e.target.value)} placeholder="3.459" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[#888] text-xs">Total Cost</label>
+                    <button onClick={() => {
+                      const g = parseFloat(editFuelForm.gallons), p = parseFloat(editFuelForm.price_per_gallon);
+                      if (!isNaN(g) && !isNaN(p)) setEditFuelForm(f => ({ ...f, total_cost: (g * p).toFixed(2) }));
+                      setEditFuelAutoCalc(true);
+                    }} className="text-[#f0a050] text-xs">Recalculate from gal × price</button>
+                  </div>
+                  <input type="number" step="0.01" value={editFuelForm.total_cost} onChange={(e) => { setEditFuelForm(f => ({ ...f, total_cost: e.target.value })); setEditFuelAutoCalc(false); }} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Odometer (mi)</label>
+                  <input type="number" value={editFuelForm.odometer} onChange={(e) => setEditFuelForm(f => ({ ...f, odometer: e.target.value }))} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Station</label>
+                  <PlacesInput value={editFuelForm.station} onChange={(v) => setEditFuelForm(f => ({ ...f, station: v }))} placeholder="Search gas stations..." />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Notes</label>
+                  <input type="text" value={editFuelForm.notes} onChange={(e) => setEditFuelForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <button onClick={saveEditFuel} disabled={editFuelLoading} className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3 mt-2 disabled:opacity-50">
+                  {editFuelLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Service Modal */}
+        {editingMaint && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
+              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+                <p className="text-white font-semibold text-lg">Edit Service Record</p>
+                <button onClick={() => setEditingMaint(null)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
+              </div>
+              <div className="px-5 pt-4 space-y-3">
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Date</label>
+                  <input type="date" value={editMaintForm.date} onChange={(e) => setEditMaintForm(f => ({ ...f, date: e.target.value }))} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Service Type</label>
+                  <select value={editMaintForm.service_type} onChange={(e) => setEditMaintForm(f => ({ ...f, service_type: e.target.value }))} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]">
+                    {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Mileage</label>
+                  <input type="number" value={editMaintForm.mileage} onChange={(e) => setEditMaintForm(f => ({ ...f, mileage: e.target.value }))} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Cost</label>
+                  <input type="number" step="0.01" value={editMaintForm.cost} onChange={(e) => setEditMaintForm(f => ({ ...f, cost: e.target.value }))} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Shop</label>
+                  <PlacesInput value={editMaintForm.shop} onChange={(v) => setEditMaintForm(f => ({ ...f, shop: v }))} placeholder="Search auto shops..." />
+                </div>
+                <div>
+                  <label className="text-[#888] text-xs mb-1 block">Notes</label>
+                  <input type="text" value={editMaintForm.notes} onChange={(e) => setEditMaintForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
+                </div>
+                <button onClick={saveEditMaint} disabled={editMaintLoading} className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3 mt-2 disabled:opacity-50">
+                  {editMaintLoading ? 'Saving...' : 'Save Changes'}
+                </button>
               </div>
             </div>
           </div>
