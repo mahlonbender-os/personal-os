@@ -7,22 +7,17 @@ import SwipeTabs from '@/components/SwipeTabs';
 const TABS = ['Overview', 'Maintenance', 'Mileage', 'Fuel'];
 
 const SERVICE_TYPES = [
-  'Oil Change',
-  'Tire Rotation',
-  'Tire Replacement',
-  'Brake Service',
-  'Air Filter',
-  'Cabin Filter',
-  'Battery Replacement',
-  'Transmission Service',
-  'Coolant Flush',
-  'Inspection',
-  'Registration / Tags',
-  'Wiper Blades',
-  'Detailing',
-  'Alignment',
-  'Spark Plugs',
-  'Other',
+  'Oil Change', 'Tire Rotation', 'Tire Replacement', 'Brake Service',
+  'Air Filter', 'Cabin Filter', 'Battery Replacement', 'Transmission Service',
+  'Coolant Flush', 'Inspection', 'Registration / Tags', 'Wiper Blades',
+  'Detailing', 'Alignment', 'Spark Plugs', 'Other',
+];
+
+const OIL_INTERVALS = [
+  { label: '3,000 mi (conventional)', value: 3000 },
+  { label: '5,000 mi (semi-synthetic)', value: 5000 },
+  { label: '7,500 mi (full synthetic)', value: 7500 },
+  { label: '10,000 mi (full synthetic+)', value: 10000 },
 ];
 
 type VehicleInfo = {
@@ -36,6 +31,9 @@ type VehicleInfo = {
   license_plate?: string;
   purchase_date?: string;
   purchase_price?: number;
+  oil_change_interval?: number;
+  registration_expires?: string;
+  inspection_expires?: string;
 };
 
 type MaintenanceRecord = {
@@ -71,12 +69,36 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function formatDateShort(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
 function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-// fuel is sorted date DESC, so index 0 = most recent
-// MPG = miles since last fill-up / gallons this fill-up
+function daysUntil(dateStr: string): number {
+  const d = new Date(dateStr + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function renewalColor(days: number): string {
+  if (days < 0) return '#ef4444';
+  if (days <= 30) return '#ef4444';
+  if (days <= 60) return '#f0a050';
+  return '#22c55e';
+}
+
+function renewalLabel(days: number): string {
+  if (days < 0) return `Overdue by ${Math.abs(days)}d`;
+  if (days === 0) return 'Expires today';
+  if (days <= 60) return `${days} days left`;
+  return 'Valid';
+}
+
 function calcMPG(fuel: FuelRecord[], index: number): number | null {
   const current = fuel[index];
   const prev = fuel[index + 1];
@@ -94,7 +116,6 @@ export default function VehiclePage() {
   const [fuel, setFuel] = useState<FuelRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal visibility
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [showMaintModal, setShowMaintModal] = useState(false);
   const [showMileageModal, setShowMileageModal] = useState(false);
@@ -104,7 +125,6 @@ export default function VehiclePage() {
   const [showDeleteFuel, setShowDeleteFuel] = useState<string | null>(null);
   const [expandedMaint, setExpandedMaint] = useState<string | null>(null);
 
-  // Form states
   const [vehicleForm, setVehicleForm] = useState<VehicleInfo>({});
   const [maintForm, setMaintForm] = useState({
     date: todayStr(), service_type: 'Oil Change', mileage: '', cost: '', shop: '', notes: '',
@@ -116,10 +136,9 @@ export default function VehiclePage() {
     date: todayStr(), gallons: '', price_per_gallon: '', total_cost: '', odometer: '', station: '', notes: '',
   });
   const [totalManual, setTotalManual] = useState(false);
-
   const [saving, setSaving] = useState(false);
 
-  // Auto-calculate total cost from gallons × price (unless user typed total manually)
+  // Auto-calculate fuel total cost
   useEffect(() => {
     if (totalManual) return;
     const g = parseFloat(fuelForm.gallons);
@@ -152,7 +171,6 @@ export default function VehiclePage() {
         fetch('/api/vehicle/mileage'),
         fetch('/api/vehicle/fuel'),
       ]);
-
       const info = await infoRes.json();
       const maint = await maintRes.json();
       const mile = await mileRes.json();
@@ -283,25 +301,59 @@ export default function VehiclePage() {
     } catch {}
   }
 
-  // Derived values
+  // ── Derived values ──
+  const thisYear = new Date().getFullYear();
   const lastOilChange = maintenance.find(m => m.service_type === 'Oil Change');
   const latestMileage = mileage[0];
-  const thisYear = new Date().getFullYear();
-  const yearMaint = maintenance.filter(m => m.date.startsWith(thisYear.toString()));
-  const yearMaintCost = yearMaint.reduce((sum, m) => sum + (m.cost || 0), 0);
-  const yearFuel = fuel.filter(f => f.date.startsWith(thisYear.toString()));
-  const yearFuelCost = yearFuel.reduce((sum, f) => sum + (f.total_cost || 0), 0);
 
+  // Next oil change
+  const interval = vehicleInfo?.oil_change_interval ?? 5000;
+  const nextOilChangeMiles = lastOilChange?.mileage ? lastOilChange.mileage + interval : null;
+  const milesUntilOilChange = nextOilChangeMiles && latestMileage
+    ? nextOilChangeMiles - latestMileage.odometer
+    : null;
+
+  // Cost per mile (this year)
+  const yearMaint = maintenance.filter(m => m.date.startsWith(thisYear.toString()));
+  const yearMaintCost = yearMaint.reduce((s, m) => s + (m.cost || 0), 0);
+  const yearFuel = fuel.filter(f => f.date.startsWith(thisYear.toString()));
+  const yearFuelCost = yearFuel.reduce((s, f) => s + (f.total_cost || 0), 0);
+  const totalYearSpend = yearMaintCost + yearFuelCost;
+
+  const thisYearMileage = mileage.filter(m => m.date.startsWith(thisYear.toString()));
+  const latestThisYear = thisYearMileage[0];
+  const earliestThisYear = thisYearMileage[thisYearMileage.length - 1];
+  const yearMilesDriven =
+    latestThisYear && earliestThisYear && latestThisYear.id !== earliestThisYear.id
+      ? latestThisYear.odometer - earliestThisYear.odometer
+      : null;
+  const costPerMile =
+    yearMilesDriven && yearMilesDriven > 0 && totalYearSpend > 0
+      ? totalYearSpend / yearMilesDriven
+      : null;
+
+  // Fuel economy
   const allMPGs = fuel.map((_, i) => calcMPG(fuel, i)).filter((m): m is number => m !== null);
   const avgMPG = allMPGs.length > 0
     ? Math.round((allMPGs.reduce((s, m) => s + m, 0) / allMPGs.length) * 10) / 10
     : null;
 
+  // Renewals
+  const regDays = vehicleInfo?.registration_expires ? daysUntil(vehicleInfo.registration_expires) : null;
+  const inspecDays = vehicleInfo?.inspection_expires ? daysUntil(vehicleInfo.inspection_expires) : null;
+  const hasRenewals = regDays !== null || inspecDays !== null;
+
   const vehicleName = vehicleInfo?.year && vehicleInfo?.make && vehicleInfo?.model
     ? `${vehicleInfo.year} ${vehicleInfo.make} ${vehicleInfo.model}`
     : null;
 
-  const fuelCanSave = fuelForm.date && fuelForm.gallons && fuelForm.price_per_gallon && fuelForm.total_cost;
+  // Oil change status color
+  function oilChangeColor(): string {
+    if (milesUntilOilChange === null) return '#555';
+    if (milesUntilOilChange <= 0) return '#ef4444';
+    if (milesUntilOilChange <= 500) return '#f0a050';
+    return '#22c55e';
+  }
 
   return (
     <PullToRefresh onRefresh={fetchAll}>
@@ -312,9 +364,7 @@ export default function VehiclePage() {
           <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
             Vehicle
           </h1>
-          <p className="text-[#555] text-sm mt-0.5">
-            {vehicleName || 'Set up your vehicle'}
-          </p>
+          <p className="text-[#555] text-sm mt-0.5">{vehicleName || 'Set up your vehicle'}</p>
         </div>
 
         <SwipeTabs tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab}>
@@ -331,10 +381,8 @@ export default function VehiclePage() {
                     {vehicleName ? (
                       <>
                         <p className="text-white text-xl font-bold leading-tight">{vehicleName}</p>
-                        {vehicleInfo?.trim_level && (
-                          <p className="text-[#888] text-sm">{vehicleInfo.trim_level}</p>
-                        )}
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2">
+                        {vehicleInfo?.trim_level && <p className="text-[#888] text-sm">{vehicleInfo.trim_level}</p>}
+                        <div className="flex flex-wrap gap-x-3 mt-2">
                           {vehicleInfo?.color && <span className="text-[#ccc] text-sm">{vehicleInfo.color}</span>}
                           {vehicleInfo?.license_plate && (
                             <span className="text-[#ccc] text-sm font-mono tracking-wide">{vehicleInfo.license_plate}</span>
@@ -345,7 +393,7 @@ export default function VehiclePage() {
                         )}
                       </>
                     ) : (
-                      <p className="text-[#555] text-sm mt-1">Tap Set Up to add your vehicle details</p>
+                      <p className="text-[#555] text-sm mt-1">Tap Set Up to add your vehicle</p>
                     )}
                   </div>
                   <button
@@ -357,8 +405,10 @@ export default function VehiclePage() {
                 </div>
               </div>
 
-              {/* Quick stats — 2×2 grid */}
+              {/* Stats grid — 2×2 */}
               <div className="grid grid-cols-2 gap-3">
+
+                {/* Current mileage */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Current Mileage</p>
                   <p className="text-white text-2xl font-mono font-bold">
@@ -366,27 +416,41 @@ export default function VehiclePage() {
                   </p>
                   {latestMileage && <p className="text-[#555] text-xs mt-0.5">{formatDate(latestMileage.date)}</p>}
                 </div>
+
+                {/* Next oil change */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Last Oil Change</p>
-                  {lastOilChange ? (
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Next Oil Change</p>
+                  {nextOilChangeMiles ? (
                     <>
                       <p className="text-white text-2xl font-mono font-bold">
-                        {lastOilChange.mileage ? lastOilChange.mileage.toLocaleString() : '—'}
-                        <span className="text-base font-normal text-[#555]"> mi</span>
+                        {nextOilChangeMiles.toLocaleString()}
+                        <span className="text-[#555] text-sm font-normal"> mi</span>
                       </p>
-                      <p className="text-[#555] text-xs mt-0.5">{formatDate(lastOilChange.date)}</p>
+                      {milesUntilOilChange !== null && (
+                        <p className="text-xs mt-0.5 font-medium" style={{ color: oilChangeColor() }}>
+                          {milesUntilOilChange <= 0
+                            ? `Overdue by ${Math.abs(milesUntilOilChange).toLocaleString()} mi`
+                            : `${milesUntilOilChange.toLocaleString()} mi away`}
+                        </p>
+                      )}
                     </>
+                  ) : lastOilChange && !vehicleInfo?.oil_change_interval ? (
+                    <p className="text-[#555] text-sm mt-1">Set interval in Edit</p>
+                  ) : !lastOilChange ? (
+                    <p className="text-[#555] text-sm mt-1">Log an oil change</p>
                   ) : (
-                    <p className="text-[#555] text-sm mt-1">None logged</p>
+                    <p className="text-[#555] text-sm mt-1">No data yet</p>
                   )}
                 </div>
+
+                {/* Avg MPG */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Avg Fuel Economy</p>
                   {avgMPG !== null ? (
                     <>
                       <p className="text-white text-2xl font-mono font-bold">
                         {avgMPG}
-                        <span className="text-base font-normal text-[#555]"> mpg</span>
+                        <span className="text-[#555] text-sm font-normal"> mpg</span>
                       </p>
                       <p className="text-[#555] text-xs mt-0.5">lifetime average</p>
                     </>
@@ -394,20 +458,65 @@ export default function VehiclePage() {
                     <p className="text-[#555] text-sm mt-1">Log 2+ fill-ups</p>
                   )}
                 </div>
+
+                {/* Cost per mile */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">{thisYear} Fuel Spend</p>
-                  {yearFuelCost > 0 ? (
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">{thisYear} Cost / Mile</p>
+                  {costPerMile !== null ? (
                     <>
                       <p className="text-[#ef4444] text-2xl font-mono font-bold">
-                        ${yearFuelCost.toFixed(2)}
+                        ${costPerMile.toFixed(2)}
+                        <span className="text-[#555] text-sm font-normal">/mi</span>
                       </p>
-                      <p className="text-[#555] text-xs mt-0.5">{yearFuel.length} fill-ups</p>
+                      <p className="text-[#555] text-xs mt-0.5">
+                        ${totalYearSpend.toFixed(0)} over {yearMilesDriven?.toLocaleString()} mi
+                      </p>
                     </>
                   ) : (
-                    <p className="text-[#555] text-sm mt-1">No data yet</p>
+                    <p className="text-[#555] text-sm mt-1">
+                      {totalYearSpend > 0 ? 'Log 2+ odometer readings' : 'No spend logged'}
+                    </p>
                   )}
                 </div>
+
               </div>
+
+              {/* Renewals card — only shown if dates are configured */}
+              {hasRenewals && (
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                  <p className="text-[#555] text-xs font-semibold uppercase tracking-wider px-4 pt-3.5 pb-2">
+                    Renewals
+                  </p>
+                  {regDays !== null && (
+                    <div className={`px-4 py-3 flex items-center justify-between ${inspecDays !== null ? 'border-b border-[#1a1a1a]' : ''}`}>
+                      <div>
+                        <p className="text-white text-sm font-medium">Registration</p>
+                        <p className="text-[#555] text-xs">Expires {formatDateShort(vehicleInfo!.registration_expires!)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-semibold" style={{ color: renewalColor(regDays) }}>
+                          {renewalLabel(regDays)}
+                        </p>
+                        <div className="w-2 h-2 rounded-full ml-auto mt-1" style={{ backgroundColor: renewalColor(regDays) }} />
+                      </div>
+                    </div>
+                  )}
+                  {inspecDays !== null && (
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-white text-sm font-medium">Inspection</p>
+                        <p className="text-[#555] text-xs">Expires {formatDateShort(vehicleInfo!.inspection_expires!)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-semibold" style={{ color: renewalColor(inspecDays) }}>
+                          {renewalLabel(inspecDays)}
+                        </p>
+                        <div className="w-2 h-2 rounded-full ml-auto mt-1" style={{ backgroundColor: renewalColor(inspecDays) }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Recent services */}
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
@@ -467,13 +576,12 @@ export default function VehiclePage() {
                     )}
                     <div className="border-t border-[#1a1a1a] pt-2 flex justify-between">
                       <span className="text-white text-sm font-medium">Total</span>
-                      <span className="text-[#ef4444] text-sm font-mono font-bold">
-                        ${(yearMaintCost + yearFuelCost).toFixed(2)}
-                      </span>
+                      <span className="text-[#ef4444] text-sm font-mono font-bold">${totalYearSpend.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
               )}
+
             </div>
           )}
 
@@ -500,16 +608,14 @@ export default function VehiclePage() {
                       <div className="text-left">
                         <p className="text-white font-medium">{m.service_type}</p>
                         <p className="text-[#555] text-xs mt-0.5">
-                          {formatDate(m.date)}
-                          {m.mileage ? ` · ${m.mileage.toLocaleString()} mi` : ''}
+                          {formatDate(m.date)}{m.mileage ? ` · ${m.mileage.toLocaleString()} mi` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
-                        {m.cost != null ? (
-                          m.cost > 0
-                            ? <p className="text-[#ccc] font-mono text-sm">${m.cost.toFixed(2)}</p>
-                            : <p className="text-[#555] font-mono text-sm">Free</p>
-                        ) : null}
+                        {m.cost != null && (m.cost > 0
+                          ? <p className="text-[#ccc] font-mono text-sm">${m.cost.toFixed(2)}</p>
+                          : <p className="text-[#555] font-mono text-sm">Free</p>
+                        )}
                         <svg className={`w-4 h-4 text-[#333] transition-transform duration-200 ${expandedMaint === m.id ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
@@ -520,9 +626,7 @@ export default function VehiclePage() {
                         {m.shop && <p className="text-[#ccc] text-sm">📍 {m.shop}</p>}
                         {m.notes && <p className="text-[#888] text-sm">{m.notes}</p>}
                         {!m.shop && !m.notes && <p className="text-[#333] text-sm">No additional details</p>}
-                        <button onClick={() => setShowDeleteMaint(m.id)} className="text-[#ef4444] text-sm mt-1">
-                          Delete record
-                        </button>
+                        <button onClick={() => setShowDeleteMaint(m.id)} className="text-[#ef4444] text-sm mt-1">Delete record</button>
                       </div>
                     )}
                   </div>
@@ -558,16 +662,11 @@ export default function VehiclePage() {
                           </p>
                           <p className="text-[#555] text-sm">{formatDate(m.date)}</p>
                           {diff !== null && diff > 0 && (
-                            <p className="text-[#22c55e] text-xs mt-0.5">+{diff.toLocaleString()} mi since previous entry</p>
+                            <p className="text-[#22c55e] text-xs mt-0.5">+{diff.toLocaleString()} mi since previous</p>
                           )}
                           {m.notes && <p className="text-[#888] text-xs mt-1">{m.notes}</p>}
                         </div>
-                        <button
-                          onClick={() => setShowDeleteMileage(m.id)}
-                          className="text-[#333] text-sm ml-3 mt-0.5 hover:text-[#ef4444] transition-colors"
-                        >
-                          ✕
-                        </button>
+                        <button onClick={() => setShowDeleteMileage(m.id)} className="text-[#333] text-sm ml-3">✕</button>
                       </div>
                     </div>
                   );
@@ -579,7 +678,6 @@ export default function VehiclePage() {
           {/* ── FUEL TAB ── */}
           {activeTab === 3 && (
             <div className="px-4 pt-2 space-y-3">
-              {/* Summary bar */}
               {fuel.length >= 2 && (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <div className="flex justify-between items-center">
@@ -592,14 +690,11 @@ export default function VehiclePage() {
                     </div>
                     <div className="text-right">
                       <p className="text-[#555] text-xs uppercase tracking-wide">{thisYear} Fuel Cost</p>
-                      <p className="text-[#ef4444] text-2xl font-mono font-bold mt-0.5">
-                        ${yearFuelCost.toFixed(2)}
-                      </p>
+                      <p className="text-[#ef4444] text-2xl font-mono font-bold mt-0.5">${yearFuelCost.toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
               )}
-
               {loading && fuel.length === 0 ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => <div key={i} className="bg-[#111] border border-[#1a1a1a] rounded-2xl h-24 animate-pulse" />)}
@@ -617,39 +712,23 @@ export default function VehiclePage() {
                     <div key={f.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          {/* Top row: date + total cost */}
                           <div className="flex items-center justify-between mb-1.5">
                             <p className="text-[#555] text-sm">{formatDate(f.date)}</p>
                             <p className="text-[#ef4444] text-base font-mono font-bold">${f.total_cost.toFixed(2)}</p>
                           </div>
-                          {/* Gallons and price */}
                           <p className="text-white font-medium">
                             {Number(f.gallons).toFixed(3)} gal
                             <span className="text-[#555] font-normal"> @ </span>
                             ${Number(f.price_per_gallon).toFixed(3)}/gal
                           </p>
-                          {/* Odometer + MPG */}
                           <div className="flex gap-3 mt-1">
-                            {f.odometer && (
-                              <span className="text-[#555] text-xs">{f.odometer.toLocaleString()} mi</span>
-                            )}
-                            {mpg !== null && (
-                              <span className="text-[#22c55e] text-xs font-mono font-semibold">{mpg} mpg</span>
-                            )}
-                            {mpg === null && f.odometer && i === fuel.length - 1 && (
-                              <span className="text-[#333] text-xs">log another fill-up to calc mpg</span>
-                            )}
+                            {f.odometer && <span className="text-[#555] text-xs">{f.odometer.toLocaleString()} mi</span>}
+                            {mpg !== null && <span className="text-[#22c55e] text-xs font-mono font-semibold">{mpg} mpg</span>}
                           </div>
-                          {/* Station */}
                           {f.station && <p className="text-[#555] text-xs mt-0.5">📍 {f.station}</p>}
                           {f.notes && <p className="text-[#888] text-xs mt-0.5">{f.notes}</p>}
                         </div>
-                        <button
-                          onClick={() => setShowDeleteFuel(f.id)}
-                          className="text-[#333] text-sm ml-3 mt-0.5 hover:text-[#ef4444] transition-colors"
-                        >
-                          ✕
-                        </button>
+                        <button onClick={() => setShowDeleteFuel(f.id)} className="text-[#333] text-sm ml-3">✕</button>
                       </div>
                     </div>
                   );
@@ -701,6 +780,7 @@ export default function VehiclePage() {
                 <button onClick={() => setShowVehicleModal(false)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
               </div>
               <div className="px-5 pt-4 space-y-4">
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Year</label>
@@ -711,6 +791,7 @@ export default function VehiclePage() {
                     <input type="text" value={vehicleForm.make || ''} onChange={e => setVehicleForm(f => ({ ...f, make: e.target.value }))} placeholder="Honda" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]" />
                   </div>
                 </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Model</label>
@@ -721,6 +802,7 @@ export default function VehiclePage() {
                     <input type="text" value={vehicleForm.trim_level || ''} onChange={e => setVehicleForm(f => ({ ...f, trim_level: e.target.value }))} placeholder="EX-L" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]" />
                   </div>
                 </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Color</label>
@@ -731,10 +813,12 @@ export default function VehiclePage() {
                     <input type="text" value={vehicleForm.license_plate || ''} onChange={e => setVehicleForm(f => ({ ...f, license_plate: e.target.value }))} placeholder="ABC-1234" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-[#f0a050]" />
                   </div>
                 </div>
+
                 <div>
                   <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">VIN</label>
                   <input type="text" value={vehicleForm.vin || ''} onChange={e => setVehicleForm(f => ({ ...f, vin: e.target.value }))} placeholder="1HGBH41JXMN109186" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-[#f0a050]" />
                 </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Purchase Date</label>
@@ -745,6 +829,48 @@ export default function VehiclePage() {
                     <input type="number" value={vehicleForm.purchase_price || ''} onChange={e => setVehicleForm(f => ({ ...f, purchase_price: parseFloat(e.target.value) || undefined }))} placeholder="25000" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]" />
                   </div>
                 </div>
+
+                {/* Divider */}
+                <div className="border-t border-[#2a2a2a] pt-2">
+                  <p className="text-[#555] text-xs uppercase tracking-wider mb-3">Service & Renewals</p>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Oil Change Interval</label>
+                      <select
+                        value={vehicleForm.oil_change_interval ?? 5000}
+                        onChange={e => setVehicleForm(f => ({ ...f, oil_change_interval: parseInt(e.target.value) }))}
+                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]"
+                      >
+                        {OIL_INTERVALS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Reg. Expires</label>
+                        <input
+                          type="date"
+                          value={vehicleForm.registration_expires || ''}
+                          onChange={e => setVehicleForm(f => ({ ...f, registration_expires: e.target.value }))}
+                          className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Inspection Exp.</label>
+                        <input
+                          type="date"
+                          value={vehicleForm.inspection_expires || ''}
+                          onChange={e => setVehicleForm(f => ({ ...f, inspection_expires: e.target.value }))}
+                          className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <button onClick={saveVehicleInfo} disabled={saving} className="w-full bg-[#f0a050] text-black font-semibold py-3 rounded-xl disabled:opacity-50">
                   {saving ? 'Saving...' : 'Save Vehicle'}
                 </button>
@@ -788,9 +914,9 @@ export default function VehiclePage() {
                 </div>
                 <div>
                   <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Notes</label>
-                  <textarea value={maintForm.notes} onChange={e => setMaintForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." rows={2} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none resize-none focus:border-[#f0a050]" />
+                  <textarea value={maintForm.notes} onChange={e => setMaintForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none resize-none focus:border-[#f0a050]" />
                 </div>
-                <button onClick={saveMaintenance} disabled={saving || !maintForm.date || !maintForm.service_type} className="w-full bg-[#f0a050] text-black font-semibold py-3 rounded-xl disabled:opacity-50">
+                <button onClick={saveMaintenance} disabled={saving} className="w-full bg-[#f0a050] text-black font-semibold py-3 rounded-xl disabled:opacity-50">
                   {saving ? 'Saving...' : 'Save Service Record'}
                 </button>
               </div>
@@ -812,14 +938,14 @@ export default function VehiclePage() {
                   <input type="date" value={mileageForm.date} onChange={e => setMileageForm(f => ({ ...f, date: e.target.value }))} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]" />
                 </div>
                 <div>
-                  <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Odometer Reading (miles)</label>
+                  <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Odometer (miles)</label>
                   <input type="number" value={mileageForm.odometer} onChange={e => setMileageForm(f => ({ ...f, odometer: e.target.value }))} placeholder="45231" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-2xl font-mono outline-none focus:border-[#f0a050]" />
                 </div>
                 <div>
                   <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Notes (optional)</label>
                   <input type="text" value={mileageForm.notes} onChange={e => setMileageForm(f => ({ ...f, notes: e.target.value }))} placeholder="Before trip, after oil change..." className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]" />
                 </div>
-                <button onClick={saveMileage} disabled={saving || !mileageForm.date || !mileageForm.odometer} className="w-full bg-[#f0a050] text-black font-semibold py-3 rounded-xl disabled:opacity-50">
+                <button onClick={saveMileage} disabled={saving || !mileageForm.odometer} className="w-full bg-[#f0a050] text-black font-semibold py-3 rounded-xl disabled:opacity-50">
                   {saving ? 'Saving...' : 'Save Mileage'}
                 </button>
               </div>
@@ -843,32 +969,18 @@ export default function VehiclePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Gallons</label>
-                    <input
-                      type="number"
-                      value={fuelForm.gallons}
-                      onChange={e => setFuelForm(f => ({ ...f, gallons: e.target.value }))}
-                      placeholder="12.345"
-                      step="0.001"
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-[#f0a050]"
-                    />
+                    <input type="number" value={fuelForm.gallons} onChange={e => setFuelForm(f => ({ ...f, gallons: e.target.value }))} placeholder="12.345" step="0.001" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-[#f0a050]" />
                   </div>
                   <div>
                     <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Price / Gal</label>
-                    <input
-                      type="number"
-                      value={fuelForm.price_per_gallon}
-                      onChange={e => setFuelForm(f => ({ ...f, price_per_gallon: e.target.value }))}
-                      placeholder="3.459"
-                      step="0.001"
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-[#f0a050]"
-                    />
+                    <input type="number" value={fuelForm.price_per_gallon} onChange={e => setFuelForm(f => ({ ...f, price_per_gallon: e.target.value }))} placeholder="3.459" step="0.001" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-[#f0a050]" />
                   </div>
                 </div>
                 <div>
                   <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">
                     Total Cost
                     {!totalManual && fuelForm.gallons && fuelForm.price_per_gallon && (
-                      <span className="text-[#f0a050] ml-2 normal-case">auto-calculated</span>
+                      <span className="text-[#f0a050] ml-2 normal-case font-normal">auto-calculated</span>
                     )}
                   </label>
                   <input
@@ -880,10 +992,7 @@ export default function VehiclePage() {
                     className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-xl font-mono font-bold outline-none focus:border-[#f0a050]"
                   />
                   {totalManual && (
-                    <button
-                      onClick={() => { setTotalManual(false); }}
-                      className="text-[#f0a050] text-xs mt-1"
-                    >
+                    <button onClick={() => setTotalManual(false)} className="text-[#f0a050] text-xs mt-1">
                       ↺ Reset to calculated
                     </button>
                   )}
@@ -901,11 +1010,7 @@ export default function VehiclePage() {
                   <label className="text-[#555] text-xs uppercase tracking-wide block mb-1">Notes (optional)</label>
                   <input type="text" value={fuelForm.notes} onChange={e => setFuelForm(f => ({ ...f, notes: e.target.value }))} placeholder="Premium, highway trip..." className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]" />
                 </div>
-                <button
-                  onClick={saveFuel}
-                  disabled={saving || !fuelCanSave}
-                  className="w-full bg-[#f0a050] text-black font-semibold py-3 rounded-xl disabled:opacity-50"
-                >
+                <button onClick={saveFuel} disabled={saving || !fuelForm.gallons || !fuelForm.price_per_gallon || !fuelForm.total_cost} className="w-full bg-[#f0a050] text-black font-semibold py-3 rounded-xl disabled:opacity-50">
                   {saving ? 'Saving...' : 'Save Fill-Up'}
                 </button>
               </div>
@@ -913,7 +1018,7 @@ export default function VehiclePage() {
           </div>
         )}
 
-        {/* ── DELETE MAINTENANCE CONFIRM ── */}
+        {/* ── DELETE CONFIRMS ── */}
         {showDeleteMaint && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
             <div className="bg-[#1c1c1e] rounded-2xl w-full p-5 space-y-3">
@@ -924,8 +1029,6 @@ export default function VehiclePage() {
             </div>
           </div>
         )}
-
-        {/* ── DELETE MILEAGE CONFIRM ── */}
         {showDeleteMileage && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
             <div className="bg-[#1c1c1e] rounded-2xl w-full p-5 space-y-3">
@@ -936,8 +1039,6 @@ export default function VehiclePage() {
             </div>
           </div>
         )}
-
-        {/* ── DELETE FUEL CONFIRM ── */}
         {showDeleteFuel && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
             <div className="bg-[#1c1c1e] rounded-2xl w-full p-5 space-y-3">
