@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import PullToRefresh from '@/components/PullToRefresh';
+import BottomNav from '@/components/BottomNav';
 
 interface Warranty {
   id: string;
@@ -22,12 +23,12 @@ export default function WarrantiesPage() {
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Modal states
+  // Modal & Confirmation Layout States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [selectedWarranty, setSelectedWarranty] = useState<Warranty | null>(null);
 
-  // Form states
+  // Form State Vectors
   const [itemName, setItemName] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
@@ -45,7 +46,7 @@ export default function WarrantiesPage() {
         localStorage.setItem('warranties-data', JSON.stringify(data));
       }
     } catch (err) {
-      console.error('Error fetching warranties:', err);
+      console.error('Error fetching warranties index registry:', err);
     } finally {
       setLoading(false);
     }
@@ -111,7 +112,7 @@ export default function WarrantiesPage() {
         fetchWarranties();
       }
     } catch (err) {
-      console.error('Error saving warranty record:', err);
+      console.error('Error saving warranty data entry parameters:', err);
     }
   };
 
@@ -127,18 +128,18 @@ export default function WarrantiesPage() {
         fetchWarranties();
       }
     } catch (err) {
-      console.error('Error deleting item:', err);
+      console.error('Error hard dropping specified ledger line:', err);
     }
   };
 
-  // Safe timezone date matching strings
+  // Safe Timezone Local Structural Mapping Matrix
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
   
   const getExpirationStatus = (dateStr: string | null) => {
     if (!dateStr) return { label: 'No Expiry', color: 'text-[#555] bg-[#1a1a1a]' };
     if (dateStr < todayStr) return { label: 'Expired', color: 'text-[#ef4444] bg-[#ef4444]/10 border border-[#ef4444]/20' };
     
-    // Explicitly lock times to noon to bypass day shifting anomalies
+    // Explicit Middle-of-Day Append Logic to Stabilize Device Shifting Edge Cases
     const today = new Date(todayStr + 'T12:00:00');
     const expiry = new Date(dateStr + 'T12:00:00');
     const diffTime = expiry.getTime() - today.getTime();
@@ -163,7 +164,24 @@ export default function WarrantiesPage() {
     <PullToRefresh onRefresh={handleRefresh}>
       <div className="bg-black min-h-screen text-white pb-24">
         
-        {/* Tab Bar Selection */}
+        {/* Title & Description Grid Header (Mirrors Insurance exactly with clean un-boxed button) */}
+        <div className="px-4 pt-6 pb-2 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight font-display text-white">Warranties</h1>
+            <p className="text-xs text-[#555] mt-0.5">Asset structural parameters & coverage profiles</p>
+          </div>
+          <button
+            onClick={openAddModal}
+            className="text-[#f0a050] p-2 hover:opacity-80 active:scale-95 transition-transform"
+            aria-label="Add Coverage Item"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Sub-tab Navigation Strip */}
         <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
           {TABS.map((tab, i) => (
             <button
@@ -182,12 +200,12 @@ export default function WarrantiesPage() {
           ))}
         </div>
 
-        {/* Warranties List */}
+        {/* Dynamic Log Array Feed */}
         <div className="px-4 pt-4 space-y-3">
           {loading && warranties.length === 0 ? (
-            <div className="text-center py-12 text-[#555] text-sm">Loading warranties...</div>
+            <div className="text-center py-12 text-[#555] text-sm font-medium">Loading warranty indexes...</div>
           ) : filteredWarranties.length === 0 ? (
-            <div className="text-center py-12 text-[#555] text-sm">No recorded assets found.</div>
+            <div className="text-center py-12 text-[#555] text-sm">No recorded coverage instances found.</div>
           ) : (
             filteredWarranties.map((w) => {
               const status = getExpirationStatus(w.expiration_date);
@@ -195,20 +213,20 @@ export default function WarrantiesPage() {
                 <div
                   key={w.id}
                   onClick={() => openEditModal(w)}
-                  className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 flex flex-col justify-between space-y-3 active:scale-[0.99] transition-transform"
+                  className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 flex flex-col justify-between space-y-3 active:scale-[0.99] transition-transform cursor-pointer"
                 >
                   <div className="flex justify-between items-start">
                     <div className="space-y-1 max-w-[70%]">
-                      <h3 className="font-semibold text-white text-base truncate">{w.item_name}</h3>
-                      <p className="text-xs text-[#ccc] font-medium truncate">{w.vendor || 'Unknown Vendor'}</p>
+                      <h3 className="font-semibold text-white text-base truncate tracking-tight">{w.item_name}</h3>
+                      <p className="text-xs text-[#ccc] font-medium truncate">{w.vendor || 'Unspecified Retailer'}</p>
                     </div>
                     <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${status.color}`}>
                       {status.label}
                     </span>
                   </div>
 
-                  <div className="flex justify-between items-end pt-1 border-t border-[#1a1a1a]/40 text-xs text-[#555]">
-                    <div>
+                  <div className="flex justify-between items-end pt-2 border-t border-[#1a1a1a]/60 text-xs text-[#555]">
+                    <div className="space-y-0.5">
                       {w.expiration_date && (
                         <p>Expires: <span className="text-[#ccc] font-mono">{w.expiration_date}</span></p>
                       )}
@@ -216,7 +234,7 @@ export default function WarrantiesPage() {
                         <p>Purchased: <span className="text-[#555] font-mono">{w.purchase_date}</span></p>
                       )}
                     </div>
-                    <span className="font-mono text-white text-sm font-semibold">
+                    <span className="font-mono text-white text-sm font-semibold tracking-tight">
                       {formatCurrency(w.cost)}
                     </span>
                   </div>
@@ -226,59 +244,49 @@ export default function WarrantiesPage() {
           )}
         </div>
 
-        {/* FAB */}
-        <button
-          onClick={openAddModal}
-          className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] text-black font-bold rounded-full z-40 shadow-xl flex items-center justify-center active:scale-95 transition-transform"
-          aria-label="Log Warranty"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
-
-        {/* Add/Edit Modal (Changed from form to div layout) */}
+        {/* Modal Configuration Shell Layer (Clean div architecture) */}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
             <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6 text-white border border-[#2c2c2e]">
               <div className="flex justify-between items-center px-5 py-4 border-b border-[#2c2c2e] sticky top-0 bg-[#1c1c1e] z-10">
                 <h2 className="text-base font-bold text-white">
-                  {selectedWarranty ? 'Edit Warranty Parameters' : 'Log New Warranty'}
+                  {selectedWarranty ? 'Edit Coverage Settings' : 'Log New Warranty Asset'}
                 </h2>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
                   className="text-[#555] hover:text-white text-sm font-semibold p-1"
                 >
-                  Close
+                  Cancel
                 </button>
               </div>
 
+              {/* Data Input Fields Strip */}
               <div className="p-5 space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[#ccc] uppercase mb-1">Item Name *</label>
+                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Item Name *</label>
                   <input
                     type="text"
                     value={itemName}
                     onChange={(e) => setItemName(e.target.value)}
-                    placeholder="e.g. MacBook Pro"
+                    placeholder="e.g. Living Room TV"
                     className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-[#ccc] uppercase mb-1">Vendor / Store</label>
+                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Retail Vendor</label>
                     <input
                       type="text"
                       value={vendor}
                       onChange={(e) => setVendor(e.target.value)}
-                      placeholder="e.g. Apple"
+                      placeholder="e.g. Best Buy"
                       className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#ccc] uppercase mb-1">Cost (USD)</label>
+                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Cost</label>
                     <input
                       type="number"
                       step="0.01"
@@ -292,7 +300,7 @@ export default function WarrantiesPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-[#ccc] uppercase mb-1">Purchase Date</label>
+                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Date</label>
                     <input
                       type="date"
                       value={purchaseDate}
@@ -301,7 +309,7 @@ export default function WarrantiesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#ccc] uppercase mb-1">Expiration Date</label>
+                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Expiration Date</label>
                     <input
                       type="date"
                       value={expirationDate}
@@ -312,32 +320,52 @@ export default function WarrantiesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#ccc] uppercase mb-1">Notes & Details</label>
+                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Coverage Notes</label>
                   <textarea
                     rows={3}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Serial numbers, links, terms..."
+                    placeholder="Coverage structural exemptions, protection parameters, policy extensions..."
                     className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050] resize-none"
                   />
                 </div>
 
-                <div className="pt-3 space-y-2">
-                  <button
-                    onClick={handleSave}
-                    className="w-full bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                  >
-                    Save Warranty Entry
-                  </button>
-
-                  {selectedWarranty && (
-                    <button
-                      type="button"
-                      onClick={() => setIsDeleteConfirmOpen(true)}
-                      className="w-full bg-transparent text-[#ef4444] border border-[#ef4444]/20 font-medium py-3 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                    >
-                      Delete Entry
-                    </button>
+                {/* Horizontal Button Block Footer Layout */}
+                <div className="pt-3 flex gap-3">
+                  {selectedWarranty ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteConfirmOpen(true)}
+                        className="flex-1 bg-[#2c2c2e] text-[#ef4444] border border-[#ef4444]/10 font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                      >
+                        Save
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsModalOpen(false)}
+                        className="flex-1 bg-[#2c2c2e] text-white font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                      >
+                        Save
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -351,7 +379,7 @@ export default function WarrantiesPage() {
             <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#2c2c2e] space-y-4">
               <div className="text-center space-y-1">
                 <h3 className="text-base font-bold text-white">Permanently Remove Entry?</h3>
-                <p className="text-xs text-[#555]">This action cannot be undone.</p>
+                <p className="text-xs text-[#555]">This action cannot be undone. This row item index will be dropped.</p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -373,6 +401,8 @@ export default function WarrantiesPage() {
           </div>
         )}
 
+        {/* Bottom Navigation Element */}
+        <BottomNav activeTab="more" />
       </div>
     </PullToRefresh>
   );
