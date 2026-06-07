@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import PullToRefresh from '@/components/PullToRefresh';
 import BottomNav from '@/components/BottomNav';
 
@@ -14,21 +13,16 @@ interface InsurancePolicy {
   notes: string | null;
 }
 
-const TABS = ['Policies', 'Stats Summary'];
-const POLICY_TYPES = ['Auto', 'Home', 'Health', 'Umbrella', 'Other'];
+const TABS = ['Active Policies', 'Coverage Stats'];
 
 export default function InsurancePage() {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState(0);
   const [policies, setPolicies] = useState<InsurancePolicy[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Modal & Action Sheet States
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [selectedPolicy, setSelectedPolicy] = useState<InsurancePolicy | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  // Form Field States
+  // Form States
   const [provider, setProvider] = useState('');
   const [policyType, setPolicyType] = useState('Auto');
   const [premium, setPremium] = useState('');
@@ -37,7 +31,6 @@ export default function InsurancePage() {
 
   const fetchPolicies = async () => {
     try {
-      setLoading(true);
       const res = await fetch('/api/insurance');
       if (res.ok) {
         const data = await res.json();
@@ -45,7 +38,7 @@ export default function InsurancePage() {
         localStorage.setItem('insurance-data', JSON.stringify(data));
       }
     } catch (err) {
-      console.error('Error fetching insurance index parameters:', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -64,354 +57,300 @@ export default function InsurancePage() {
     await fetchPolicies();
   };
 
-  const openAddModal = () => {
-    setSelectedPolicy(null);
-    setProvider('');
-    setPolicyType('Auto');
-    setPremium('');
-    setRenewalDate('');
-    setNotes('');
-    setIsModalOpen(true);
-  };
-
-  const openEditModal = (p: InsurancePolicy) => {
-    setSelectedPolicy(p);
-    setProvider(p.provider);
-    setPolicyType(p.policy_type);
-    setPremium(p.premium ? p.premium.toString() : '');
-    setRenewalDate(p.renewal_date || '');
-    setNotes(p.notes || '');
-    setIsModalOpen(true);
-  };
-
-  const handleSave = async () => {
-    if (!provider.trim() || !policyType) return;
-
+  const handleSubmit = async () => {
     try {
-      const payload = {
-        id: selectedPolicy?.id,
-        provider,
-        policyType,
-        premium: premium ? parseFloat(premium) : 0,
-        renewalDate,
-        notes
-      };
-
       const res = await fetch('/api/insurance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          provider,
+          policy_type: policyType,
+          premium,
+          renewal_date: renewalDate,
+          notes
+        })
       });
-
       if (res.ok) {
         setIsModalOpen(false);
+        setProvider('');
+        setPolicyType('Auto');
+        setPremium('');
+        setRenewalDate('');
+        setNotes('');
         fetchPolicies();
       }
     } catch (err) {
-      console.error('Error preserving policy profile indices:', err);
+      console.error(err);
     }
   };
 
-  const handleDelete = async () => {
-    if (!selectedPolicy) return;
+  const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/insurance?id=${selectedPolicy.id}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/insurance?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setIsDeleteConfirmOpen(false);
-        setIsModalOpen(false);
+        setDeleteConfirmId(null);
         fetchPolicies();
       }
     } catch (err) {
-      console.error('Error pruning policy metrics trace:', err);
+      console.error(err);
     }
   };
 
-  // Safe Midday Local Target Timezone Matching Parsing
-  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  };
 
-  const getRenewalStatus = (dateStr: string | null) => {
-    if (!dateStr) return { label: 'No Date', color: 'text-[#555] bg-[#1a1a1a]' };
-    if (dateStr < todayStr) return { label: 'Lapsed', color: 'text-[#ef4444] bg-[#ef4444]/10 border border-[#ef4444]/20' };
+  const getRenewalStatus = (dateStr: string) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const renewal = new Date(dateStr);
+    renewal.setHours(0,0,0,0);
 
-    // Explicit Noon Context Initialization to Eradicate Device Time Shift Anomalies
-    const today = new Date(todayStr + 'T12:00:00');
-    const renewal = new Date(dateStr + 'T12:00:00');
     const diffTime = renewal.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays <= 45) return { label: `Renew in (${diffDays}d)`, color: 'text-[#f0a050] bg-[#f0a050]/10 border border-[#f0a050]/20' };
-    return { label: 'Current', color: 'text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/20' };
+    if (diffDays < 0) return { label: 'EXPIRED', color: 'text-[#ef4444] border-[#ef4444]' };
+    if (diffDays <= 45) return { label: `${diffDays} DAYS LEFT`, color: 'text-[#f0a050] border-[#f0a050]' };
+    return { label: 'SECURE', color: 'text-[#22c55e] border-[#1a1a1a]' };
   };
 
-  const formatCurrency = (val: number | null) => {
-    if (val === null || val === undefined) return '$0.00';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
-  };
-
-  // Aggregate stats logic safely protecting against sparse entries
-  const totalPremiumCost = policies.reduce((acc, p) => acc + (p.premium || 0), 0);
+  const totalAnnualPremium = policies.reduce((sum, p) => sum + Number(p.premium), 0);
 
   return (
-    <PullToRefresh onRefresh={handleRefresh}>
-      <div className="bg-black min-h-screen text-white pb-24">
-        
-        {/* Core Aligned Heading Strip with Header Add Action Icon */}
-        <div className="px-4 pt-6 pb-2 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight font-display text-white">Insurance</h1>
-            <p className="text-xs text-[#555] mt-0.5">Coverage rules & operational risk policies</p>
-          </div>
+    <div className="min-h-screen bg-black text-white pb-24">
+      {/* Sticky Tab Bar */}
+      <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
+        {TABS.map((tab, i) => (
           <button
-            onClick={openAddModal}
-            className="text-[#f0a050] p-2 hover:opacity-80 active:scale-95 transition-transform"
-            aria-label="Log New Policy"
+            key={tab}
+            onClick={() => { setActiveTab(i); window.scrollTo(0,0); if (navigator.vibrate) navigator.vibrate(8); }}
+            className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${
+              activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'
+            }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
+            {tab}
           </button>
-        </div>
+        ))}
+      </div>
 
-        {/* Tab Selection Interface Component */}
-        <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
-          {TABS.map((tab, i) => (
-            <button
-              key={tab}
-              onClick={() => {
-                setActiveTab(i);
-                window.scrollTo(0, 0);
-                if (navigator.vibrate) navigator.vibrate(8);
-              }}
-              className={`flex-1 py-4 text-xs font-semibold transition-colors ${
-                activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        {/* Dynamic Display Panels */}
-        <div className="px-4 pt-4 space-y-3">
-          {loading && policies.length === 0 ? (
-            <div className="text-center py-12 text-[#555] text-sm font-medium">Loading asset safety indices...</div>
-          ) : activeTab === 0 ? (
-            /* Tab 0: Policy Records Summary Feed */
-            policies.length === 0 ? (
-              <div className="text-center py-12 text-[#555] text-sm">No coverage contracts found in database ledger.</div>
+      <PullToRefresh onRefresh={handleRefresh}>
+        {/* Tab 0: Active Policies List */}
+        {activeTab === 0 && (
+          <div className="px-4 pt-4 space-y-3">
+            {loading && policies.length === 0 ? (
+              <p className="text-sm text-[#555] font-mono">Loading active policies...</p>
+            ) : policies.length === 0 ? (
+              <p className="text-sm text-[#555] font-mono">No active policies logged.</p>
             ) : (
               policies.map((p) => {
                 const status = getRenewalStatus(p.renewal_date);
                 return (
-                  <div
-                    key={p.id}
-                    onClick={() => openEditModal(p)}
-                    className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 flex flex-col justify-between space-y-3 active:scale-[0.99] transition-transform cursor-pointer"
+                  <div 
+                    key={p.id} 
+                    className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 transition-all"
                   >
                     <div className="flex justify-between items-start">
-                      <div className="space-y-1 max-w-[70%]">
-                        <h3 className="font-semibold text-white text-base truncate tracking-tight">{p.provider}</h3>
-                        <p className="text-xs text-[#f0a050] font-semibold tracking-wide uppercase text-[10px]">{p.policy_type} Protection</p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] bg-[#1c1c1e] text-[#f0a050] border border-[#1a1a1a] px-2 py-0.5 rounded-md font-mono font-bold uppercase">
+                            {p.policy_type}
+                          </span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono ${status.color.split(' ')[0]}`}>
+                            {status.label}
+                          </span>
+                        </div>
+                        <h3 className="font-semibold text-base text-white mt-2">{p.provider}</h3>
                       </div>
-                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${status.color}`}>
-                        {status.label}
-                      </span>
+                      <button 
+                        onClick={() => setDeleteConfirmId(p.id)}
+                        className="text-[#555] hover:text-[#ef4444] p-1"
+                      >
+                        ✕
+                      </button>
                     </div>
 
-                    <div className="flex justify-between items-end pt-2 border-t border-[#1a1a1a]/60 text-xs text-[#555]">
+                    <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-[#1a1a1a]/50 text-xs font-mono">
                       <div>
-                        {p.renewal_date && (
-                          <p>Renewal Date: <span className="text-[#ccc] font-mono">{p.renewal_date}</span></p>
-                        )}
-                        {p.notes && <p className="text-[#555] mt-0.5 truncate max-w-[180px]">{p.notes}</p>}
+                        <span className="text-[#555] block uppercase text-[10px]">Premium</span>
+                        <span className="text-white font-bold">{formatCurrency(p.premium)}</span>
                       </div>
-                      <span className="font-mono text-[#22c55e] text-sm font-semibold tracking-tight">
-                        {formatCurrency(p.premium)}
-                      </span>
+                      <div>
+                        <span className="text-[#555] block uppercase text-[10px]">Renewal Date</span>
+                        <span className={`font-bold ${status.color.split(' ')[0]}`}>{p.renewal_date}</span>
+                      </div>
                     </div>
+
+                    {p.notes && (
+                      <div className="mt-3 bg-black/40 p-2 rounded text-xs text-[#ccc] border-l-2 border-[#f0a050] whitespace-pre-wrap">
+                        {p.notes}
+                      </div>
+                    )}
                   </div>
                 );
               })
-            )
-          ) : (
-            /* Tab 1: Aggregated Financial Allocation Outlays */
-            <div className="space-y-4">
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-5 text-center">
-                <p className="text-xs uppercase font-bold tracking-wider text-[#555] mb-1">Total Annual Premium Liability</p>
-                <h2 className="text-2xl font-bold font-mono text-[#ef4444]">
-                  {formatCurrency(totalPremiumCost)}
-                </h2>
-              </div>
+            )}
+          </div>
+        )}
 
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#ccc] border-b border-[#1a1a1a] pb-2">Line Breakdown</h3>
-                {POLICY_TYPES.map((type) => {
-                  const subTotal = policies.filter(p => p.policy_type === type).reduce((sum, p) => sum + (p.premium || 0), 0);
+        {/* Tab 1: Coverage Summary Insights */}
+        {activeTab === 1 && (
+          <div className="px-4 pt-4 space-y-4">
+            <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 text-center">
+              <span className="text-[#555] uppercase font-mono text-[11px] tracking-wider block">Total Premium Committed</span>
+              <span className="text-3xl font-bold font-mono text-[#f0a050] mt-2 block">
+                {formatCurrency(totalAnnualPremium)}
+              </span>
+            </div>
+
+            <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4">
+              <h4 className="text-xs uppercase text-[#555] font-mono tracking-wider mb-3 border-b border-[#1a1a1a] pb-2">
+                Asset Safeguard Distribution
+              </h4>
+              <div className="space-y-2.5 font-mono text-xs">
+                {['Auto', 'Home', 'Health', 'Umbrella', 'Other'].map((type) => {
+                  const matches = policies.filter(p => p.policy_type === type);
+                  const total = matches.reduce((sum, p) => sum + Number(p.premium), 0);
+                  if (total === 0) return null;
                   return (
-                    <div key={type} className="flex justify-between items-center text-sm">
-                      <span className="text-[#ccc] font-medium">{type} Coverage</span>
-                      <span className="font-mono text-white font-semibold">{formatCurrency(subTotal)}</span>
+                    <div key={type} className="flex justify-between items-center py-1">
+                      <span className="text-[#ccc]">{type} Policy</span>
+                      <span className="text-white font-bold">{formatCurrency(total)}</span>
                     </div>
                   );
                 })}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+      </PullToRefresh>
 
-        {/* Pure layout configuration modal (No interactive form constraints) */}
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6 text-white border border-[#2c2c2e]">
-              <div className="flex justify-between items-center px-5 py-4 border-b border-[#2c2c2e] sticky top-0 bg-[#1c1c1e] z-10">
-                <h2 className="text-base font-bold text-white">
-                  {selectedPolicy ? 'Modify Policy Matrix' : 'Log New Risk Contract'}
-                </h2>
+      {/* Floating Action Button */}
+      <button
+        onClick={() => { if (navigator.vibrate) navigator.vibrate(8); setIsModalOpen(true); }}
+        className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center text-black text-2xl font-bold shadow-lg"
+      >
+        ＋
+      </button>
+
+      {/* Centered Form Popup Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 border border-[#1a1a1a]">
+            <h2 className="text-xl font-bold font-mono text-[#f0a050] mb-4 uppercase tracking-wide">Add Insurance</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Provider *</label>
+                <input
+                  type="text"
+                  required
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-[#f0a050]"
+                  placeholder="e.g., Progressive, State Farm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Policy Type *</label>
+                <select
+                  value={policyType}
+                  onChange={(e) => setPolicyType(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-[#f0a050]"
+                >
+                  <option value="Auto">Auto Insurance</option>
+                  <option value="Home">Home Insurance</option>
+                  <option value="Health">Health Insurance</option>
+                  <option value="Umbrella">Umbrella Policy</option>
+                  <option value="Other">Other Coverage</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Premium Amount ($) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={premium}
+                  onChange={(e) => setPremium(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-lg p-2.5 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Renewal Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={renewalDate}
+                  onChange={(e) => setRenewalDate(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-[#f0a050]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Coverage Notes</label>
+                <textarea
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-[#f0a050]"
+                  placeholder="Policy numbers, coverage limitations, deductible notes..."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="text-[#555] hover:text-white text-sm font-semibold p-1"
-                >
-                  Cancel
-                </button>
-              </div>
-
-              {/* Input Group Structure */}
-              <div className="p-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Insurance Provider *</label>
-                  <input
-                    type="text"
-                    value={provider}
-                    onChange={(e) => setProvider(e.target.value)}
-                    placeholder="e.g. Progressive"
-                    className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Policy Sector Type</label>
-                    <select
-                      value={policyType}
-                      onChange={(e) => setPolicyType(e.target.value)}
-                      className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
-                    >
-                      {POLICY_TYPES.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Premium Rate (USD)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={premium}
-                      onChange={(e) => setPremium(e.target.value)}
-                      placeholder="0.00"
-                      className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Renewal Expiration Date</label>
-                  <input
-                    type="date"
-                    value={renewalDate}
-                    onChange={(e) => setRenewalDate(e.target.value)}
-                    className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Coverage Notes</label>
-                  <textarea
-                    rows={3}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Deductibles, policy bounds, claim contacts..."
-                    className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050] resize-none"
-                  />
-                </div>
-
-                {/* Streamlined Side-by-Side Horizontal Action Row */}
-                <div className="pt-3 flex gap-3">
-                  {selectedPolicy ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setIsDeleteConfirmOpen(true)}
-                        className="flex-1 bg-[#2c2c2e] text-[#ef4444] border border-[#ef4444]/10 font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Save
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setIsModalOpen(false)}
-                        className="flex-1 bg-[#2c2c2e] text-white font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Save
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Confirmation Sheet */}
-        {isDeleteConfirmOpen && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#2c2c2e] space-y-4">
-              <div className="text-center space-y-1">
-                <h3 className="text-base font-bold text-white">Permanently Remove Entry?</h3>
-                <p className="text-xs text-[#555]">This action cannot be undone. This row item index will be dropped.</p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsDeleteConfirmOpen(false)}
-                  className="flex-1 bg-[#2c2c2e] text-white py-3 rounded-xl text-sm font-medium"
+                  className="flex-1 bg-black border border-[#1a1a1a] text-[#555] py-3 rounded-xl font-semibold text-sm transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={handleDelete}
-                  className="flex-1 bg-[#ef4444] text-white py-3 rounded-xl text-sm font-bold"
+                  onClick={handleSubmit}
+                  className="flex-1 bg-[#f0a050] text-black py-3 rounded-xl font-semibold text-sm transition-colors"
                 >
-                  Confirm Delete
+                  Save Policy
                 </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Fixed PWA Navigation Context Footer */}
-        <BottomNav activeTab="more" />
-      </div>
-    </PullToRefresh>
+      {/* Bottom Sheet Delete Dialog */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#1a1a1a]">
+            <h3 className="text-md font-bold text-white text-center">Delete this policy record?</h3>
+            <p className="text-xs text-[#555] text-center mt-1">This action cannot be undone.</p>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 bg-black border border-[#1a1a1a] text-white py-3 rounded-xl text-sm font-semibold"
+              >
+                Keep
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirmId)}
+                className="flex-1 bg-[#ef4444] text-white py-3 rounded-xl text-sm font-semibold"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <BottomNav activeTab="more" />
+    </div>
   );
 }
