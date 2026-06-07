@@ -46,129 +46,138 @@ export async function POST(request: Request) {
   if (body?.data?.metrics) {
     const metrics: any[] = body.data.metrics;
 
-    // Build lookup: metric name → data array
-    const metricMap: Record<string, any[]> = {};
-    for (const m of metrics) {
-      metricMap[m.name] = m.data || [];
-    }
+    // Group every data point by date → metric name
+    // e.g. dateMap["2026-06-01"]["step_count"] = [{qty:5792, date:..., source:...}]
+    const dateMap: Record<string, Record<string, any[]>> = {};
 
-    // Sum qty across all data points for a metric (steps, calories, etc.)
-    const qtySum = (name: string): number | null => {
-      const data = metricMap[name];
-      if (!data || data.length === 0) return null;
-      const vals = data.map((d: any) => parseFloat(d.qty)).filter((n: number) => !isNaN(n));
-      if (vals.length === 0) return null;
-      return vals.reduce((a: number, b: number) => a + b, 0);
-    };
-
-    // Average qty across all data points (heart rate variability, SpO2, etc.)
-    const qtyAvg = (name: string): number | null => {
-      const data = metricMap[name];
-      if (!data || data.length === 0) return null;
-      const vals = data.map((d: any) => parseFloat(d.qty)).filter((n: number) => !isNaN(n));
-      if (vals.length === 0) return null;
-      return vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
-    };
-
-    // Latest single qty value (vo2_max, resting_heart_rate)
-    const qtyLatest = (name: string): number | null => {
-      const data = metricMap[name];
-      if (!data || data.length === 0) return null;
-      const last = data[data.length - 1];
-      const n = parseFloat(last.qty);
-      return isNaN(n) ? null : n;
-    };
-
-    // Extract date from first metric entry — format: "2026-06-01 00:00:00 -0400"
-    let logDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
-    for (const m of metrics) {
-      if (m.data && m.data.length > 0 && m.data[0].date) {
-        logDate = m.data[0].date.substring(0, 10);
-        break;
+    for (const metric of metrics) {
+      const name: string = metric.name;
+      for (const point of (metric.data || [])) {
+        const dateStr: string = point.date?.substring(0, 10);
+        if (!dateStr) continue;
+        if (!dateMap[dateStr]) dateMap[dateStr] = {};
+        if (!dateMap[dateStr][name]) dateMap[dateStr][name] = [];
+        dateMap[dateStr][name].push(point);
       }
     }
 
-    // Sleep analysis — sum all sessions for the day
-    const sleepData = metricMap['sleep_analysis'] || [];
-    const sleep = sleepData.reduce(
-      (acc: any, s: any) => ({
-        asleep: acc.asleep + (parseFloat(s.asleep) || 0),
-        core:   acc.core   + (parseFloat(s.core)   || 0),
-        deep:   acc.deep   + (parseFloat(s.deep)   || 0),
-        rem:    acc.rem    + (parseFloat(s.rem)     || 0),
-        awake:  acc.awake  + (parseFloat(s.awake)  || 0),
-        inBed:  acc.inBed  + (parseFloat(s.inBed)  || 0),
-      }),
-      { asleep: 0, core: 0, deep: 0, rem: 0, awake: 0, inBed: 0 }
-    );
-    const hasSleep = sleepData.length > 0;
-
-    // Heart rate — uses Avg/Min/Max keys instead of qty
-    const hrData = metricMap['heart_rate'] || [];
-    const hrAvg = hrData.length > 0
-      ? hrData.map((d: any) => parseFloat(d.Avg)).filter((n: number) => !isNaN(n))
-          .reduce((a: number, b: number, _: any, arr: number[]) => a + b / arr.length, 0)
-      : null;
-    const hrMins = hrData.map((d: any) => parseFloat(d.Min)).filter((n: number) => !isNaN(n));
-    const hrMaxs = hrData.map((d: any) => parseFloat(d.Max)).filter((n: number) => !isNaN(n));
-    const hrMin = hrMins.length > 0 ? Math.min(...hrMins) : null;
-    const hrMax = hrMaxs.length > 0 ? Math.max(...hrMaxs) : null;
-
-    // Total calories = active + basal
-    const activeCals = qtySum('active_energy');
-    const basalCals  = qtySum('basal_energy_burned');
-    const totalCals  = activeCals !== null && basalCals !== null
-      ? activeCals + basalCals
-      : activeCals ?? basalCals;
-
-    const record = {
-      user_id:  USER_ID,
-      log_date: logDate,
-      source:   'health_auto_export',
-      raw_payload: body,
-
-      // Activity
-      steps:            int(qtySum('step_count')),
-      active_calories:  int(activeCals),
-      total_calories:   int(totalCals),
-      bmr:              num(basalCals),
-      distance_km:      num(qtySum('walking_running_distance')),
-      flights_climbed:  int(qtySum('flights_climbed')),
-      activity_minutes: int(qtySum('apple_exercise_time')),
-      stand_hours:      int(qtySum('apple_stand_hour')),
-
-      // Sleep
-      sleep_total_hours:    hasSleep ? sleep.asleep || null : null,
-      sleep_core_hours:     hasSleep ? sleep.core   || null : null,
-      sleep_deep_hours:     hasSleep ? sleep.deep   || null : null,
-      sleep_rem_hours:      hasSleep ? sleep.rem    || null : null,
-      sleep_awake_hours:    hasSleep ? sleep.awake  || null : null,
-      sleep_in_bed_hours:   hasSleep ? sleep.inBed  || null : null,
-      sleep_duration_minutes: hasSleep ? Math.round(sleep.asleep * 60) || null : null,
-
-      // Heart
-      heart_rate_avg:     hrAvg,
-      heart_rate_min:     hrMin,
-      heart_rate_max:     hrMax,
-      resting_heart_rate: int(qtyLatest('resting_heart_rate')),
-      hrv:                num(qtyAvg('heart_rate_variability')),
-
-      // Vitals
-      spo2:             num(qtyAvg('blood_oxygen_saturation')),
-      respiratory_rate: num(qtyAvg('respiratory_rate')),
-      vo2_max:          num(qtyLatest('vo2_max')),
-    };
-
-    const { error } = await supabase
-      .from('health_logs')
-      .upsert(record, { onConflict: 'user_id,log_date' });
-
-    if (error) {
-      console.error('[health ingest] Supabase error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const dates = Object.keys(dateMap);
+    if (dates.length === 0) {
+      return NextResponse.json({ ok: true, dates_processed: 0 });
     }
 
-    return NextResponse.json({ ok: true, log_date: logDate, source: 'health_auto_export' });
+    const upserted: string[] = [];
+    const errors: string[] = [];
+
+    for (const logDate of dates) {
+      const mm = dateMap[logDate];
+
+      // Helpers scoped to this date's metric map
+      const qtySum = (name: string): number | null => {
+        const data = mm[name];
+        if (!data || data.length === 0) return null;
+        const vals = data.map((d: any) => parseFloat(d.qty)).filter((n: number) => !isNaN(n));
+        return vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) : null;
+      };
+
+      const qtyAvg = (name: string): number | null => {
+        const data = mm[name];
+        if (!data || data.length === 0) return null;
+        const vals = data.map((d: any) => parseFloat(d.qty)).filter((n: number) => !isNaN(n));
+        return vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : null;
+      };
+
+      const qtyLatest = (name: string): number | null => {
+        const data = mm[name];
+        if (!data || data.length === 0) return null;
+        const n = parseFloat(data[data.length - 1].qty);
+        return isNaN(n) ? null : n;
+      };
+
+      // Sleep — sum all sessions for this date
+      const sleepData = mm['sleep_analysis'] || [];
+      const sleep = sleepData.reduce(
+        (acc: any, s: any) => ({
+          asleep: acc.asleep + (parseFloat(s.asleep) || 0),
+          core:   acc.core   + (parseFloat(s.core)   || 0),
+          deep:   acc.deep   + (parseFloat(s.deep)   || 0),
+          rem:    acc.rem    + (parseFloat(s.rem)     || 0),
+          awake:  acc.awake  + (parseFloat(s.awake)  || 0),
+          inBed:  acc.inBed  + (parseFloat(s.inBed)  || 0),
+        }),
+        { asleep: 0, core: 0, deep: 0, rem: 0, awake: 0, inBed: 0 }
+      );
+      const hasSleep = sleepData.length > 0;
+
+      // Heart rate — uses Avg/Min/Max keys
+      const hrData = mm['heart_rate'] || [];
+      const hrAvgVals = hrData.map((d: any) => parseFloat(d.Avg)).filter((n: number) => !isNaN(n));
+      const hrMinVals = hrData.map((d: any) => parseFloat(d.Min)).filter((n: number) => !isNaN(n));
+      const hrMaxVals = hrData.map((d: any) => parseFloat(d.Max)).filter((n: number) => !isNaN(n));
+      const hrAvg = hrAvgVals.length > 0
+        ? hrAvgVals.reduce((a: number, b: number) => a + b, 0) / hrAvgVals.length
+        : null;
+      const hrMin = hrMinVals.length > 0 ? Math.min(...hrMinVals) : null;
+      const hrMax = hrMaxVals.length > 0 ? Math.max(...hrMaxVals) : null;
+
+      const activeCals = qtySum('active_energy');
+      const basalCals  = qtySum('basal_energy_burned');
+      const totalCals  = activeCals !== null && basalCals !== null
+        ? activeCals + basalCals
+        : activeCals ?? basalCals;
+
+      const record = {
+        user_id:  USER_ID,
+        log_date: logDate,
+        source:   'health_auto_export',
+        raw_payload: null, // don't store per-day — full payload stored on today's row only
+
+        steps:            int(qtySum('step_count')),
+        active_calories:  int(activeCals),
+        total_calories:   int(totalCals),
+        bmr:              num(basalCals),
+        distance_km:      num(qtySum('walking_running_distance')),
+        flights_climbed:  int(qtySum('flights_climbed')),
+        activity_minutes: int(qtySum('apple_exercise_time')),
+        stand_hours:      int(qtySum('apple_stand_hour')),
+
+        sleep_total_hours:      hasSleep ? (sleep.asleep || null) : null,
+        sleep_core_hours:       hasSleep ? (sleep.core   || null) : null,
+        sleep_deep_hours:       hasSleep ? (sleep.deep   || null) : null,
+        sleep_rem_hours:        hasSleep ? (sleep.rem    || null) : null,
+        sleep_awake_hours:      hasSleep ? (sleep.awake  || null) : null,
+        sleep_in_bed_hours:     hasSleep ? (sleep.inBed  || null) : null,
+        sleep_duration_minutes: hasSleep ? (Math.round(sleep.asleep * 60) || null) : null,
+
+        heart_rate_avg:     hrAvg,
+        heart_rate_min:     hrMin,
+        heart_rate_max:     hrMax,
+        resting_heart_rate: int(qtyLatest('resting_heart_rate')),
+        hrv:                num(qtyAvg('heart_rate_variability')),
+
+        spo2:             num(qtyAvg('blood_oxygen_saturation')),
+        respiratory_rate: num(qtyAvg('respiratory_rate')),
+        vo2_max:          num(qtyLatest('vo2_max')),
+      };
+
+      const { error } = await supabase
+        .from('health_logs')
+        .upsert(record, { onConflict: 'user_id,log_date' });
+
+      if (error) {
+        console.error(`[health ingest] Supabase error for ${logDate}:`, error);
+        errors.push(logDate);
+      } else {
+        upserted.push(logDate);
+      }
+    }
+
+    return NextResponse.json({
+      ok: errors.length === 0,
+      dates_processed: upserted.length,
+      dates: upserted,
+      errors,
+    });
   }
 
   // ── Legacy flat format (old iOS Shortcut) ─────────────────
@@ -219,19 +228,19 @@ export async function POST(request: Request) {
     respiratory_rate: num(body.respiratory_rate, body.respiratoryRate),
     vo2_max:          num(body.vo2_max, body.vo2Max, body.VO2Max),
 
-    weight_lbs:          num(body.weight_lbs, body.weightLbs),
-    bmi:                 num(body.bmi, body.BMI),
-    body_fat_pct:        num(body.body_fat_pct, body.bodyFat),
-    lean_body_mass_lbs:  num(body.lean_body_mass_lbs, body.leanBodyMass),
+    weight_lbs:               num(body.weight_lbs, body.weightLbs),
+    bmi:                      num(body.bmi, body.BMI),
+    body_fat_pct:             num(body.body_fat_pct, body.bodyFat),
+    lean_body_mass_lbs:       num(body.lean_body_mass_lbs, body.leanBodyMass),
     blood_pressure_systolic:  num(body.blood_pressure_systolic,  body.bloodPressureSystolic),
     blood_pressure_diastolic: num(body.blood_pressure_diastolic, body.bloodPressureDiastolic),
-    blood_glucose:    num(body.blood_glucose,    body.bloodGlucose),
-    body_temperature: num(body.body_temperature, body.bodyTemperature),
-    water_ml:         num(body.water_ml, body.hydration),
-    calories_dietary: num(body.calories_dietary, body.dietaryCalories),
-    protein_g:        num(body.protein_g,  body.dietaryProtein),
-    carbs_g:          num(body.carbs_g,    body.dietaryCarbohydrates),
-    fat_g:            num(body.fat_g,      body.dietaryFatTotal),
+    blood_glucose:            num(body.blood_glucose,    body.bloodGlucose),
+    body_temperature:         num(body.body_temperature, body.bodyTemperature),
+    water_ml:                 num(body.water_ml, body.hydration),
+    calories_dietary:         num(body.calories_dietary, body.dietaryCalories),
+    protein_g:                num(body.protein_g,  body.dietaryProtein),
+    carbs_g:                  num(body.carbs_g,    body.dietaryCarbohydrates),
+    fat_g:                    num(body.fat_g,      body.dietaryFatTotal),
   };
 
   const { error } = await supabase
