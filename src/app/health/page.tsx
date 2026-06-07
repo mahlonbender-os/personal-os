@@ -38,6 +38,11 @@ export default function HealthPage() {
   const [loading, setLoading] = useState(true);
   const [refreshCount, setRefreshCount] = useState(0);
 
+  const formatFloat = (val: number | null | undefined) => {
+    if (val === null || val === undefined) return '--';
+    return Number(val) % 1 === 0 ? Number(val).toLocaleString() : Number(val).toFixed(2);
+  };
+
   const fetchHealthData = useCallback(async () => {
     try {
       const res = await fetch('/api/health/latest');
@@ -161,10 +166,10 @@ export default function HealthPage() {
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Active Energy</p>
                       <p className="text-2xl font-mono font-bold text-[#ef4444] mt-2">
-                        {log.active_calories || 0} <span className="text-xs text-[#555] font-sans font-normal">kcal</span>
+                        {formatFloat(log.active_calories)} <span className="text-xs text-[#555] font-sans font-normal">kcal</span>
                       </p>
                       <div className="w-full bg-[#201111] h-1.5 rounded-full mt-4 overflow-hidden">
-                        <div className="bg-[#ef4444] h-full rounded-full" style={{ width: `${Math.min(((log.active_calories || 0) / 750) * 100, 100)}%` }} />
+                        <div className="bg-[#ef4444] h-full rounded-full" style={{ width: `${Math.min(((Number(log.active_calories) || 0) / 750) * 100, 100)}%` }} />
                       </div>
                     </div>
 
@@ -183,20 +188,20 @@ export default function HealthPage() {
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Exercise Minutes</p>
                       <p className="text-2xl font-mono font-bold text-[#22c55e] mt-2">
-                        {log.activity_minutes || 0} <span className="text-xs text-[#555] font-sans font-normal">min</span>
+                        {formatFloat(log.activity_minutes)} <span className="text-xs text-[#555] font-sans font-normal">min</span>
                       </p>
                       <div className="w-full bg-[#122418] h-1.5 rounded-full mt-4 overflow-hidden">
-                        <div className="bg-[#22c55e] h-full rounded-full" style={{ width: `${Math.min(((log.activity_minutes || 0) / 30) * 100, 100)}%` }} />
+                        <div className="bg-[#22c55e] h-full rounded-full" style={{ width: `${Math.min(((Number(log.activity_minutes) || 0) / 30) * 100, 100)}%` }} />
                       </div>
                     </div>
 
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Stand Score</p>
                       <p className="text-2xl font-mono font-bold text-[#fb923c] mt-2">
-                        {log.stand_hours || 0} <span className="text-xs text-[#555] font-sans font-normal">hrs</span>
+                        {formatFloat(log.stand_hours)} <span className="text-xs text-[#555] font-sans font-normal">hrs</span>
                       </p>
                       <div className="w-full bg-orange-950/30 h-1.5 rounded-full mt-4 overflow-hidden">
-                        <div className="bg-[#fb923c] h-full rounded-full" style={{ width: `${Math.min(((log.stand_hours || 0) / 12) * 100, 100)}%` }} />
+                        <div className="bg-[#fb923c] h-full rounded-full" style={{ width: `${Math.min(((Number(log.stand_hours) || 0) / 12) * 100, 100)}%` }} />
                       </div>
                     </div>
                   </div>
@@ -267,7 +272,7 @@ export default function HealthPage() {
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Resting HR</p>
                       <p className="text-3xl font-mono font-bold text-[#ef4444] mt-2">
-                        {log.resting_heart_rate || '--'}{' '}
+                        {formatFloat(log.resting_heart_rate)}{' '}
                         <span className="text-xs uppercase tracking-wider text-[#555] font-sans font-semibold">BPM</span>
                       </p>
                     </div>
@@ -275,7 +280,7 @@ export default function HealthPage() {
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Heart Rate Avg</p>
                       <p className="text-3xl font-mono font-bold text-rose-400 mt-2">
-                        {log.heart_rate_avg || '--'}{' '}
+                        {formatFloat(log.heart_rate_avg)}{' '}
                         <span className="text-xs uppercase tracking-wider text-[#555] font-sans font-semibold">BPM</span>
                       </p>
                     </div>
@@ -285,7 +290,7 @@ export default function HealthPage() {
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">HRV Baseline</p>
                       <p className="text-3xl font-mono font-bold text-purple-400 mt-2">
-                        {log.hrv || '--'}{' '}
+                        {formatFloat(log.hrv)}{' '}
                         <span className="text-xs uppercase tracking-wider text-[#555] font-sans font-semibold">ms</span>
                       </p>
                     </div>
@@ -293,7 +298,7 @@ export default function HealthPage() {
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Blood Oxygen</p>
                       <p className="text-3xl font-mono font-bold text-sky-400 mt-2">
-                        {log.spo2 || '--'}{' '}
+                        {formatFloat(log.spo2)}{' '}
                         <span className="text-xs uppercase tracking-wider text-[#555] font-sans font-semibold">%</span>
                       </p>
                     </div>
@@ -301,7 +306,7 @@ export default function HealthPage() {
                 </div>
               )}
 
-              {/* TRENDS TAB VIEW (Sparklines construction) */}
+              {/* TRENDS TAB VIEW */}
               {activeTab === 3 && (
                 <div className="space-y-6 animate-in fade-in duration-200">
                   
