@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import PullToRefresh from '@/components/PullToRefresh';
 import BottomNav from '@/components/BottomNav';
 
@@ -18,7 +17,6 @@ interface Warranty {
 const TABS = ['Active', 'Expired', 'All Items'];
 
 export default function WarrantiesPage() {
-  import { useRouter } from 'next/navigation';
   const [activeTab, setActiveTab] = useState(0);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [loading, setLoading] = useState(true);
