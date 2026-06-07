@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       purchase_date: purchaseDate || null,
       expiration_date: expirationDate || null,
       vendor: vendor || null,
-      cost: cost ? parseFloat(cost) : null,
+      cost: cost !== undefined && cost !== null ? Number(cost) : null,
       notes: notes || null,
     };
 

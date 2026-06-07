@@ -18,7 +18,7 @@ interface Warranty {
 const TABS = ['Active', 'Expired', 'All Items'];
 
 export default function WarrantiesPage() {
-  const router = useRouter();
+  import { useRouter } from 'next/navigation';
   const [activeTab, setActiveTab] = useState(0);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [loading, setLoading] = useState(true);
