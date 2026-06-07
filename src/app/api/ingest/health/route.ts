@@ -141,13 +141,13 @@ export async function POST(request: Request) {
         activity_minutes: int(qtySum('apple_exercise_time')),
         stand_hours:      int(qtySum('apple_stand_hour')),
 
-        sleep_total_hours:      hasSleep ? (sleep.asleep || null) : null,
+        sleep_total_hours:      hasSleep ? ((sleep.deep + sleep.rem + sleep.core) || null) : null,
         sleep_core_hours:       hasSleep ? (sleep.core   || null) : null,
         sleep_deep_hours:       hasSleep ? (sleep.deep   || null) : null,
         sleep_rem_hours:        hasSleep ? (sleep.rem    || null) : null,
         sleep_awake_hours:      hasSleep ? (sleep.awake  || null) : null,
         sleep_in_bed_hours:     hasSleep ? (sleep.inBed  || null) : null,
-        sleep_duration_minutes: hasSleep ? (Math.round(sleep.asleep * 60) || null) : null,
+        sleep_duration_minutes: hasSleep ? (Math.round((sleep.deep + sleep.rem + sleep.core) * 60) || null) : null,
 
         heart_rate_avg:     hrAvg,
         heart_rate_min:     hrMin,
