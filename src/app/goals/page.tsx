@@ -28,19 +28,40 @@ interface Goal {
   created_at: string;
 }
 
+interface Habit {
+  id: string;
+  name: string;
+  description: string | null;
+  isCompletedToday: boolean;
+  currentStreak: number;
+  history: string[];
+}
+
 const CATEGORIES = ['personal', 'work', 'health', 'finance', 'home', 'fitness', 'learning', 'other'];
 const GOAL_ICONS = ['🎯', '💪', '💰', '🏠', '📚', '🏋️', '✈️', '🎸', '🌱', '⭐', '🚀', '❤️'];
 const GOAL_COLORS = ['#f0a050', '#22c55e', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+const MODULE_TABS = ['Goals', 'Habits'];
 
 export default function GoalsPage() {
+  const [activeTab, setActiveTab] = useState(0);
+
+  // Goals state
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [goalsLoading, setGoalsLoading] = useState(true);
   const [filter, setFilter] = useState<'active' | 'completed' | 'all'>('active');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
 
+  // Habits state
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habitsLoading, setHabitsLoading] = useState(true);
+  const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
+  const [newHabitName, setNewHabitName] = useState('');
+  const [newHabitDesc, setNewHabitDesc] = useState('');
+  const [deleteHabitId, setDeleteHabitId] = useState<string | null>(null);
+
   const fetchGoals = useCallback(async () => {
-    setLoading(true);
+    setGoalsLoading(true);
     try {
       const params = filter !== 'all' ? `?status=${filter}` : '';
       const res = await fetch(`/api/goals${params}`);
@@ -49,12 +70,41 @@ export default function GoalsPage() {
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      setGoalsLoading(false);
     }
   }, [filter]);
 
+  const fetchHabits = async () => {
+    setHabitsLoading(true);
+    try {
+      const res = await fetch('/api/habits');
+      if (res.ok) {
+        const data = await res.json();
+        setHabits(data);
+        localStorage.setItem('habits-cache', JSON.stringify(data));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHabitsLoading(false);
+    }
+  };
+
+  const fetchAll = async () => {
+    await Promise.all([fetchGoals(), fetchHabits()]);
+  };
+
   useEffect(() => { fetchGoals(); }, [fetchGoals]);
 
+  useEffect(() => {
+    const cached = localStorage.getItem('habits-cache');
+    if (cached) {
+      try { setHabits(JSON.parse(cached)); setHabitsLoading(false); } catch {}
+    }
+    fetchHabits();
+  }, []);
+
+  // Goals handlers
   const deleteGoal = async (id: string) => {
     await fetch(`/api/goals?id=${id}`, { method: 'DELETE' });
     fetchGoals();
@@ -85,108 +135,259 @@ export default function GoalsPage() {
     }
   };
 
+  // Habits handlers
+  const handleToggleHabit = async (habitId: string) => {
+    if (navigator.vibrate) navigator.vibrate(12);
+    setHabits(prev => prev.map(h => {
+      if (h.id === habitId) {
+        const nextState = !h.isCompletedToday;
+        return {
+          ...h,
+          isCompletedToday: nextState,
+          currentStreak: nextState ? h.currentStreak + 1 : Math.max(0, h.currentStreak - 1)
+        };
+      }
+      return h;
+    }));
+    try {
+      await fetch('/api/habits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle', habit_id: habitId })
+      });
+      const res = await fetch('/api/habits');
+      if (res.ok) setHabits(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateHabit = async () => {
+    if (!newHabitName.trim()) return;
+    try {
+      const res = await fetch('/api/habits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', name: newHabitName.trim(), description: newHabitDesc.trim() || null })
+      });
+      if (res.ok) {
+        setIsHabitModalOpen(false);
+        setNewHabitName('');
+        setNewHabitDesc('');
+        fetchHabits();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteHabit = async (id: string) => {
+    try {
+      const res = await fetch(`/api/habits?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteHabitId(null);
+        fetchHabits();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const activeCount = goals.filter(g => g.status === 'active').length;
+  const completedToday = habits.filter(h => h.isCompletedToday).length;
 
   return (
     <div className="min-h-screen bg-black">
-      <PullToRefresh onRefresh={fetchGoals}>
+      <PullToRefresh onRefresh={fetchAll}>
         <div className="pb-24">
 
-          {/* Header */}
+          {/* Sticky Header */}
           <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+
+            {/* Top row — title + action button */}
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
-                <h1 className="text-xl font-bold text-white">Goals</h1>
-                {activeCount > 0 && (
+                <h1 className="text-xl font-bold text-white">
+                  {activeTab === 0 ? 'Goals' : 'Habits'}
+                </h1>
+                {activeTab === 0 && activeCount > 0 && (
                   <p className="text-[10px] text-[#555] mt-0.5">{activeCount} active</p>
                 )}
+                {activeTab === 1 && habits.length > 0 && (
+                  <p className="text-[10px] text-[#555] mt-0.5">{completedToday}/{habits.length} done today</p>
+                )}
               </div>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="w-9 h-9 rounded-full bg-[#f0a050] text-black flex items-center justify-center text-xl font-light"
-              >
-                +
-              </button>
-            </div>
-            <div className="flex gap-2 px-4 pb-3">
-              {(['active', 'all', 'completed'] as const).map(s => (
+              {activeTab === 0 && (
                 <button
-                  key={s}
-                  onClick={() => setFilter(s)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    filter === s
-                      ? 'bg-[#f0a050] text-black'
-                      : 'bg-[#111] text-[#555] border border-[#1a1a1a]'
+                  onClick={() => setShowAddModal(true)}
+                  className="w-9 h-9 rounded-full bg-[#f0a050] text-black flex items-center justify-center text-xl font-light"
+                >
+                  +
+                </button>
+              )}
+            </div>
+
+            {/* Tab bar */}
+            <div className="flex border-t border-[#1a1a1a]">
+              {MODULE_TABS.map((tab, i) => (
+                <button
+                  key={tab}
+                  onClick={() => { setActiveTab(i); window.scrollTo(0, 0); if (navigator.vibrate) navigator.vibrate(8); }}
+                  className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                    activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'
                   }`}
                 >
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                  {tab}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* Goals list */}
-          <div className="px-4 py-3 space-y-3">
-            {loading ? (
-              [...Array(3)].map((_, i) => (
-                <div key={i} className="h-24 bg-[#111] rounded-2xl animate-pulse" />
-              ))
-            ) : goals.length === 0 ? (
-              <div className="text-center py-16">
-                <div className="text-4xl mb-3">🎯</div>
-                <p className="text-[#555] text-sm">No goals yet</p>
-                <p className="text-[#333] text-xs mt-1">Tap + to set a goal</p>
-              </div>
-            ) : (
-              goals.map(goal => {
-                const milestonesDone = goal.goal_milestones?.filter(m => m.is_completed).length || 0;
-                const milestonesTotal = goal.goal_milestones?.length || 0;
-                return (
+            {/* Goals filter pills — only on tab 0 */}
+            {activeTab === 0 && (
+              <div className="flex gap-2 px-4 py-2.5">
+                {(['active', 'all', 'completed'] as const).map(s => (
                   <button
-                    key={goal.id}
-                    onClick={() => setSelectedGoal(goal)}
-                    className="w-full bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 text-left active:opacity-70 transition-opacity"
+                    key={s}
+                    onClick={() => setFilter(s)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      filter === s
+                        ? 'bg-[#f0a050] text-black'
+                        : 'bg-[#111] text-[#555] border border-[#1a1a1a]'
+                    }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                        style={{ backgroundColor: goal.color + '20' }}
-                      >
-                        {goal.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <p className="text-sm font-medium text-white leading-snug">{goal.title}</p>
-                          <span className="text-xs font-bold flex-shrink-0 font-mono" style={{ color: goal.color }}>
-                            {goal.progress}%
-                          </span>
-                        </div>
-                        <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden mb-2">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${goal.progress}%`, backgroundColor: goal.color }}
-                          />
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-[#555] capitalize">{goal.category}</span>
-                          {milestonesTotal > 0 && (
-                            <span className="text-[10px] text-[#444]">{milestonesDone}/{milestonesTotal} milestones</span>
-                          )}
-                          {goal.target_date && (
-                            <span className="text-[10px] text-[#444]">
-                              Due {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
                   </button>
-                );
-              })
+                ))}
+              </div>
             )}
           </div>
+
+          {/* ── Tab 0: Goals ── */}
+          {activeTab === 0 && (
+            <div className="px-4 py-3 space-y-3">
+              {goalsLoading ? (
+                [...Array(3)].map((_, i) => (
+                  <div key={i} className="h-24 bg-[#111] rounded-2xl animate-pulse" />
+                ))
+              ) : goals.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="text-4xl mb-3">🎯</div>
+                  <p className="text-[#555] text-sm">No goals yet</p>
+                  <p className="text-[#333] text-xs mt-1">Tap + to set a goal</p>
+                </div>
+              ) : (
+                goals.map(goal => {
+                  const milestonesDone = goal.goal_milestones?.filter(m => m.is_completed).length || 0;
+                  const milestonesTotal = goal.goal_milestones?.length || 0;
+                  return (
+                    <button
+                      key={goal.id}
+                      onClick={() => setSelectedGoal(goal)}
+                      className="w-full bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 text-left active:opacity-70 transition-opacity"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                          style={{ backgroundColor: goal.color + '20' }}
+                        >
+                          {goal.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <p className="text-sm font-medium text-white leading-snug">{goal.title}</p>
+                            <span className="text-xs font-bold flex-shrink-0 font-mono" style={{ color: goal.color }}>
+                              {goal.progress}%
+                            </span>
+                          </div>
+                          <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden mb-2">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{ width: `${goal.progress}%`, backgroundColor: goal.color }}
+                            />
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[10px] text-[#555] capitalize">{goal.category}</span>
+                            {milestonesTotal > 0 && (
+                              <span className="text-[10px] text-[#444]">{milestonesDone}/{milestonesTotal} milestones</span>
+                            )}
+                            {goal.target_date && (
+                              <span className="text-[10px] text-[#444]">
+                                Due {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* ── Tab 1: Habits ── */}
+          {activeTab === 1 && (
+            <div className="px-4 pt-4 space-y-3">
+              {habitsLoading && habits.length === 0 ? (
+                [...Array(3)].map((_, i) => (
+                  <div key={i} className="h-20 bg-[#111] rounded-2xl animate-pulse" />
+                ))
+              ) : habits.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="text-4xl mb-3">🔥</div>
+                  <p className="text-[#555] text-sm">No habits yet</p>
+                  <p className="text-[#333] text-xs mt-1">Tap + to add a habit</p>
+                </div>
+              ) : (
+                habits.map(h => (
+                  <div
+                    key={h.id}
+                    className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 flex items-center justify-between"
+                  >
+                    <div className="flex-1 pr-4">
+                      <h3 className="font-semibold text-sm text-white">{h.name}</h3>
+                      {h.description && <p className="text-xs text-[#555] mt-0.5">{h.description}</p>}
+                      <div className="flex items-center gap-1 mt-2 text-xs font-mono text-[#f0a050] font-bold">
+                        <span>🔥</span>
+                        <span>{h.currentStreak} day streak</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleToggleHabit(h.id)}
+                      onTouchStart={(e) => {
+                        const timer = setTimeout(() => {
+                          if (navigator.vibrate) navigator.vibrate([30, 30]);
+                          setDeleteHabitId(h.id);
+                        }, 600);
+                        e.currentTarget.addEventListener('touchend', () => clearTimeout(timer), { once: true });
+                      }}
+                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-sm transition-all focus:outline-none select-none ${
+                        h.isCompletedToday
+                          ? 'bg-[#f0a050] border-[#f0a050] text-black'
+                          : 'bg-black border-[#222] text-transparent hover:border-[#f0a050]/40'
+                      }`}
+                    >
+                      ✓
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
         </div>
       </PullToRefresh>
+
+      {/* FAB — Habits tab only */}
+      {activeTab === 1 && (
+        <button
+          onClick={() => { if (navigator.vibrate) navigator.vibrate(8); setIsHabitModalOpen(true); }}
+          className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center text-black text-2xl font-bold shadow-lg"
+        >
+          ＋
+        </button>
+      )}
 
       <BottomNav active="goals" />
 
@@ -208,6 +409,79 @@ export default function GoalsPage() {
           onSave={() => { setShowAddModal(false); fetchGoals(); }}
         />
       )}
+
+      {/* Add Habit Modal */}
+      {isHabitModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 border border-[#1a1a1a]">
+            <h2 className="text-lg font-bold text-white mb-4">New Habit</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={newHabitName}
+                  onChange={(e) => setNewHabitName(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-[#f0a050]"
+                  placeholder="e.g., Read 20 minutes, Walk Knox"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Description</label>
+                <input
+                  type="text"
+                  value={newHabitDesc}
+                  onChange={(e) => setNewHabitDesc(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-[#f0a050]"
+                  placeholder="Optional details..."
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsHabitModalOpen(false); setNewHabitName(''); setNewHabitDesc(''); }}
+                  className="flex-1 bg-black border border-[#1a1a1a] text-[#555] py-3 rounded-xl font-semibold text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateHabit}
+                  className="flex-1 bg-[#f0a050] text-black py-3 rounded-xl font-semibold text-sm"
+                >
+                  Add Habit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Habit Confirm — bottom sheet */}
+      {deleteHabitId && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#1a1a1a]">
+            <h3 className="text-base font-bold text-white text-center">Delete this habit?</h3>
+            <p className="text-xs text-[#555] text-center mt-1">All check-in history will be lost.</p>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setDeleteHabitId(null)}
+                className="flex-1 bg-black border border-[#1a1a1a] text-white py-3 rounded-xl text-sm font-semibold"
+              >
+                Keep
+              </button>
+              <button
+                onClick={() => handleDeleteHabit(deleteHabitId)}
+                className="flex-1 bg-[#ef4444] text-white py-3 rounded-xl text-sm font-semibold"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -235,7 +509,6 @@ function GoalDetailModal({ goal, onClose, onDelete, onProgressChange, onToggleMi
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
       <div className="bg-[#1c1c1e] w-full rounded-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="px-5 pt-5 pb-6">
-          {/* Header */}
           <div className="flex items-start justify-between mb-5">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
@@ -257,7 +530,6 @@ function GoalDetailModal({ goal, onClose, onDelete, onProgressChange, onToggleMi
             <p className="text-sm text-[#666] mb-4">{goal.description}</p>
           )}
 
-          {/* Progress */}
           <div className="bg-[#2c2c2e] rounded-2xl p-4 mb-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium text-white">Progress</span>
@@ -278,7 +550,6 @@ function GoalDetailModal({ goal, onClose, onDelete, onProgressChange, onToggleMi
             )}
           </div>
 
-          {/* Milestones */}
           {sortedMilestones.length > 0 && (
             <div className="mb-4">
               <h3 className="text-xs font-semibold text-[#444] uppercase tracking-widest mb-3">Milestones</h3>
@@ -360,21 +631,18 @@ function GoalAddModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
         </div>
 
         <div className="px-4 py-4 space-y-4 pb-12">
-          {/* Title */}
           <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
             <input type="text" value={title} onChange={e => setTitle(e.target.value)}
               placeholder="What do you want to achieve?"
               className="w-full px-4 py-3.5 bg-transparent text-white text-sm placeholder-[#555] outline-none" autoFocus />
           </div>
 
-          {/* Description */}
           <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
             <textarea value={description} onChange={e => setDescription(e.target.value)}
               placeholder="Why does this matter?" rows={2}
               className="w-full px-4 py-3.5 bg-transparent text-white text-sm placeholder-[#555] outline-none resize-none" />
           </div>
 
-          {/* Icon */}
           <div>
             <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Icon</p>
             <div className="flex flex-wrap gap-2">
@@ -389,19 +657,17 @@ function GoalAddModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
             </div>
           </div>
 
-          {/* Color */}
           <div>
             <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Color</p>
             <div className="flex gap-3">
               {GOAL_COLORS.map(c => (
                 <button key={c} onClick={() => setColor(c)}
                   className={`w-8 h-8 rounded-full transition-all ${color === c ? 'ring-2 ring-offset-2 ring-offset-[#1c1c1e] scale-110' : ''}`}
-                  style={{ backgroundColor: c, outlineColor: c }} />
+                  style={{ backgroundColor: c }} />
               ))}
             </div>
           </div>
 
-          {/* Category */}
           <div>
             <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Category</p>
             <div className="flex flex-wrap gap-2">
@@ -416,7 +682,6 @@ function GoalAddModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
             </div>
           </div>
 
-          {/* Target Date */}
           <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3.5">
               <span className="text-sm text-white">Target Date</span>
@@ -425,7 +690,6 @@ function GoalAddModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
             </div>
           </div>
 
-          {/* Milestones */}
           <div>
             <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Milestones</p>
             <div className="space-y-2">
