@@ -10,7 +10,6 @@ const GROUPS = [
     items: [
       { label: 'Knox', href: '/knox', icon: '🐺' },
       { label: 'Vehicle', href: '/vehicle', icon: '🚗' },
-      { label: 'Home', href: '/home', icon: '🏠' },
     ],
   },
   {
@@ -32,7 +31,6 @@ const GROUPS = [
   {
     label: 'Lifestyle',
     items: [
-      { label: 'Spotify', href: '/spotify', icon: '🎵' },
       { label: 'Journal', href: '/journal', icon: '📝' },
       { label: 'Alerts', href: '/alerts', icon: '🔔' },
     ],
@@ -112,7 +110,7 @@ export default function MorePage() {
           </button>
 
           <p className="text-center text-xs text-[#333] mt-5">
-            Personal OS · Built with Claude
+            Personal OS
           </p>
         </div>
       </PullToRefresh>
