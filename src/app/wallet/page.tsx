@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'navigation';
 import PullToRefresh from '@/components/PullToRefresh';
 
 interface CreditCard {
@@ -12,10 +12,8 @@ interface CreditCard {
   bgClass: string;
   textColorClass: string;
   metaColorClass: string;
-  // Financial metrics synced via your Sheets script
-  balance?: number;
-  limit?: number;
-  usage?: number;
+  limit: number; // Accurate fallback parameters
+  searchKeys: string[]; // Strings to scan bills names from your Google Sheet
   multipliers: {
     dining: number;
     groceries: number;
@@ -26,8 +24,8 @@ interface CreditCard {
   perks: string[];
 }
 
-// ── MAHLON'S AUTHENTIC PORTFOLIO (ALPHABETICAL ORDER) ───────────────────────
-const INITIAL_CARDS: CreditCard[] = [
+// ── MAHLON'S AUTHENTIC REWARDS INVENTORY (STRICT ALPHABETICAL BASE) ─────────
+const CORE_CARDS: CreditCard[] = [
   {
     id: '1stfinancial',
     name: '1st Financial Card',
@@ -36,8 +34,10 @@ const INITIAL_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#1e3a8a] to-[#0f172a] border border-[#2563eb]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-blue-400',
+    limit: 2000,
+    searchKeys: ['1st financial', '1st fin'],
     multipliers: { dining: 1, groceries: 1, gas: 1, travel: 1, catchAll: 1 },
-    perks: ['Standard line of credit protection', 'Custom repayment timeline vectors'],
+    perks: ['Standard personal line credit framework'],
   },
   {
     id: 'amex_bcp',
@@ -47,8 +47,10 @@ const INITIAL_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#0a2540] to-[#001020] border border-[#1e3a5f]',
     textColorClass: 'text-white',
     metaColorClass: 'text-sky-400',
+    limit: 10000,
+    searchKeys: ['amex', 'american express', 'blue cash', 'bcp'],
     multipliers: { dining: 1, groceries: 6, gas: 3, travel: 1, catchAll: 1 },
-    perks: ['6% on U.S. Supermarkets up to $6k/yr', '6% on Select U.S. Streaming', '3% on Transit (Uber, Tolls, Parking)'],
+    perks: ['6% Cash Back on U.S. Supermarkets up to $6k/yr', '6% on Select U.S. Streaming', '3% on Transit (Uber, Tolls, Parking)'],
   },
   {
     id: 'capone_bjs',
@@ -58,8 +60,10 @@ const INITIAL_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#b91c1c] via-[#0f172a] to-[#0f172a] border border-[#dc2626]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-red-400',
+    limit: 7500,
+    searchKeys: ['bj', "bj's", 'bjs club'],
     multipliers: { dining: 1.5, groceries: 1.5, gas: 1.5, travel: 1.5, catchAll: 1.5 },
-    perks: ["3% back on most purchases inside BJ's Wholesale", '10¢ off per gallon at BJ\'s Gas stations permanently'],
+    perks: ['15¢ off per gallon ($0.15) at BJ\'s Gas stations permanently', "3% back on purchases made inside BJ's Wholesale locations"],
   },
   {
     id: 'apple_gs',
@@ -67,10 +71,12 @@ const INITIAL_CARDS: CreditCard[] = [
     bank: 'Goldman Sachs',
     lastFour: '••••',
     bgClass: 'bg-gradient-to-br from-[#f5f5f7] via-[#ffffff] to-[#e8e8ed] border border-[#d1d5db]',
-    textColorClass: 'text-black', // Clean high-contrast crisp text format
+    textColorClass: 'text-black',
     metaColorClass: 'text-neutral-500',
+    limit: 6000,
+    searchKeys: ['apple card', 'apple', 'goldman sachs'],
     multipliers: { dining: 2, groceries: 1, gas: 1, travel: 1, catchAll: 2 },
-    perks: ['2% Cash Back on all transactions using Apple Pay via phone', '3% back on Apple products and select merchants'],
+    perks: ['2% Cash Back on all purchases completed using Apple Pay via iPhone', '3% back on Apple store purchases & select merchants'],
   },
   {
     id: 'capone_savor',
@@ -80,8 +86,10 @@ const INITIAL_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#7c2d12] to-[#1c1917] border border-[#ea580c]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-orange-400',
+    limit: 5000,
+    searchKeys: ['savor', 'savorone', 'capital one savor'],
     multipliers: { dining: 3, groceries: 3, gas: 1, travel: 1, catchAll: 1 },
-    perks: ['3% back on Dining, Entertainment, and Popular Streaming services', '8% back on Capital One Entertainment purchases'],
+    perks: ['3% back on Dining, Entertainment, and Popular Streaming services', '8% back on Capital One Entertainment tickets'],
   },
   {
     id: 'chase_csp',
@@ -91,8 +99,10 @@ const INITIAL_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#0284c7] via-[#0f172a] to-[#0f172a] border border-[#0369a1]/30',
     textColorClass: 'text-white',
     metaColorClass: 'text-sky-300',
+    limit: 12000,
+    searchKeys: ['chase', 'sapphire', 'csp'],
     multipliers: { dining: 3, groceries: 1, gas: 1, travel: 2, catchAll: 1 },
-    perks: ['Points worth 25% more when redeemed for Chase travel portal bookings', '1:1 point conversion transfer values across leading partner airlines'],
+    perks: ['Points worth 25% more when redeemed for Chase travel portal bookings', '1:1 point transfers out to partner airlines & hotel networks'],
   },
 ];
 
@@ -100,21 +110,37 @@ export default function DigitalWalletPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'rates' | 'perks'>('rates');
-  const [cards, setCards] = useState<CreditCard[]>(INITIAL_CARDS);
+  const [liveBalances, setLiveBalances] = useState<Record<string, number>>({});
 
-  // Read accounts summary from local storage populated by your Sheet loop
+  // ── INGEST GOOGLE SHEETS LIVE FINANCIAL STREAM ────────────────────────────
   useEffect(() => {
     try {
       const storedFinance = localStorage.getItem('cc_finance_v1');
       if (storedFinance) {
         const parsed = JSON.parse(storedFinance);
-        // Map any spreadsheet cells matching your account names
-        if (parsed.bills) {
-          // If you have account rows mapped in sheets, we bind them down here
-        }
+        const billsList = parsed.bills || [];
+        
+        const computedBalances: Record<string, number> = {};
+
+        CORE_CARDS.forEach((card) => {
+          // Filter bills array checking for matching search keys
+          const matchingBills = billsList.filter((bill: any) => {
+            const billName = (bill.name || '').toLowerCase();
+            return card.searchKeys.some((key) => billName.includes(key));
+          });
+
+          // Accumulate balance from sheet numbers (absolute value handling)
+          const totalBalance = matchingBills.reduce((acc: number, bill: any) => {
+            return acc + Math.abs(bill.amount || 0);
+          }, 0);
+
+          computedBalances[card.id] = totalBalance;
+        });
+
+        setLiveBalances(computedBalances);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Google Sheets statement sync aborted:', e);
     }
   }, []);
 
@@ -138,14 +164,14 @@ export default function DigitalWalletPage() {
   }, [searchQuery]);
 
   const processedCards = useMemo(() => {
-    if (!activeCategory) return cards; // Preserves strict Alphabetical base array setup
-    return [...cards].sort((a, b) => b.multipliers[activeCategory] - a.multipliers[activeCategory]);
-  }, [activeCategory, cards]);
+    if (!activeCategory) return CORE_CARDS;
+    return [...CORE_CARDS].sort((a, b) => b.multipliers[activeCategory] - a.multipliers[activeCategory]);
+  }, [activeCategory]);
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col overflow-hidden text-white">
       
-      {/* Fixed Sticky Header Panel */}
+      {/* Sticky Top Header Area */}
       <div className="pt-6 pb-4 px-4 bg-black border-b border-[#1a1a1a] z-30 flex-shrink-0">
         <button 
           onClick={() => router.push('/more')}
@@ -164,7 +190,6 @@ export default function DigitalWalletPage() {
             </p>
           </div>
 
-          {/* Core View Switcher Component */}
           <div className="bg-[#111] p-0.5 rounded-lg border border-[#1a1a1a] flex">
             <button
               onClick={() => setActiveTab('rates')}
@@ -185,7 +210,6 @@ export default function DigitalWalletPage() {
           </div>
         </div>
 
-        {/* Dynamic Spend Parameter Search */}
         <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-3 shadow-2xl">
           <input
             type="text"
@@ -205,7 +229,7 @@ export default function DigitalWalletPage() {
         </div>
       </div>
 
-      {/* Main Container Viewport (Scrollable View) */}
+      {/* Scrollable Workspace Container */}
       <div className="flex-1 overflow-y-auto pb-24">
         <PullToRefresh onRefresh={async () => { window.location.reload(); }}>
           <div className="p-4 space-y-4">
@@ -214,29 +238,27 @@ export default function DigitalWalletPage() {
             </p>
             
             {processedCards.map((card, index) => {
-              const SevernWinner = activeCategory && index === 0;
+              const isWinner = activeCategory && index === 0;
               const rate = activeCategory ? card.multipliers[activeCategory] : null;
 
-              // Mock-Fallbacks for variables that will pull dynamically from your Sheet logic rows
-              const balance = card.balance ?? 0;
-              const limit = card.limit ?? 5000;
-              const usage = card.limit ? Math.round((balance / card.limit) * 100) : 0;
+              // Read dynamic aggregated sheets numbers
+              const balance = liveBalances[card.id] || 0;
+              const limit = card.limit;
+              const usage = Math.round((balance / limit) * 100);
 
               return (
                 <div
                   key={card.id}
                   className={`rounded-2xl p-4 ${card.bgClass} relative overflow-hidden transition-all duration-300 ${card.textColorClass} ${
-                    SevernWinner ? 'ring-2 ring-[#f0a050] scale-[1.01]' : searchQuery ? 'opacity-30' : ''
+                    isWinner ? 'ring-2 ring-[#f0a050] scale-[1.01]' : searchQuery ? 'opacity-30' : ''
                   }`}
                 >
-                  {/* Dynamic Best Recommendation Badge */}
-                  {SevernWinner && (
+                  {isWinner && (
                     <div className="absolute top-0 right-0 bg-[#f0a050] text-black font-extrabold text-[9px] uppercase tracking-widest px-3 py-1 rounded-bl-xl font-mono shadow-md animate-pulse">
                       USE THIS CARD ({rate}%)
                     </div>
                   )}
 
-                  {/* Card Title Details Block */}
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <p className={`text-[9px] font-bold uppercase tracking-wider ${card.metaColorClass}`}>
@@ -251,27 +273,27 @@ export default function DigitalWalletPage() {
                     </span>
                   </div>
 
-                  {/* Dynamic Google Sheets Operational Account Telemetry */}
+                  {/* Operational Telemetry Metrics Row */}
                   <div className={`grid grid-cols-3 gap-2 px-3 py-2 rounded-xl mb-4 text-left text-[10px] border font-mono ${
                     card.id === 'apple_gs' ? 'bg-black/5 border-black/10' : 'bg-black/30 border-white/5'
                   }`}>
                     <div>
                       <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Balance</div>
-                      <div className="font-bold mt-0.5">${balance.toLocaleString()}</div>
+                      <div className="font-bold mt-0.5">${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     </div>
                     <div>
-                      <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Available Credit</div>
+                      <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Credit Limit</div>
                       <div className="opacity-80 mt-0.5">${limit.toLocaleString()}</div>
                     </div>
                     <div className="text-right">
                       <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Usage</div>
-                      <div className={`font-bold mt-0.5 ${usage > 30 ? 'text-red-500' : 'opacity-80'}`}>{usage}%</div>
+                      <div className={`font-bold mt-0.5 ${usage > 30 ? 'text-red-500 font-extrabold' : 'opacity-80'}`}>
+                        {usage}%
+                      </div>
                     </div>
                   </div>
 
-                  {/* Tab Controlled Display Section */}
                   {activeTab === 'rates' ? (
-                    /* Cash Back Rates Grid View */
                     <div className={`grid grid-cols-5 gap-1 pt-3 border-t text-center ${
                       card.id === 'apple_gs' ? 'border-black/10' : 'border-white/10'
                     }`}>
@@ -299,7 +321,6 @@ export default function DigitalWalletPage() {
                       })}
                     </div>
                   ) : (
-                    /* Additional Perks Bullet Points View */
                     <div className={`pt-2 border-t text-[10px] space-y-1 opacity-80 ${
                       card.id === 'apple_gs' ? 'border-black/10' : 'border-white/10'
                     }`}>
