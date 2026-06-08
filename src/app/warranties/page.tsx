@@ -40,7 +40,8 @@ export default function WarrantiesPage() {
       const res = await fetch('/api/warranties');
       if (res.ok) {
         const data = await res.json();
-        setWarranties(data);
+        // Read directly from array stream safely with fallback
+        setWarranties(Array.isArray(data) ? data : []);
         localStorage.setItem('warranties-data', JSON.stringify(data));
       }
     } catch (err) {
@@ -53,7 +54,12 @@ export default function WarrantiesPage() {
   useEffect(() => {
     const cached = localStorage.getItem('warranties-data');
     if (cached) {
-      setWarranties(JSON.parse(cached));
+      try {
+        const parsed = JSON.parse(cached);
+        setWarranties(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setWarranties([]);
+      }
       setLoading(false);
     }
     fetchWarranties();
@@ -159,11 +165,11 @@ export default function WarrantiesPage() {
   };
 
   return (
-    <PullToRefresh onRefresh={handleRefresh}>
-      <div className="bg-black min-h-screen text-white pb-24">
-        
-        {/* Title & Description Grid Header (Mirrors Insurance exactly with clean un-boxed button) */}
-        <div className="px-4 pt-6 pb-2 flex justify-between items-center">
+    <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden select-none">
+      
+      {/* HEADER SECTION - Locked to the upper displays */}
+      <div className="flex-shrink-0 bg-black pt-14 z-30">
+        <div className="px-4 pb-2 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold tracking-tight font-display text-white">Warranties</h1>
             <p className="text-xs text-[#555] mt-0.5">Asset structural parameters & coverage profiles</p>
@@ -179,14 +185,13 @@ export default function WarrantiesPage() {
           </button>
         </div>
 
-        {/* Sub-tab Navigation Strip */}
-        <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
+        {/* Sticky Sub-tab Navigation Strip Row */}
+        <div className="flex border-b border-[#1a1a1a] bg-black">
           {TABS.map((tab, i) => (
             <button
               key={tab}
               onClick={() => {
                 setActiveTab(i);
-                window.scrollTo(0, 0);
                 if (navigator.vibrate) navigator.vibrate(8);
               }}
               className={`flex-1 py-4 text-xs font-semibold transition-colors ${
@@ -197,211 +202,215 @@ export default function WarrantiesPage() {
             </button>
           ))}
         </div>
+      </div>
 
-        {/* Dynamic Log Array Feed */}
-        <div className="px-4 pt-4 space-y-3">
-          {loading && warranties.length === 0 ? (
-            <div className="text-center py-12 text-[#555] text-sm font-medium">Loading warranty indexes...</div>
-          ) : filteredWarranties.length === 0 ? (
-            <div className="text-center py-12 text-[#555] text-sm">No recorded coverage instances found.</div>
-          ) : (
-            filteredWarranties.map((w) => {
-              const status = getExpirationStatus(w.expiration_date);
-              return (
-                <div
-                  key={w.id}
-                  onClick={() => openEditModal(w)}
-                  className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 flex flex-col justify-between space-y-3 active:scale-[0.99] transition-transform cursor-pointer"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1 max-w-[70%]">
-                      <h3 className="font-semibold text-white text-base truncate tracking-tight">{w.item_name}</h3>
-                      <p className="text-xs text-[#ccc] font-medium truncate">{w.vendor || 'Unspecified Retailer'}</p>
+      {/* FIXED HEIGHT MIDDLE PORT CONTAINMENT ENVIRONMENT */}
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-28 scrollbar-hide">
+        <PullToRefresh onRefresh={handleRefresh}>
+          <div className="space-y-3">
+            {loading && warranties.length === 0 ? (
+              <div className="text-center py-12 text-[#555] text-sm font-medium">Loading warranty indexes...</div>
+            ) : filteredWarranties.length === 0 ? (
+              <div className="text-center py-12 text-[#555] text-sm">No recorded coverage instances found.</div>
+            ) : (
+              filteredWarranties.map((w) => {
+                const status = getExpirationStatus(w.expiration_date);
+                return (
+                  <div
+                    key={w.id}
+                    onClick={() => openEditModal(w)}
+                    className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 flex flex-col justify-between space-y-3 active:scale-[0.99] transition-transform cursor-pointer"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1 max-w-[70%]">
+                        <h3 className="font-semibold text-white text-base truncate tracking-tight">{w.item_name}</h3>
+                        <p className="text-xs text-[#ccc] font-medium truncate">{w.vendor || 'Unspecified Retailer'}</p>
+                      </div>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${status.color}`}>
+                        {status.label}
+                      </span>
                     </div>
-                    <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${status.color}`}>
-                      {status.label}
-                    </span>
-                  </div>
 
-                  <div className="flex justify-between items-end pt-2 border-t border-[#1a1a1a]/60 text-xs text-[#555]">
-                    <div className="space-y-0.5">
-                      {w.expiration_date && (
-                        <p>Expires: <span className="text-[#ccc] font-mono">{w.expiration_date}</span></p>
-                      )}
-                      {w.purchase_date && (
-                        <p>Purchased: <span className="text-[#555] font-mono">{w.purchase_date}</span></p>
-                      )}
+                    <div className="flex justify-between items-end pt-2 border-t border-[#1a1a1a]/60 text-xs text-[#555]">
+                      <div className="space-y-0.5">
+                        {w.expiration_date && (
+                          <p>Expires: <span className="text-[#ccc] font-mono">{w.expiration_date}</span></p>
+                        )}
+                        {w.purchase_date && (
+                          <p>Purchased: <span className="text-[#555] font-mono">{w.purchase_date}</span></p>
+                        )}
+                      </div>
+                      <span className="font-mono text-white text-sm font-semibold tracking-tight">
+                        {formatCurrency(w.cost)}
+                      </span>
                     </div>
-                    <span className="font-mono text-white text-sm font-semibold tracking-tight">
-                      {formatCurrency(w.cost)}
-                    </span>
                   </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                );
+              })
+            )}
+          </div>
+        </PullToRefresh>
+      </div>
 
-        {/* Modal Configuration Shell Layer (Clean div architecture) */}
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6 text-white border border-[#2c2c2e]">
-              <div className="flex justify-between items-center px-5 py-4 border-b border-[#2c2c2e] sticky top-0 bg-[#1c1c1e] z-10">
-                <h2 className="text-base font-bold text-white">
-                  {selectedWarranty ? 'Edit Coverage Settings' : 'Log New Warranty Asset'}
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="text-[#555] hover:text-white text-sm font-semibold p-1"
-                >
-                  Cancel
-                </button>
+      {/* Modal Configuration Shell Layer (Clean div architecture) */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6 text-white border border-[#2c2c2e]">
+            <div className="flex justify-between items-center px-5 py-4 border-b border-[#2c2c2e] sticky top-0 bg-[#1c1c1e] z-10">
+              <h2 className="text-base font-bold text-white">
+                {selectedWarranty ? 'Edit Coverage Settings' : 'Log New Warranty Asset'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-[#f0a050] text-sm font-semibold p-1"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {/* Data Input Fields Strip */}
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Item Name *</label>
+                <input
+                  type="text"
+                  value={itemName}
+                  onChange={(e) => setItemName(e.target.value)}
+                  placeholder="e.g. Living Room TV"
+                  className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
+                />
               </div>
 
-              {/* Data Input Fields Strip */}
-              <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Item Name *</label>
+                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Retail Vendor</label>
                   <input
                     type="text"
-                    value={itemName}
-                    onChange={(e) => setItemName(e.target.value)}
-                    placeholder="e.g. Living Room TV"
+                    value={vendor}
+                    onChange={(e) => setVendor(e.target.value)}
+                    placeholder="e.g. Best Buy"
                     className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Retail Vendor</label>
-                    <input
-                      type="text"
-                      value={vendor}
-                      onChange={(e) => setVendor(e.target.value)}
-                      placeholder="e.g. Best Buy"
-                      className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Cost</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={cost}
-                      onChange={(e) => setCost(e.target.value)}
-                      placeholder="0.00"
-                      className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Date</label>
-                    <input
-                      type="date"
-                      value={purchaseDate}
-                      onChange={(e) => setPurchaseDate(e.target.value)}
-                      className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Expiration Date</label>
-                    <input
-                      type="date"
-                      value={expirationDate}
-                      onChange={(e) => setExpirationDate(e.target.value)}
-                      className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
-                    />
-                  </div>
-                </div>
-
                 <div>
-                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Coverage Notes</label>
-                  <textarea
-                    rows={3}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Coverage structural exemptions, protection parameters, policy extensions..."
-                    className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050] resize-none"
+                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Cost</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={cost}
+                    onChange={(e) => setCost(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
                   />
                 </div>
+              </div>
 
-                {/* Horizontal Button Block Footer Layout */}
-                <div className="pt-3 flex gap-3">
-                  {selectedWarranty ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setIsDeleteConfirmOpen(true)}
-                        className="flex-1 bg-[#2c2c2e] text-[#ef4444] border border-[#ef4444]/10 font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Save
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setIsModalOpen(false)}
-                        className="flex-1 bg-[#2c2c2e] text-white font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
-                      >
-                        Save
-                      </button>
-                    </>
-                  )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Date</label>
+                  <input
+                    type="date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                    className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Expiration Date</label>
+                  <input
+                    type="date"
+                    value={expirationDate}
+                    onChange={(e) => setExpirationDate(e.target.value)}
+                    className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white font-mono focus:outline-none focus:border-[#f0a050]"
+                  />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Coverage Notes</label>
+                <textarea
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Coverage structural exemptions, protection parameters, policy extensions..."
+                  className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050] resize-none"
+                />
+              </div>
+
+              {/* Horizontal Button Block Footer Layout */}
+              <div className="pt-3 flex gap-3">
+                {selectedWarranty ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteConfirmOpen(true)}
+                      className="flex-1 bg-[#2c2c2e] text-[#ef4444] border border-[#ef4444]/10 font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                    >
+                      Save
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="flex-1 bg-[#2c2c2e] text-white font-semibold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      className="flex-1 bg-[#f0a050] text-black font-bold py-3.5 rounded-xl text-sm active:scale-[0.98] transition-transform"
+                    >
+                      Save
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Delete Confirmation Sheet */}
-        {isDeleteConfirmOpen && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#2c2c2e] space-y-4">
-              <div className="text-center space-y-1">
-                <h3 className="text-base font-bold text-white">Permanently Remove Entry?</h3>
-                <p className="text-xs text-[#555]">This action cannot be undone. This row item index will be dropped.</p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsDeleteConfirmOpen(false)}
-                  className="flex-1 bg-[#2c2c2e] text-white py-3 rounded-xl text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className="flex-1 bg-[#ef4444] text-white py-3 rounded-xl text-sm font-bold"
-                >
-                  Confirm Delete
-                </button>
-              </div>
+      {/* Delete Confirmation Sheet */}
+      {isDeleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#2c2c2e] space-y-4">
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-bold text-white">Permanently Remove Entry?</h3>
+              <p className="text-xs text-[#555]">This action cannot be undone. This row item index will be dropped.</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                className="flex-1 bg-[#2c2c2e] text-white py-3 rounded-xl text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="flex-1 bg-[#ef4444] text-white py-3 rounded-xl text-sm font-bold"
+              >
+                Confirm Delete
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Bottom Navigation Element */}
-        <BottomNav activeTab="more" />
-      </div>
-    </PullToRefresh>
+      {/* Permanently Locked Navigation Footer Bar */}
+      <BottomNav active="more" />
+    </div>
   );
 }
