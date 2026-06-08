@@ -26,7 +26,8 @@ export default function WarrantiesPage() {
       const res = await fetch('/api/warranties', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        setWarranties(data.warranties || []);
+        // Since the API returns a direct array, map it safely with a fallback
+        setWarranties(Array.isArray(data) ? data : []);
       }
     } catch (e) {
       console.error('Failed to load warranties dataset:', e);
