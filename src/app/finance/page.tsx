@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
-import SwipeTabs from '@/components/SwipeTabs';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,7 +65,7 @@ type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v5'; // Increment to bust existing localStorage tracks
+const CACHE_VERSION = 'v6'; // Increment to bust localized stale caches
 const AMBER = '#f0a050';
 const GREEN = '#22c55e';
 const RED = '#ef4444';
@@ -161,7 +160,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate: (tab: Tab) => void }) {
+function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNavigateRow: (tab: Tab) => void }) {
   const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number } | null>(null);
   const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number } | null>(null);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
@@ -186,10 +185,12 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
         fetch('/api/finance/transactions?limit=5'), fetch('/api/finance/bills'),
       ]);
       const [cfData, nwData, txData, blData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json(), blRes.json()]);
+      
       const now = new Date();
       const monthName = now.toLocaleString('default', { month: 'long' });
       const cur = cfData.months?.find((m: { month: string }) => m.month.toLowerCase().includes(monthName.toLowerCase()));
       const cf = cur ? { income: cur.income, expenses: cur.essentials + cur.discretionary, net: cur.net } : null;
+      
       if (cf) setCashFlow(cf);
       setNetWorth(nwData);
       setRecentTx(txData.transactions || []);
@@ -208,9 +209,9 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
 
   return (
-    <div className="space-y-4">
-      {/* Net Worth hero */}
-      <button className="w-full text-left active:opacity-70 transition-opacity" onClick={() => onNavigate('networth')}>
+    <div className="space-y-4 animate-fadeIn">
+      {/* Net Worth hero layout block */}
+      <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('networth')}>
         <Card className="p-5">
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-1">Net Worth</p>
           <p className="text-[32px] font-extrabold text-white leading-none" style={{ fontFamily: 'system-ui' }}>
@@ -224,11 +225,11 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
             </div>
           )}
         </Card>
-      </button>
+      </div>
 
       {/* Cash Flow */}
       {cashFlow && (
-        <button className="w-full text-left active:opacity-70 transition-opacity" onClick={() => onNavigate('budget')}>
+        <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('budget')}>
           <Card className="p-4">
             <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">This Month</p>
             <div className="grid grid-cols-3 gap-2 text-center">
@@ -237,6 +238,7 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
                 <p className="text-base font-bold text-[#22c55e] font-mono">{fmt(cashFlow.income)}</p>
               </div>
               <div>
+                <p className="text-[10px] text-[#444] mb-0.5">Expenses</p>
                 <p className="text-base font-bold text-[#ef4444] font-mono">{fmt(cashFlow.expenses)}</p>
               </div>
               <div>
@@ -245,12 +247,12 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
               </div>
             </div>
           </Card>
-        </button>
+        </div>
       )}
 
       {/* Bills due soon */}
       {dueSoon.length > 0 && (
-        <button className="w-full text-left active:opacity-70 transition-opacity" onClick={() => onNavigate('bills')}>
+        <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('bills')}>
           <Card className="p-4">
             <div className="flex items-center justify-between mb-1">
               <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Bills Due Soon</p>
@@ -259,15 +261,15 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
             <p className="text-xl font-bold text-[#f0a050] font-mono">{fmt(dueTotal)}</p>
             <p className="text-[10px] text-[#444]">{dueSoon.length} bill{dueSoon.length !== 1 ? 's' : ''} in next 7 days</p>
           </Card>
-        </button>
+        </div>
       )}
 
       {/* Recent Transactions */}
       <Card className="overflow-hidden">
-        <button className="w-full px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between active:bg-[#161616]" onClick={() => onNavigate('transactions')}>
+        <div className="w-full px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between active:bg-[#161616] cursor-pointer" onClick={() => onNavigateRow('transactions')}>
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Recent Transactions</p>
           <p className="text-[9px] text-[#f0a050]">See all →</p>
-        </button>
+        </div>
         {recentTx.length === 0 ? (
           <p className="px-4 py-6 text-center text-[11px] text-[#333]">Pull down to sync latest data</p>
         ) : (
@@ -323,10 +325,16 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
       setCurrentMonth(data.currentMonth);
       setAvailableMonths(data.availableMonths || []);
 
-      // Grab all historical month arrays inside cash-flow endpoint for our bar charts
       const cfData = await fetch('/api/finance/cash-flow').then(r => r.json());
       if (cfData.months) {
-        setHistoricalMonths(cfData.months.slice(-6)); // Get last 6 active columns
+        // Build chronological historical graph tracking backward from selected month point
+        const targetMonthIndex = cfData.months.findIndex((m: CashFlowMonth) => m.rawHeader === (month || data.month));
+        if (targetMonthIndex !== -1) {
+          const sliceStart = Math.max(0, targetMonthIndex - 5);
+          setHistoricalMonths(cfData.months.slice(sliceStart, targetMonthIndex + 1));
+        } else {
+          setHistoricalMonths(cfData.months.slice(-6));
+        }
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load');
@@ -339,16 +347,15 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
   const essentialItems = items.filter(i => i.section === 'essentials');
   const discretionaryItems = items.filter(i => i.section === 'discretionary');
 
-  // SVG Custom side-by-side vertical bar comparison chart (zero library layout)
   function CashFlowTrendChart() {
     if (historicalMonths.length < 2) return null;
     const maxVal = Math.max(...historicalMonths.map(m => Math.max(m.income, m.essentials + m.discretionary, 1)));
 
     return (
       <div>
-        <SectionLabel>Rolling 6-Month Cash Flow Trends</SectionLabel>
+        <SectionLabel>Historical Cash Flow Trends</SectionLabel>
         <Card className="p-4 space-y-4">
-          <div className="h-32 flex items-end justify-between gap-2 pt-2 px-1">
+          <div className="h-28 flex items-end justify-between gap-2 pt-2 px-1">
             {historicalMonths.map((m, i) => {
               const totalExp = m.essentials + m.discretionary;
               const incHeight = (m.income / maxVal) * 100;
@@ -356,14 +363,12 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
               const labelShort = m.month.split(' ')[0].substring(0, 3);
 
               return (
-                <div key={i} className="flex-1 flex flex-col items-center h-full justify-end group">
-                  <div className="flex items-end justify-center gap-1 w-full h-full pb-1">
-                    {/* Income bar (Green) */}
-                    <div className="w-[8px] bg-[#22c55e] rounded-t-sm transition-all" style={{ height: `${Math.max(incHeight, 2)}%` }} />
-                    {/* Expense bar (Red) */}
-                    <div className="w-[8px] bg-[#ef4444] rounded-t-sm transition-all" style={{ height: `${Math.max(expHeight, 2)}%` }} />
+                <div key={i} className="flex-1 flex flex-col items-center h-full justify-end">
+                  <div className="flex items-end justify-center gap-1.5 w-full h-full pb-1">
+                    <div className="w-[7px] bg-[#22c55e] rounded-t-sm" style={{ height: `${Math.max(incHeight, 2)}%` }} />
+                    <div className="w-[7px] bg-[#ef4444] rounded-t-sm" style={{ height: `${Math.max(expHeight, 2)}%` }} />
                   </div>
-                  <span className="text-[9px] text-[#555] font-semibold uppercase mt-1">{labelShort}</span>
+                  <span className="text-[9px] text-[#444] font-semibold uppercase mt-1">{labelShort}</span>
                 </div>
               );
             })}
@@ -371,11 +376,11 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
           <div className="flex items-center justify-center gap-4 text-[10px] border-t border-[#1a1a1a] pt-2 text-[#555]">
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-[#22c55e]" />
-              <span>Total Income</span>
+              <span>Income</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-[#ef4444]" />
-              <span>Total Expenses</span>
+              <span>Expenses</span>
             </div>
           </div>
         </Card>
@@ -405,7 +410,7 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
                 </p>
               </div>
               <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${isIncome ? item.percent >= 100 ? 'bg-[#22c55e]' : 'bg-[#22c55e]/70' : item.percent >= 100 ? 'bg-[#ef4444]' : item.percent >= 80 ? 'bg-[#f59e0b]' : ''}`}
+                <div className={`h-full rounded-full transition-all ${isIncome ? 'bg-[#22c55e]' : item.percent >= 100 ? 'bg-[#ef4444]' : item.percent >= 80 ? 'bg-[#f59e0b]' : ''}`}
                   style={{ width: `${Math.min(item.percent, 100)}%`, backgroundColor: (!isIncome && item.percent < 80) ? catColor(item.category) : undefined }} />
               </div>
               {!isIncome && item.over > 0 && <p className="text-[10px] text-[#ef4444] mt-0.5">{fmt(item.over)} over</p>}
@@ -428,7 +433,7 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fadeIn">
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">
@@ -485,8 +490,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
     setLoading(true);
     try {
       const data = await fetch(`/api/finance/transactions?limit=300&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
-      const txs = data.transactions || [];
-      setTransactions(txs);
+      setTransactions(data.transactions || []);
     } catch (e) {
       console.error('Failed to load transactions:', e);
     } finally {
@@ -517,28 +521,29 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Search */}
-      <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#333] text-sm">🔍</span>
-        <input type="text" placeholder="Search transactions…" value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] placeholder-[#333] outline-none focus:ring-1 focus:ring-[#f0a050]" />
+    <div className="space-y-3 h-full flex flex-col animate-fadeIn">
+      <div className="space-y-2 flex-shrink-0">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#333] text-sm">🔍</span>
+          <input type="text" placeholder="Search transactions…" value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] placeholder-[#333] outline-none focus:ring-1 focus:ring-[#f0a050]" />
+        </div>
+
+        <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+          className="w-full px-3 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] outline-none focus:ring-1 focus:ring-[#f0a050]">
+          {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+        </select>
       </div>
 
-      {/* Category filter */}
-      <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] outline-none focus:ring-1 focus:ring-[#f0a050]">
-        {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-      </select>
-
-      {loading ? (
-        <div className="flex justify-center py-12"><Spinner /></div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-[#333] text-sm">{transactions.length === 0 ? 'Pull down to sync data' : 'No results'}</div>
-      ) : (
-        <div className="space-y-4">
-          {sortedMonths.map(monthKey => {
+      {/* Local scroll containment framework */}
+      <div className="flex-1 overflow-y-auto pb-16 space-y-4 pr-1 scrollbar-hide">
+        {loading ? (
+          <div className="flex justify-center py-12"><Spinner /></div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-[#333] text-sm">{transactions.length === 0 ? 'Pull down to sync data' : 'No results'}</div>
+        ) : (
+          sortedMonths.map(monthKey => {
             const monthTxs = grouped[monthKey];
             const total = monthTotal(monthTxs);
             return (
@@ -571,9 +576,9 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
                 </Card>
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 }
@@ -591,9 +596,8 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
     } catch {}
     try {
       const data = await fetch('/api/finance/bills').then(r => r.json());
-      const bl = data.bills || [];
-      setBills(bl);
-      try { localStorage.setItem(`finance_bills_${CACHE_VERSION}`, JSON.stringify(bl)); } catch {}
+      setBills(data.bills || []);
+      try { localStorage.setItem(`finance_bills_${CACHE_VERSION}`, JSON.stringify(data.bills || [])); } catch {}
     } finally { setLoading(false); }
   }, []);
 
@@ -621,7 +625,7 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fadeIn">
       <Card className="p-4">
         <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-1">Upcoming Bills Total</p>
         <p className="text-2xl font-bold text-white font-mono">{fmt(totalMonthly)}</p>
@@ -681,7 +685,6 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   const liabilities = data.accounts.filter(a => a.type === 'liability');
   const historyList = data.history || [];
 
-  // Native zero-dependency SVG vector line spark graph
   function NetWorthSparkline() {
     if (historyList.length < 2) return null;
     
@@ -694,7 +697,6 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
     const height = 80;
     const padding = 10;
     
-    // Map data values neatly into mathematical SVG 2D layout coordinates
     const points = historyList.map((h, i) => {
       const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
       const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
@@ -706,9 +708,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
         <SectionLabel>Net Worth Trajectory Baseline</SectionLabel>
         <Card className="p-4 flex flex-col items-center">
           <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-            {/* Glowing amber trend trajectory vector line */}
             <polyline fill="none" stroke="#f0a050" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
-            {/* Contextual anchor circles at start and finish boundaries */}
             {historyList.map((h, i) => {
               if (i !== 0 && i !== historyList.length - 1) return null;
               const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
@@ -726,8 +726,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Hero card */}
+    <div className="space-y-4 animate-fadeIn">
       <div className="rounded-2xl bg-gradient-to-br from-[#1a1000] to-[#111] border border-[#f0a050]/20 p-5">
         <p className="text-[#f0a050]/60 text-sm mb-1">Net Worth</p>
         <p className="text-4xl font-bold text-white font-mono tracking-tight">{fmt(data.netWorth)}</p>
@@ -844,56 +843,60 @@ function FinancePageInner() {
   ];
 
   return (
-    <div className="min-h-screen bg-black">
-      {/* Header */}
-      <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
-        <div className="px-4 pt-14 pb-0">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold text-white">Finance</h1>
-            {syncing && (
-              <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050]">
-                <div className="w-3 h-3 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
-                Syncing…
-              </div>
-            )}
-          </div>
-          <div className="flex gap-0 overflow-x-auto scrollbar-hide">
-            {tabs.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${
-                  activeTab === tab.id ? 'border-[#f0a050] text-[#f0a050]' : 'border-transparent text-[#555]'
-                }`}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
+    <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
+      {/* Header element - locked to top */}
+      <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-xl font-bold text-white">Finance</h1>
+          {syncing && (
+            <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050]">
+              <div className="w-3 h-3 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+              Syncing…
+            </div>
+          )}
+        </div>
+        <div className="flex gap-0 overflow-x-auto scrollbar-hide">
+          {tabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${
+                activeTab === tab.id ? 'border-[#f0a050] text-[#f0a050]' : 'border-transparent text-[#555]'
+              }`}>
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <PullToRefresh onRefresh={handleRefresh}>
-        <SwipeTabs tabs={tabs} activeTab={activeTab} onTabChange={id => setActiveTab(id as Tab)}>
-          {tabs.map(tab => (
-            <div key={tab.id} className="px-4 py-4 pb-28">
-              {tab.id === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigate={id => setActiveTab(id as Tab)} />}
-              {tab.id === 'budget' && <BudgetTab onRefresh={refreshCount} />}
-              {tab.id === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
-              {tab.id === 'bills' && <BillsTab onRefresh={refreshCount} />}
-              {tab.id === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
-            </div>
-          ))}
-        </SwipeTabs>
-      </PullToRefresh>
+      {/* Structured tab rendering block preventing endless scrolling loops */}
+      <div className="flex-1 overflow-hidden relative bg-black">
+        {activeTab === 'transactions' ? (
+          // Transactions logs run separate full-viewport scroll metrics
+          <div className="h-full px-4 pt-4">
+            <TransactionsTab onRefresh={refreshCount} />
+          </div>
+        ) : (
+          // Static layout blocks remain fully encapsulated inside pull-to-refresh
+          <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
+            <PullToRefresh onRefresh={handleRefresh}>
+              {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} />}
+              {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
+              {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
+              {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
+            </PullToRefresh>
+          </div>
+        )}
+      </div>
 
       {/* FAB */}
       {activeTab === 'transactions' && (
         <button onClick={() => setShowAddTx(true)}
           className="fixed z-40 w-14 h-14 rounded-full bg-[#f0a050] text-black text-3xl font-light shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 72px)', right: '20px' }}>
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 84px)', right: '20px' }}>
           +
         </button>
       )}
 
-      {/* Add Transaction Modal (Uses safe native div click handler) */}
+      {/* Add Transaction Modal wrapper */}
       {showAddTx && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddTx(false)}>
           <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6" onClick={e => e.stopPropagation()}>
@@ -905,7 +908,6 @@ function FinancePageInner() {
               </button>
             </div>
             <div className="px-4 pt-4 space-y-3">
-              {/* Date + Merchant */}
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center px-4 py-3 border-b border-white/10">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
@@ -918,7 +920,6 @@ function FinancePageInner() {
                     className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
                 </div>
               </div>
-              {/* Amount */}
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center px-4 py-3">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
@@ -926,7 +927,6 @@ function FinancePageInner() {
                     className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
                 </div>
               </div>
-              {/* Account + Category */}
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center px-4 py-3 border-b border-white/10">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Account</span>
