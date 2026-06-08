@@ -276,9 +276,8 @@ function TasksCard() {
   );
 }
 
-
-// ── Knox + Home Row ───────────────────────────────────────────────────────────
-function KnoxHomeRow() {
+// ── Knox Full Row Card ────────────────────────────────────────────────────────
+function KnoxCard() {
   const [knox, setKnox] = useState<any>(null);
 
   useEffect(() => {
@@ -317,87 +316,47 @@ function KnoxHomeRow() {
   const nextMed = knox?.medications?.[0];
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <div
-        onClick={() => { window.location.href = '/knox'; }}
-        className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer"
-      >
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-base">🐺</span>
-          <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Knox</span>
+    <div
+      onClick={() => { window.location.href = '/knox'; }}
+      className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer w-full"
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-base">🐺</span>
+        <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Knox Telemetry</span>
+      </div>
+      <div className="flex items-baseline justify-between mb-2 border-b border-[#141414] pb-2">
+        <div className="text-[14px] font-bold text-[#ccc]">Siberian Husky</div>
+        <div className="text-[11px] text-[#555] font-medium font-mono">{getKnoxAge()}</div>
+      </div>
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <span className="text-[11px] text-[#555]">Latest Static Weight</span>
+          <span className="text-[11px] font-bold font-mono text-[#888]">
+            {latestWeight ? `${latestWeight.weight_lbs} lbs` : '—'}
+          </span>
         </div>
-        <div className="text-[12px] font-bold text-[#ccc]">Siberian Husky</div>
-        <div className="text-[10px] text-[#555] mb-2">{getKnoxAge()}</div>
-        <div className="space-y-1">
-          <div className="flex justify-between items-center">
-            <span className="text-[9px] text-[#444]">Weight</span>
-            <span className="text-[9px] font-mono text-[#888]">
-              {latestWeight ? `${latestWeight.weight_lbs} lbs` : '—'}
+        <div className="h-px bg-[#141414]" />
+        <div className="flex justify-between items-center">
+          <span className="text-[11px] text-[#555]">Next Clinical Vet Visit</span>
+          {nextVet?.next_visit_date ? (
+            <span className="text-[11px] font-bold font-mono" style={{ color: knoxDayColor(nextVet.next_visit_date) }}>
+              {fmtShortDate(nextVet.next_visit_date)}{nextVet.next_visit_time ? ` · ${fmtTime(nextVet.next_visit_time)}` : ''}
             </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-[9px] text-[#444]">Next Vet</span>
-            {nextVet?.next_visit_date ? (
-              <span className="text-[9px] font-mono" style={{ color: knoxDayColor(nextVet.next_visit_date) }}>
-                {fmtShortDate(nextVet.next_visit_date)}{nextVet.next_visit_time ? ` · ${fmtTime(nextVet.next_visit_time)}` : ''}
-              </span>
-            ) : (
-              <span className="text-[9px] text-[#2a2a2a]">—</span>
-            )}
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-[9px] text-[#444]">Meds Due</span>
-            {nextMed?.next_due_date ? (
-              <span className="text-[9px] font-mono" style={{ color: knoxDayColor(nextMed.next_due_date) }}>
-                {fmtShortDate(nextMed.next_due_date)}
-              </span>
-            ) : (
-              <span className="text-[9px] text-[#2a2a2a]">—</span>
-            )}
-          </div>
+          ) : (
+            <span className="text-[11px] text-[#2a2a2a]">—</span>
+          )}
         </div>
-      </div>
-      <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3">
-        <div className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Home</div>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs">🌡️</span>
-            <div>
-              <div className="text-[10px] text-[#666]">Nest</div>
-              <div className="text-[9px] text-[#333]">Not connected</div>
-            </div>
-          </div>
-          <div className="h-px bg-[#1a1a1a]" />
-          <div className="flex items-center gap-2">
-            <span className="text-xs">🔔</span>
-            <div>
-              <div className="text-[10px] text-[#666]">Ring</div>
-              <div className="text-[9px] text-[#333]">Not connected</div>
-            </div>
-          </div>
+        <div className="h-px bg-[#141414]" />
+        <div className="flex justify-between items-center">
+          <span className="text-[11px] text-[#555]">Next Medication Deadline</span>
+          {nextMed?.next_due_date ? (
+            <span className="text-[11px] font-bold font-mono" style={{ color: knoxDayColor(nextMed.next_due_date) }}>
+              {fmtShortDate(nextMed.next_due_date)}
+            </span>
+          ) : (
+            <span className="text-[11px] text-[#2a2a2a]">—</span>
+          )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Spotify Card ──────────────────────────────────────────────────────────────
-function SpotifyCard() {
-  return (
-    <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 flex items-center gap-3">
-      <div className="w-9 h-9 rounded-xl bg-[#1db954] flex items-center justify-center flex-shrink-0">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 14.36a.622.622 0 01-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 01-.277-1.215c3.809-.87 7.076-.496 9.712 1.115.294.181.387.565.207.857zm1.24-2.759a.779.779 0 01-1.071.257c-2.687-1.652-6.785-2.131-9.965-1.166a.779.779 0 01-.973-.519.78.78 0 01.519-.972c3.632-1.102 8.147-.568 11.234 1.329a.78.78 0 01.256 1.071zm.106-2.871C14.692 8.95 9.375 8.775 6.227 9.71a.935.935 0 11-.543-1.79c3.632-1.102 9.672-.888 13.48 1.322a.935.935 0 01-.354 1.724z"/>
-        </svg>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[11px] font-medium text-[#888]">Not playing</div>
-        <div className="text-[9px] text-[#333]">Connect Spotify to see now playing</div>
-      </div>
-      <div className="w-7 h-7 rounded-full border border-[#2a2a2a] flex items-center justify-center flex-shrink-0">
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="#444">
-          <polygon points="3,1 9,5 3,9"/>
-        </svg>
       </div>
     </div>
   );
@@ -432,8 +391,7 @@ export default function CommandCenterCards() {
           <CalendarCard />
           <TasksCard />
           <NewsCard />
-          <KnoxHomeRow />
-          <SpotifyCard />
+          <KnoxCard />
         </div>
       </div>
     </PullToRefresh>
