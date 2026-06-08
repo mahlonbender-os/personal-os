@@ -40,7 +40,6 @@ export default function WarrantiesPage() {
       const res = await fetch('/api/warranties');
       if (res.ok) {
         const data = await res.json();
-        // Read directly from array stream safely with fallback
         setWarranties(Array.isArray(data) ? data : []);
         localStorage.setItem('warranties-data', JSON.stringify(data));
       }
@@ -136,14 +135,12 @@ export default function WarrantiesPage() {
     }
   };
 
-  // Safe Timezone Local Structural Mapping Matrix
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
   
   const getExpirationStatus = (dateStr: string | null) => {
     if (!dateStr) return { label: 'No Expiry', color: 'text-[#555] bg-[#1a1a1a]' };
     if (dateStr < todayStr) return { label: 'Expired', color: 'text-[#ef4444] bg-[#ef4444]/10 border border-[#ef4444]/20' };
     
-    // Explicit Middle-of-Day Append Logic to Stabilize Device Shifting Edge Cases
     const today = new Date(todayStr + 'T12:00:00');
     const expiry = new Date(dateStr + 'T12:00:00');
     const diffTime = expiry.getTime() - today.getTime();
@@ -167,7 +164,7 @@ export default function WarrantiesPage() {
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden select-none">
       
-      {/* HEADER SECTION - Locked to the upper displays */}
+      {/* HEADER SECTION - Static Top Lock */}
       <div className="flex-shrink-0 bg-black pt-14 z-30">
         <div className="px-4 pb-2 flex justify-between items-center">
           <div>
@@ -185,7 +182,7 @@ export default function WarrantiesPage() {
           </button>
         </div>
 
-        {/* Sticky Sub-tab Navigation Strip Row */}
+        {/* Sticky Sub-tab Row */}
         <div className="flex border-b border-[#1a1a1a] bg-black">
           {TABS.map((tab, i) => (
             <button
@@ -204,7 +201,7 @@ export default function WarrantiesPage() {
         </div>
       </div>
 
-      {/* FIXED HEIGHT MIDDLE PORT CONTAINMENT ENVIRONMENT */}
+      {/* INDEPENDENT INNER SCROLL VIEWPORT CONTAINER */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-28 scrollbar-hide">
         <PullToRefresh onRefresh={handleRefresh}>
           <div className="space-y-3">
@@ -252,7 +249,7 @@ export default function WarrantiesPage() {
         </PullToRefresh>
       </div>
 
-      {/* Modal Configuration Shell Layer (Clean div architecture) */}
+      {/* Modal Configuration Sheet */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6 text-white border border-[#2c2c2e]">
@@ -269,7 +266,6 @@ export default function WarrantiesPage() {
               </button>
             </div>
 
-            {/* Data Input Fields Strip */}
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Item Name *</label>
@@ -291,7 +287,7 @@ export default function WarrantiesPage() {
                     onChange={(e) => setVendor(e.target.value)}
                     placeholder="e.g. Best Buy"
                     className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
-                  />
+                />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Cost</label>
@@ -338,7 +334,6 @@ export default function WarrantiesPage() {
                 />
               </div>
 
-              {/* Horizontal Button Block Footer Layout */}
               <div className="pt-3 flex gap-3">
                 {selectedWarranty ? (
                   <>
@@ -409,7 +404,7 @@ export default function WarrantiesPage() {
         </div>
       )}
 
-      {/* Permanently Locked Navigation Footer Bar */}
+      {/* FIXED BOTTOM NAVIGATION */}
       <BottomNav active="more" />
     </div>
   );
