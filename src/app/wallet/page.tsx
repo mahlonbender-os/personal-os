@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation'; // Fixed: Corrected from 'navigation' to 'next/navigation'
+import { useRouter } from 'next/navigation';
 import PullToRefresh from '@/components/PullToRefresh';
 
 interface CreditCard {
@@ -12,8 +12,8 @@ interface CreditCard {
   bgClass: string;
   textColorClass: string;
   metaColorClass: string;
-  limit: number; // Accurate hardcoded credit limits
-  searchKeys: string[]; // Strings matching the bill names in your Google Sheet accounts row data
+  limit: number; // Put your absolute exact real-world limit here
+  searchKeys: string[]; // Adjust these to match EXACTLY how they are typed in your Google Sheet rows
   multipliers: {
     dining: number;
     groceries: number;
@@ -24,7 +24,7 @@ interface CreditCard {
   perks: string[];
 }
 
-// ── MAHLON'S ACCURATE INVENTORY (STRICT ALPHABETICAL ORDER BY CARD NAME) ──
+// ── MAHLON'S EXACT CREDIT BALANCE PORTFOLIO (ALPHABETICAL ORDER) ──
 const CORE_CARDS: CreditCard[] = [
   {
     id: '1stfinancial',
@@ -34,7 +34,7 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#1e3a8a] to-[#0f172a] border border-[#2563eb]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-blue-400',
-    limit: 2000, // Customize this exact limit if needed
+    limit: 2000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
     searchKeys: ['1st financial', '1st fin', 'first financial'],
     multipliers: { dining: 1, groceries: 1, gas: 1, travel: 1, catchAll: 1 },
     perks: ['Standard personal line credit protection framework'],
@@ -45,12 +45,12 @@ const CORE_CARDS: CreditCard[] = [
     bank: 'Goldman Sachs',
     lastFour: '••••',
     bgClass: 'bg-gradient-to-br from-[#f5f5f7] via-[#ffffff] to-[#e8e8ed] border border-[#d1d5db]',
-    textColorClass: 'text-black', // Sharp contrast text black overlay
+    textColorClass: 'text-black',
     metaColorClass: 'text-neutral-500',
-    limit: 6500, // Customize this exact limit if needed
-    searchKeys: ['apple card', 'apple', 'goldman sachs', 'goldman'],
+    limit: 6500, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
+    searchKeys: ['apple card', 'apple', 'goldman sachs', 'gs'],
     multipliers: { dining: 2, groceries: 1, gas: 1, travel: 1, catchAll: 2 },
-    perks: ['2% Cash Back on all purchases completed using Apple Pay via phone', '3% back on Apple store purchases & select merchants'],
+    perks: ['2% Cash Back on all purchases completed using Apple Pay via iPhone', '3% back on Apple store purchases & select merchants'],
   },
   {
     id: 'amex_bcp',
@@ -60,8 +60,8 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#0a2540] to-[#001020] border border-[#1e3a5f]',
     textColorClass: 'text-white',
     metaColorClass: 'text-sky-400',
-    limit: 10000, // Customize this exact limit if needed
-    searchKeys: ['amex', 'american express', 'blue cash', 'bcp'],
+    limit: 10000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
+    searchKeys: ['amex', 'american express', 'blue cash', 'bcp', 'preferred'],
     multipliers: { dining: 1, groceries: 6, gas: 3, travel: 1, catchAll: 1 },
     perks: ['6% Cash Back on U.S. Supermarkets up to $6k/yr', '6% on Select U.S. Streaming services', '3% on Transit (Uber, Tolls, Parking)']
   },
@@ -73,7 +73,7 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#b91c1c] via-[#0f172a] to-[#0f172a] border border-[#dc2626]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-red-400',
-    limit: 7500, // Customize this exact limit if needed
+    limit: 7500, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
     searchKeys: ['bj', "bj's", 'bjs club', 'bjs card', 'bjs one'],
     multipliers: { dining: 1.5, groceries: 1.5, gas: 1.5, travel: 1.5, catchAll: 1.5 },
     perks: ['15¢ ($0.15) off per gallon at BJ\'s Gas stations permanently', "3% back on purchases made inside BJ's Wholesale store loops"],
@@ -86,7 +86,7 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#7c2d12] to-[#1c1917] border border-[#ea580c]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-orange-400',
-    limit: 5000, // Customize this exact limit if needed
+    limit: 5000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
     searchKeys: ['savor', 'savorone', 'capital one savor', 'savor one'],
     multipliers: { dining: 3, groceries: 3, gas: 1, travel: 1, catchAll: 1 },
     perks: ['3% back on Dining, Entertainment, and Popular Streaming services', '8% back on Capital One Entertainment tickets'],
@@ -99,8 +99,8 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#0284c7] via-[#0f172a] to-[#0f172a] border border-[#0369a1]/30',
     textColorClass: 'text-white',
     metaColorClass: 'text-sky-300',
-    limit: 12000, // Customize this exact limit if needed
-    searchKeys: ['chase', 'sapphire', 'csp', 'chase sapphire'],
+    limit: 12000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
+    searchKeys: ['chase', 'sapphire', 'csp', 'chase sapphire', 'preferred'],
     multipliers: { dining: 3, groceries: 1, gas: 1, travel: 2, catchAll: 1 },
     perks: ['Points worth 25% more when redeemed for travel portal statement bookings', '1:1 point transfers out to partner airlines & global hotel networks'],
   },
@@ -112,25 +112,23 @@ export default function DigitalWalletPage() {
   const [activeTab, setActiveTab] = useState<'rates' | 'perks'>('rates');
   const [liveBalances, setLiveBalances] = useState<Record<string, number>>({});
 
-  // ── INGEST DYNAMIC GOOGLE SHEETS STATEMENT DATA FROM STORAGE ──────────────
   useEffect(() => {
     try {
       const storedFinance = localStorage.getItem('cc_finance_v1');
       if (storedFinance) {
         const parsed = JSON.parse(storedFinance);
-        // Extracts the cached array of synchronized account data/bills rows
         const billsList = parsed.bills || [];
         
         const computedBalances: Record<string, number> = {};
 
         CORE_CARDS.forEach((card) => {
-          // Identify rows in the spreadsheet's bills object matching our search keys
+          // Identify row data elements matching card search tokens
           const matchingBills = billsList.filter((bill: any) => {
             const billName = (bill.name || '').toLowerCase();
             return card.searchKeys.some((key) => billName.includes(key));
           });
 
-          // Aggregate total statement balances from your live spreadsheet row amounts
+          // Aggregate balance parameters securely
           const totalBalance = matchingBills.reduce((acc: number, bill: any) => {
             return acc + Math.abs(bill.amount || 0);
           }, 0);
@@ -141,7 +139,7 @@ export default function DigitalWalletPage() {
         setLiveBalances(computedBalances);
       }
     } catch (e) {
-      console.error('Google Sheets card balance injection failed:', e);
+      console.error('Google Sheets link error:', e);
     }
   }, []);
 
@@ -165,7 +163,7 @@ export default function DigitalWalletPage() {
   }, [searchQuery]);
 
   const processedCards = useMemo(() => {
-    if (!activeCategory) return CORE_CARDS; // Always falls back to explicit alphabetical order
+    if (!activeCategory) return CORE_CARDS;
     return [...CORE_CARDS].sort((a, b) => b.multipliers[activeCategory] - a.multipliers[activeCategory]);
   }, [activeCategory]);
 
@@ -230,7 +228,7 @@ export default function DigitalWalletPage() {
         </div>
       </div>
 
-      {/* Scrollable Container Window */}
+      {/* Main Container Viewport Section */}
       <div className="flex-1 overflow-y-auto pb-24">
         <PullToRefresh onRefresh={async () => { window.location.reload(); }}>
           <div className="p-4 space-y-4">
@@ -242,10 +240,11 @@ export default function DigitalWalletPage() {
               const isWinner = activeCategory && index === 0;
               const rate = activeCategory ? card.multipliers[activeCategory] : null;
 
-              // Compute spreadsheet metrics dynamically
               const balance = liveBalances[card.id] || 0;
               const limit = card.limit;
-              const usage = limit > 0 ? Math.round((balance / limit) * 100) : 0;
+              
+              // Fixed: Dynamic Usage calculated precisely down to 2 decimal parameters
+              const usage = limit > 0 ? ((balance / limit) * 100).toFixed(2) : "0.00";
 
               return (
                 <div
@@ -288,7 +287,7 @@ export default function DigitalWalletPage() {
                     </div>
                     <div className="text-right">
                       <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Usage</div>
-                      <div className={`font-bold mt-0.5 ${usage > 30 ? 'text-red-500 font-extrabold' : 'opacity-80'}`}>
+                      <div className={`font-bold mt-0.5 ${parseFloat(usage) > 30.0 ? 'text-red-500 font-extrabold' : 'opacity-80'}`}>
                         {usage}%
                       </div>
                     </div>
