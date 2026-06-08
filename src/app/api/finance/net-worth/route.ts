@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Accounts!A1:F30')}`;
     const res = await fetch(url, {
@@ -32,13 +38,10 @@ export async function GET() {
     const data = await res.json();
     const rows: string[][] = data.values || [];
 
-    // Totals — row 3 = index 2, row 4 = index 3, row 5 = index 4
-    // Column C = index 2
     const totalAssets = parseAmount(rows[2]?.[2]);
     const totalLiabilities = parseAmount(rows[3]?.[2]);
     const netWorth = parseAmount(rows[4]?.[2]);
 
-    // Assets — rows 9–15 (index 8–14), name in col B (index 1), value in col E (index 4)
     const assets = [];
     for (let i = 8; i <= 14; i++) {
       const row = rows[i];
@@ -50,7 +53,6 @@ export async function GET() {
       }
     }
 
-    // Liabilities — rows 19–27 (index 18–26), name in col B (index 1), value in col E (index 4)
     const liabilities = [];
     for (let i = 17; i <= 26; i++) {
       const row = rows[i];
@@ -62,11 +64,21 @@ export async function GET() {
       }
     }
 
+    // Query historical timeline metrics sorted ascending
+    const { data: history } = await supabase
+      .from('net_worth_snapshots')
+      .select('date, net_worth, assets, liabilities')
+      .order('date', { ascending: true })
+      .limit(12);
+
     return NextResponse.json({
       totalAssets,
       totalLiabilities,
       netWorth,
       accounts: [...assets, ...liabilities],
+      history: history || []
+    }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0' }
     });
   } catch (e: unknown) {
     return NextResponse.json(

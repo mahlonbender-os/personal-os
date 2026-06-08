@@ -46,11 +46,27 @@ interface BudgetItem {
   percent: number;
 }
 
+interface CashFlowMonth {
+  month: string;
+  rawHeader: string;
+  income: number;
+  essentials: number;
+  discretionary: number;
+  net: number;
+}
+
+interface NetWorthSnapshot {
+  date: string;
+  net_worth: number;
+  assets: number;
+  liabilities: number;
+}
+
 type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5'; // Increment to bust existing localStorage tracks
 const AMBER = '#f0a050';
 const GREEN = '#22c55e';
 const RED = '#ef4444';
@@ -113,6 +129,7 @@ function fmtDate(s: string) {
 
 function monthLabel(key: string) {
   if (!key) return '';
+  if (!key.includes('-')) return key;
   const [y, m] = key.split('-');
   return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 }
@@ -141,8 +158,6 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2 px-1">{children}</p>;
 }
-
-function Divider() { return <div className="h-px bg-[#1a1a1a]" />; }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
@@ -222,7 +237,6 @@ function OverviewTab({ onRefresh, onNavigate }: { onRefresh: number; onNavigate:
                 <p className="text-base font-bold text-[#22c55e] font-mono">{fmt(cashFlow.income)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-[#444] mb-0.5">Expenses</p>
                 <p className="text-base font-bold text-[#ef4444] font-mono">{fmt(cashFlow.expenses)}</p>
               </div>
               <div>
@@ -288,6 +302,7 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [currentMonth, setCurrentMonth] = useState('');
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+  const [historicalMonths, setHistoricalMonths] = useState<CashFlowMonth[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -307,6 +322,12 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
       setSelectedMonth(data.month);
       setCurrentMonth(data.currentMonth);
       setAvailableMonths(data.availableMonths || []);
+
+      // Grab all historical month arrays inside cash-flow endpoint for our bar charts
+      const cfData = await fetch('/api/finance/cash-flow').then(r => r.json());
+      if (cfData.months) {
+        setHistoricalMonths(cfData.months.slice(-6)); // Get last 6 active columns
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally { setLoading(false); }
@@ -317,6 +338,50 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
   const incomeItems = items.filter(i => i.section === 'income');
   const essentialItems = items.filter(i => i.section === 'essentials');
   const discretionaryItems = items.filter(i => i.section === 'discretionary');
+
+  // SVG Custom side-by-side vertical bar comparison chart (zero library layout)
+  function CashFlowTrendChart() {
+    if (historicalMonths.length < 2) return null;
+    const maxVal = Math.max(...historicalMonths.map(m => Math.max(m.income, m.essentials + m.discretionary, 1)));
+
+    return (
+      <div>
+        <SectionLabel>Rolling 6-Month Cash Flow Trends</SectionLabel>
+        <Card className="p-4 space-y-4">
+          <div className="h-32 flex items-end justify-between gap-2 pt-2 px-1">
+            {historicalMonths.map((m, i) => {
+              const totalExp = m.essentials + m.discretionary;
+              const incHeight = (m.income / maxVal) * 100;
+              const expHeight = (totalExp / maxVal) * 100;
+              const labelShort = m.month.split(' ')[0].substring(0, 3);
+
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center h-full justify-end group">
+                  <div className="flex items-end justify-center gap-1 w-full h-full pb-1">
+                    {/* Income bar (Green) */}
+                    <div className="w-[8px] bg-[#22c55e] rounded-t-sm transition-all" style={{ height: `${Math.max(incHeight, 2)}%` }} />
+                    {/* Expense bar (Red) */}
+                    <div className="w-[8px] bg-[#ef4444] rounded-t-sm transition-all" style={{ height: `${Math.max(expHeight, 2)}%` }} />
+                  </div>
+                  <span className="text-[9px] text-[#555] font-semibold uppercase mt-1">{labelShort}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-center gap-4 text-[10px] border-t border-[#1a1a1a] pt-2 text-[#555]">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[#22c55e]" />
+              <span>Total Income</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[#ef4444]" />
+              <span>Total Expenses</span>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   function BudgetSection({ title, rows, totalBudget, totalActual }: { title: string; rows: BudgetItem[]; totalBudget: number; totalActual: number }) {
     const isIncome = title === 'Income';
@@ -398,6 +463,7 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
         <Card className="p-4 text-sm text-[#ef4444]">{error} — pull down to refresh</Card>
       ) : (
         <>
+          <CashFlowTrendChart />
           <BudgetSection title="Income" rows={incomeItems} totalBudget={totalIncomeBudget} totalActual={totalIncomeActual} />
           <BudgetSection title="Essentials" rows={essentialItems} totalBudget={essentialItems.reduce((s, i) => s + i.budget, 0)} totalActual={essentialItems.reduce((s, i) => s + i.actual, 0)} />
           <BudgetSection title="Discretionary" rows={discretionaryItems} totalBudget={discretionaryItems.reduce((s, i) => s + i.budget, 0)} totalActual={discretionaryItems.reduce((s, i) => s + i.actual, 0)} />
@@ -591,7 +657,7 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
 // ─── Net Worth Tab ────────────────────────────────────────────────────────────
 
 function NetWorthTab({ onRefresh }: { onRefresh: number }) {
-  const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number } | null>(null);
+  const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; history?: NetWorthSnapshot[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -613,6 +679,51 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
   const assets = data.accounts.filter(a => a.type === 'asset');
   const liabilities = data.accounts.filter(a => a.type === 'liability');
+  const historyList = data.history || [];
+
+  // Native zero-dependency SVG vector line spark graph
+  function NetWorthSparkline() {
+    if (historyList.length < 2) return null;
+    
+    const values = historyList.map(h => h.net_worth);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min === 0 ? 1 : max - min;
+
+    const width = 340;
+    const height = 80;
+    const padding = 10;
+    
+    // Map data values neatly into mathematical SVG 2D layout coordinates
+    const points = historyList.map((h, i) => {
+      const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
+      const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
+      return `${x},${y}`;
+    }).join(' ');
+
+    return (
+      <div>
+        <SectionLabel>Net Worth Trajectory Baseline</SectionLabel>
+        <Card className="p-4 flex flex-col items-center">
+          <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
+            {/* Glowing amber trend trajectory vector line */}
+            <polyline fill="none" stroke="#f0a050" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
+            {/* Contextual anchor circles at start and finish boundaries */}
+            {historyList.map((h, i) => {
+              if (i !== 0 && i !== historyList.length - 1) return null;
+              const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
+              const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
+              return <circle key={i} cx={x} cy={y} r="4" fill="#111" stroke="#f0a050" strokeWidth="2" />;
+            })}
+          </svg>
+          <div className="w-full flex justify-between text-[9px] text-[#444] font-semibold uppercase mt-2 px-1">
+            <span>{monthLabel(historyList[0].date.substring(0, 7)).split(' ')[0]}</span>
+            <span>{monthLabel(historyList[historyList.length - 1].date.substring(0, 7)).split(' ')[0]}</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -631,6 +742,8 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           </div>
         </div>
       </div>
+
+      <NetWorthSparkline />
 
       {assets.length > 0 && (
         <div>
@@ -698,16 +811,12 @@ function FinancePageInner() {
         throw new Error(errData.error || 'Failed to save');
       }
 
-      // Close modal and reset form immediately
       setShowAddTx(false);
       setTxForm({ date: new Date().toISOString().split('T')[0], merchant: '', account: '', amount: '', category: '' });
 
-      // Clear cache and refresh now — transaction is already in Supabase so it shows instantly
       try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
       setRefreshCount(c => c + 1);
 
-      // Sync sheets in background — updates bills paid status, budget, etc.
-      // A second refresh after sync picks up those changes
       syncSheets().then(() => setRefreshCount(c => c + 1));
 
     } catch (e: unknown) {
@@ -784,7 +893,7 @@ function FinancePageInner() {
         </button>
       )}
 
-      {/* Add Transaction Modal */}
+      {/* Add Transaction Modal (Uses safe native div click handler) */}
       {showAddTx && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddTx(false)}>
           <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6" onClick={e => e.stopPropagation()}>

@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
+export const dynamic = 'force-dynamic';
+
 const SHEET_ID = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
@@ -12,6 +14,11 @@ function parseSheetDate(raw: string): string | null {
   if (parts.length !== 3) return null;
   const [m, d, y] = parts;
   return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+
+function parseAmount(val: string): number {
+  if (!val) return 0;
+  return parseFloat(val.replace(/[$,\s()]/g, '')) || 0;
 }
 
 export async function POST() {
@@ -26,10 +33,10 @@ export async function POST() {
   );
 
   try {
-    //── 1. Sync Transactions ─────────────────────────────────────────────────
+    // ── 1. Sync Transactions ─────────────────────────────────────────────────
     const sheetRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Transactions!A2:G`,
-      { headers: { Authorization: `Bearer ${session.accessToken}` } }
+      { headers: { Authorization: `Bearer ${session.accessToken}` }, cache: 'no-store' }
     );
 
     if (!sheetRes.ok) {
@@ -103,7 +110,7 @@ export async function POST() {
     // ── 2. Sync Recurring Bills ──────────────────────────────────────────────
     const recurringRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Recurring!A2:G`,
-      { headers: { Authorization: `Bearer ${session.accessToken}` } }
+      { headers: { Authorization: `Bearer ${session.accessToken}` }, cache: 'no-store' }
     );
 
     let billsSynced = 0;
@@ -148,12 +155,45 @@ export async function POST() {
       }
     }
 
+    // ── 3. Snapshot Net Worth Chronology ─────────────────────────────────────
+    try {
+      const nwUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Accounts!A1:F30')}`;
+      const nwRes = await fetch(nwUrl, {
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+        cache: 'no-store',
+      });
+      if (nwRes.ok) {
+        const nwData = await nwRes.json();
+        const nwRows: string[][] = nwData.values || [];
+        const totalAssets = parseAmount(nwRows[2]?.[2]);
+        const totalLiabilities = parseAmount(nwRows[3]?.[2]);
+        const netWorth = parseAmount(nwRows[4]?.[2]);
+
+        const todayNY = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const currentMonthDateStr = `${todayNY.getFullYear()}-${String(todayNY.getMonth() + 1).padStart(2, '0')}-01`;
+
+        if (totalAssets > 0) {
+          await supabase.from('net_worth_snapshots').upsert({
+            date: currentMonthDateStr,
+            assets: totalAssets,
+            liabilities: totalLiabilities,
+            net_worth: netWorth,
+            user_id: USER_ID
+          }, { onConflict: 'date' });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to preserve net worth chronology stamp:', e);
+    }
+
     return NextResponse.json({
       success: true,
       synced: inserted,
       bills_synced: billsSynced,
       skipped_manual: rows.filter(r => (r[0] || '').startsWith('manual-')).length,
-      message: `Synced ${inserted} transactions and ${billsSynced} bills from Google Sheets`,
+      message: `Synced ${inserted} transactions, ${billsSynced} bills, and preserved financial chronology snapshots.`,
+    }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0' }
     });
 
   } catch (err: any) {
