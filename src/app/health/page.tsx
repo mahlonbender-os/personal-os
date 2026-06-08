@@ -91,9 +91,9 @@ export default function HealthPage() {
     ? Math.round(last7Days.reduce((s, l) => s + (l.steps || 0), 0) / last7Days.length) : 0;
   const avgCalories = last7Days.length
     ? Math.round(last7Days.reduce((s, l) => s + (l.active_calories || 0), 0) / last7Days.length) : 0;
-  const avgHRV = last7Days.length
+  const avgHRV = last7Days.length && last7Days.filter(l => l.hrv).length
     ? (last7Days.reduce((s, l) => s + (Number(l.hrv) || 0), 0) / last7Days.filter(l => l.hrv).length) : 0;
-  const avgRHR = last7Days.length
+  const avgRHR = last7Days.length && last7Days.filter(l => l.resting_heart_rate).length
     ? Math.round(last7Days.reduce((s, l) => s + (l.resting_heart_rate || 0), 0) / last7Days.filter(l => l.resting_heart_rate).length) : 0;
 
   const getSleepTime = (item: HealthLog | null) => {
@@ -105,7 +105,6 @@ export default function HealthPage() {
   const avgSleep = last7Days.length
     ? (last7Days.reduce((s, l) => s + getSleepTime(l), 0) / last7Days.length).toFixed(1) : '0.0';
 
-  // Sleep stage proportions for stacked bar
   const sleepStages = log ? [
     { label: 'Deep', val: Number(log.sleep_deep_hours) || 0, color: '#6366f1' },
     { label: 'REM',  val: Number(log.sleep_rem_hours)  || 0, color: '#a78bfa' },
@@ -114,7 +113,6 @@ export default function HealthPage() {
   ] : [];
   const sleepTotal = sleepStages.reduce((s, st) => s + st.val, 0);
 
-  // Simple sleep score: 0–100 based on total hours and deep sleep %
   const sleepScore = sleepTotal > 0
     ? Math.min(100, Math.round(
         (Math.min(sleepTotal / 8, 1) * 60) +
@@ -129,10 +127,10 @@ export default function HealthPage() {
     : '#ef4444';
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans select-none relative">
+    <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden select-none">
 
-      {/* HEADER */}
-      <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a] pt-14 px-4 pb-0">
+      {/* HEADER - Locked directly to the top edge */}
+      <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
         <div className="flex justify-between items-baseline mb-4">
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white font-display">Biometrics</h1>
@@ -151,7 +149,7 @@ export default function HealthPage() {
           </div>
         </div>
 
-        {/* Tab Bar */}
+        {/* Tab Bar Grid Row Layout */}
         <div className="flex border-b border-[#111]">
           {TABS.map((tab, i) => (
             <button
@@ -167,22 +165,20 @@ export default function HealthPage() {
         </div>
       </div>
 
-      <PullToRefresh onRefresh={handleRefresh}>
-        <div className="px-4 py-4 pb-32 space-y-4">
+      {/* INDEPENDENT CONTENT VIEWS CONTAINER - Restricts height extensions */}
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
+        <PullToRefresh onRefresh={handleRefresh}>
 
           {!log && !loading ? (
             <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center text-[#555] font-mono text-xs">
               No dataset mapped inside health_logs. Run export to transmit.
             </div>
           ) : (
-
-            <div>
+            <div className="space-y-4">
 
               {/* ── ACTIVITY TAB ── */}
               {activeTab === 0 && log && (
-                <div className="space-y-4 animate-in fade-in duration-200">
-
-                  {/* Row 1: Steps + Active Calories */}
+                <div className="space-y-4 transition-all duration-200">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Steps</p>
@@ -207,7 +203,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Row 2: Exercise + Stand */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Exercise</p>
@@ -232,7 +227,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Row 3: Distance + Flights */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Distance</p>
@@ -251,7 +245,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Total Calories row */}
                   {log.total_calories && (
                     <div className="bg-[#111] border border-[#1a1a1a] p-4 rounded-2xl flex justify-between items-center">
                       <div>
@@ -268,9 +261,7 @@ export default function HealthPage() {
 
               {/* ── SLEEP TAB ── */}
               {activeTab === 1 && log && (
-                <div className="space-y-4 animate-in fade-in duration-200">
-
-                  {/* Total + Score */}
+                <div className="space-y-4 transition-all duration-200">
                   <div className="bg-[#111] border border-[#1a1a1a] p-6 rounded-2xl">
                     <div className="flex justify-between items-start">
                       <div>
@@ -290,7 +281,6 @@ export default function HealthPage() {
                       )}
                     </div>
 
-                    {/* Progress bar */}
                     <div className="w-full bg-indigo-950/20 h-2 rounded-full mt-5 overflow-hidden">
                       <div
                         className="bg-indigo-400 h-full rounded-full transition-all"
@@ -303,7 +293,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Stacked stage proportion bar */}
                   {sleepTotal > 0 && (
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-3">Stage Breakdown</p>
@@ -332,7 +321,6 @@ export default function HealthPage() {
                     </div>
                   )}
 
-                  {/* 7-day average */}
                   <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl flex justify-between items-center">
                     <div>
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">7-Day Average</p>
@@ -351,9 +339,7 @@ export default function HealthPage() {
 
               {/* ── VITALS TAB ── */}
               {activeTab === 2 && log && (
-                <div className="space-y-4 animate-in fade-in duration-200">
-
-                  {/* Heart Rate — full card with min/avg/max */}
+                <div className="space-y-4 transition-all duration-200">
                   <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                     <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-4">Heart Rate</p>
                     <div className="grid grid-cols-3 gap-2 text-center">
@@ -375,7 +361,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Resting HR + HRV */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Resting HR</p>
@@ -393,7 +378,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* SpO2 + Respiratory Rate */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                       <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider">Blood O₂</p>
@@ -411,7 +395,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* VO2 Max */}
                   {log.vo2_max && (
                     <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl flex justify-between items-center">
                       <div>
@@ -434,9 +417,7 @@ export default function HealthPage() {
 
               {/* ── TRENDS TAB ── */}
               {activeTab === 3 && (
-                <div className="space-y-6 animate-in fade-in duration-200">
-
-                  {/* Summary row */}
+                <div className="space-y-6 transition-all duration-200">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#111] border border-[#1a1a1a] p-4 rounded-xl">
                       <p className="text-[9px] font-bold text-[#555] uppercase tracking-wider">Avg Steps (7d)</p>
@@ -463,7 +444,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Steps bar chart */}
                   <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                     <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">Steps</p>
                     <div className="flex justify-between items-end h-20 px-1">
@@ -484,7 +464,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Sleep bar chart */}
                   <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                     <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">Sleep Duration</p>
                     <div className="flex justify-between items-end h-20 px-1">
@@ -506,7 +485,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* HRV bar chart */}
                   <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                     <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">HRV</p>
                     <div className="flex justify-between items-end h-20 px-1">
@@ -528,7 +506,6 @@ export default function HealthPage() {
                     </div>
                   </div>
 
-                  {/* Resting HR bar chart */}
                   <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
                     <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">Resting Heart Rate</p>
                     <div className="flex justify-between items-end h-20 px-1">
@@ -549,14 +526,13 @@ export default function HealthPage() {
                       })}
                     </div>
                   </div>
-
                 </div>
               )}
 
             </div>
           )}
-        </div>
-      </PullToRefresh>
+        </PullToRefresh>
+      </div>
 
       <BottomNav active="health" />
     </div>
