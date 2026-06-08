@@ -12,8 +12,7 @@ interface CreditCard {
   bgClass: string;
   textColorClass: string;
   metaColorClass: string;
-  limit: number; // Put your absolute exact real-world limit here
-  searchKeys: string[]; // Adjust these to match EXACTLY how they are typed in your Google Sheet rows
+  sheetName: string; // exact name as it appears in Accounts tab column B
   multipliers: {
     dining: number;
     groceries: number;
@@ -24,7 +23,6 @@ interface CreditCard {
   perks: string[];
 }
 
-// ── MAHLON'S EXACT CREDIT BALANCE PORTFOLIO (ALPHABETICAL ORDER) ──
 const CORE_CARDS: CreditCard[] = [
   {
     id: '1stfinancial',
@@ -34,8 +32,7 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#1e3a8a] to-[#0f172a] border border-[#2563eb]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-blue-400',
-    limit: 2000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
-    searchKeys: ['1st financial', '1st fin', 'first financial'],
+    sheetName: '1stFinancial',
     multipliers: { dining: 1, groceries: 1, gas: 1, travel: 1, catchAll: 1 },
     perks: ['Standard personal line credit protection framework'],
   },
@@ -47,10 +44,9 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#f5f5f7] via-[#ffffff] to-[#e8e8ed] border border-[#d1d5db]',
     textColorClass: 'text-black',
     metaColorClass: 'text-neutral-500',
-    limit: 6500, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
-    searchKeys: ['apple card', 'apple', 'goldman sachs', 'gs'],
+    sheetName: 'Apple',
     multipliers: { dining: 2, groceries: 1, gas: 1, travel: 1, catchAll: 2 },
-    perks: ['2% Cash Back on all purchases completed using Apple Pay via iPhone', '3% back on Apple store purchases & select merchants'],
+    perks: ['2% Cash Back on all purchases via Apple Pay on iPhone', '3% back on Apple store & select merchants'],
   },
   {
     id: 'amex_bcp',
@@ -60,10 +56,9 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#0a2540] to-[#001020] border border-[#1e3a5f]',
     textColorClass: 'text-white',
     metaColorClass: 'text-sky-400',
-    limit: 10000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
-    searchKeys: ['amex', 'american express', 'blue cash', 'bcp', 'preferred'],
+    sheetName: 'American Express Blue Cash Preferred',
     multipliers: { dining: 1, groceries: 6, gas: 3, travel: 1, catchAll: 1 },
-    perks: ['6% Cash Back on U.S. Supermarkets up to $6k/yr', '6% on Select U.S. Streaming services', '3% on Transit (Uber, Tolls, Parking)']
+    perks: ['6% Cash Back on U.S. Supermarkets up to $6k/yr', '6% on Select U.S. Streaming services', '3% on Transit (Uber, Tolls, Parking)'],
   },
   {
     id: 'capone_bjs',
@@ -73,10 +68,9 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#b91c1c] via-[#0f172a] to-[#0f172a] border border-[#dc2626]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-red-400',
-    limit: 7500, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
-    searchKeys: ['bj', "bj's", 'bjs club', 'bjs card', 'bjs one'],
+    sheetName: "Capital One BJ's",
     multipliers: { dining: 1.5, groceries: 1.5, gas: 1.5, travel: 1.5, catchAll: 1.5 },
-    perks: ['15¢ ($0.15) off per gallon at BJ\'s Gas stations permanently', "3% back on purchases made inside BJ's Wholesale store loops"],
+    perks: ["15¢ off per gallon at BJ's Gas stations permanently", "3% back on purchases inside BJ's Wholesale store"],
   },
   {
     id: 'capone_savor',
@@ -86,8 +80,7 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#7c2d12] to-[#1c1917] border border-[#ea580c]/20',
     textColorClass: 'text-white',
     metaColorClass: 'text-orange-400',
-    limit: 5000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
-    searchKeys: ['savor', 'savorone', 'capital one savor', 'savor one'],
+    sheetName: 'Capital One Savor',
     multipliers: { dining: 3, groceries: 3, gas: 1, travel: 1, catchAll: 1 },
     perks: ['3% back on Dining, Entertainment, and Popular Streaming services', '8% back on Capital One Entertainment tickets'],
   },
@@ -99,86 +92,79 @@ const CORE_CARDS: CreditCard[] = [
     bgClass: 'bg-gradient-to-br from-[#0284c7] via-[#0f172a] to-[#0f172a] border border-[#0369a1]/30',
     textColorClass: 'text-white',
     metaColorClass: 'text-sky-300',
-    limit: 12000, // CHANGE THIS VALUE TO YOUR EXACT CREDIT LIMIT
-    searchKeys: ['chase', 'sapphire', 'csp', 'chase sapphire', 'preferred'],
+    sheetName: 'Chase Sapphire Preferred',
     multipliers: { dining: 3, groceries: 1, gas: 1, travel: 2, catchAll: 1 },
-    perks: ['Points worth 25% more when redeemed for travel portal statement bookings', '1:1 point transfers out to partner airlines & global hotel networks'],
+    perks: ['Points worth 25% more via Chase travel portal', '1:1 point transfers to partner airlines & hotels'],
   },
 ];
+
+const CACHE_KEY = 'wallet-accounts-v1';
 
 export default function DigitalWalletPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'rates' | 'perks'>('rates');
-  const [liveBalances, setLiveBalances] = useState<Record<string, number>>({});
+  const [accountData, setAccountData] = useState<Record<string, { balance: number; limit: number }>>({});
+  const [loading, setLoading] = useState(true);
+
+  async function fetchAccounts() {
+    try {
+      const res = await fetch('/api/finance/accounts');
+      if (!res.ok) return;
+      const json = await res.json();
+      const map: Record<string, { balance: number; limit: number }> = {};
+      for (const card of CORE_CARDS) {
+        const match = json.accounts?.find((a: any) =>
+          a.name.toLowerCase().trim() === card.sheetName.toLowerCase().trim()
+        );
+        if (match) {
+          map[card.id] = { balance: match.balance, limit: match.limit };
+        }
+      }
+      setAccountData(map);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(map));
+    } catch (e) {
+      console.error('Wallet fetch error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    try {
-      const storedFinance = localStorage.getItem('cc_finance_v1');
-      if (storedFinance) {
-        const parsed = JSON.parse(storedFinance);
-        const billsList = parsed.bills || [];
-        
-        const computedBalances: Record<string, number> = {};
-
-        CORE_CARDS.forEach((card) => {
-          // Identify row data elements matching card search tokens
-          const matchingBills = billsList.filter((bill: any) => {
-            const billName = (bill.name || '').toLowerCase();
-            return card.searchKeys.some((key) => billName.includes(key));
-          });
-
-          // Aggregate balance parameters securely
-          const totalBalance = matchingBills.reduce((acc: number, bill: any) => {
-            return acc + Math.abs(bill.amount || 0);
-          }, 0);
-
-          computedBalances[card.id] = totalBalance;
-        });
-
-        setLiveBalances(computedBalances);
-      }
-    } catch (e) {
-      console.error('Google Sheets link error:', e);
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try { setAccountData(JSON.parse(cached)); } catch {}
     }
+    fetchAccounts();
   }, []);
 
   const activeCategory = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return null;
-    
-    if (q.includes('eat') || q.includes('food') || q.includes('rest') || q.includes('din') || q.includes('bar') || q.includes('cafe') || q.includes('savor')) {
-      return 'dining';
-    }
-    if (q.includes('groc') || q.includes('store') || q.includes('walm') || q.includes('super') || q.includes('bj') || q.includes('whole')) {
-      return 'groceries';
-    }
-    if (q.includes('gas') || q.includes('fuel') || q.includes('pump') || q.includes('exxon') || q.includes('shell') || q.includes('wawa')) {
-      return 'gas';
-    }
-    if (q.includes('flight') || q.includes('hotel') || q.includes('air') || q.includes('trip') || q.includes('uber') || q.includes('stay') || q.includes('travel')) {
-      return 'travel';
-    }
+    if (q.includes('eat') || q.includes('food') || q.includes('rest') || q.includes('din') || q.includes('bar') || q.includes('cafe') || q.includes('savor')) return 'dining';
+    if (q.includes('groc') || q.includes('store') || q.includes('walm') || q.includes('super') || q.includes('bj') || q.includes('whole')) return 'groceries';
+    if (q.includes('gas') || q.includes('fuel') || q.includes('pump') || q.includes('exxon') || q.includes('shell') || q.includes('wawa')) return 'gas';
+    if (q.includes('flight') || q.includes('hotel') || q.includes('air') || q.includes('trip') || q.includes('uber') || q.includes('stay') || q.includes('travel')) return 'travel';
     return 'catchAll';
   }, [searchQuery]);
 
   const processedCards = useMemo(() => {
     if (!activeCategory) return CORE_CARDS;
-    return [...CORE_CARDS].sort((a, b) => b.multipliers[activeCategory] - a.multipliers[activeCategory]);
+    return [...CORE_CARDS].sort((a, b) => b.multipliers[activeCategory as keyof typeof a.multipliers] - a.multipliers[activeCategory as keyof typeof a.multipliers]);
   }, [activeCategory]);
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col overflow-hidden text-white">
-      
-      {/* Fixed Sticky Header Area */}
+
+      {/* Header */}
       <div className="pt-6 pb-4 px-4 bg-black border-b border-[#1a1a1a] z-30 flex-shrink-0">
-        <button 
+        <button
           onClick={() => router.push('/more')}
           className="text-[10px] text-[#555] font-bold tracking-wider uppercase mb-3 flex items-center gap-1 active:text-[#f0a050]"
         >
           ← System Core
         </button>
-        
+
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
@@ -192,17 +178,13 @@ export default function DigitalWalletPage() {
           <div className="bg-[#111] p-0.5 rounded-lg border border-[#1a1a1a] flex">
             <button
               onClick={() => setActiveTab('rates')}
-              className={`px-3 py-1 text-[10px] font-bold tracking-wider uppercase rounded-md transition-all ${
-                activeTab === 'rates' ? 'bg-[#f0a050] text-black' : 'text-[#555]'
-              }`}
+              className={`px-3 py-1 text-[10px] font-bold tracking-wider uppercase rounded-md transition-all ${activeTab === 'rates' ? 'bg-[#f0a050] text-black' : 'text-[#555]'}`}
             >
               Rates
             </button>
             <button
               onClick={() => setActiveTab('perks')}
-              className={`px-3 py-1 text-[10px] font-bold tracking-wider uppercase rounded-md transition-all ${
-                activeTab === 'perks' ? 'bg-[#f0a050] text-black' : 'text-[#555]'
-              }`}
+              className={`px-3 py-1 text-[10px] font-bold tracking-wider uppercase rounded-md transition-all ${activeTab === 'perks' ? 'bg-[#f0a050] text-black' : 'text-[#555]'}`}
             >
               Perks
             </button>
@@ -212,7 +194,7 @@ export default function DigitalWalletPage() {
         <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-3 shadow-2xl">
           <input
             type="text"
-            placeholder="Search spend category (e.g., Gas, Savor, Groceries)..."
+            placeholder="Search spend category (e.g., Gas, Groceries, Dining)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-black border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-white placeholder-[#444] focus:outline-none focus:border-[#f0a050] transition-colors font-medium"
@@ -228,29 +210,29 @@ export default function DigitalWalletPage() {
         </div>
       </div>
 
-      {/* Main Container Viewport Section */}
+      {/* Cards */}
       <div className="flex-1 overflow-y-auto pb-24">
-        <PullToRefresh onRefresh={async () => { window.location.reload(); }}>
+        <PullToRefresh onRefresh={fetchAccounts}>
           <div className="p-4 space-y-4">
             <p className="text-[#444] text-[10px] font-bold uppercase tracking-widest px-1">
               {activeCategory ? '🔥 Optimized Recommendation Sequence' : 'Alpha Credit Portfolio'}
             </p>
-            
+
             {processedCards.map((card, index) => {
               const isWinner = activeCategory && index === 0;
-              const rate = activeCategory ? card.multipliers[activeCategory] : null;
-
-              const balance = liveBalances[card.id] || 0;
-              const limit = card.limit;
-              
-              // Fixed: Dynamic Usage calculated precisely down to 2 decimal parameters
-              const usage = limit > 0 ? ((balance / limit) * 100).toFixed(2) : "0.00";
+              const rate = activeCategory ? card.multipliers[activeCategory as keyof typeof card.multipliers] : null;
+              const acct = accountData[card.id];
+              const balance = acct?.balance ?? 0;
+              const limit = acct?.limit ?? 0;
+              const usagePct = limit > 0 ? ((balance / limit) * 100) : 0;
+              const usageStr = limit > 0 ? usagePct.toFixed(2) : '—';
+              const usageHigh = usagePct > 30;
 
               return (
                 <div
                   key={card.id}
                   className={`rounded-2xl p-4 ${card.bgClass} relative overflow-hidden transition-all duration-300 ${card.textColorClass} ${
-                    isWinner ? 'ring-2 ring-[#f0a050] scale-[1.01]' : searchQuery ? 'opacity-30' : ''
+                    isWinner ? 'ring-2 ring-[#f0a050] scale-[1.01]' : searchQuery && !isWinner ? 'opacity-30' : ''
                   }`}
                 >
                   {isWinner && (
@@ -261,34 +243,35 @@ export default function DigitalWalletPage() {
 
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <p className={`text-[9px] font-bold uppercase tracking-wider ${card.metaColorClass}`}>
-                        {card.bank}
-                      </p>
-                      <h2 className="text-sm font-extrabold tracking-tight mt-0.5">
-                        {card.name}
-                      </h2>
+                      <p className={`text-[9px] font-bold uppercase tracking-wider ${card.metaColorClass}`}>{card.bank}</p>
+                      <h2 className="text-sm font-extrabold tracking-tight mt-0.5">{card.name}</h2>
                     </div>
-                    <span className="text-[10px] font-mono font-bold tracking-widest opacity-60">
-                      {card.lastFour}
-                    </span>
+                    <span className="text-[10px] font-mono font-bold tracking-widest opacity-60">{card.lastFour}</span>
                   </div>
 
-                  {/* Account Metrics Telemetry Block */}
+                  {/* Balance / Limit / Usage */}
                   <div className={`grid grid-cols-3 gap-2 px-3 py-2 rounded-xl mb-4 text-left text-[10px] border border-dashed font-mono ${
                     card.id === 'apple_gs' ? 'bg-black/5 border-black/20' : 'bg-black/30 border-white/10'
                   }`}>
                     <div>
                       <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Balance</div>
-                      <div className="font-bold mt-0.5">${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div className="font-bold mt-0.5">
+                        {loading && !accountData[card.id]
+                          ? <span className="opacity-30">—</span>
+                          : `$${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        }
+                      </div>
                     </div>
                     <div>
                       <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Credit Limit</div>
-                      <div className="opacity-80 mt-0.5">${limit.toLocaleString()}</div>
+                      <div className="opacity-80 mt-0.5">
+                        {limit > 0 ? `$${limit.toLocaleString()}` : <span className="opacity-30">—</span>}
+                      </div>
                     </div>
                     <div className="text-right">
                       <div className="opacity-40 text-[8px] uppercase tracking-wider font-sans font-bold">Usage</div>
-                      <div className={`font-bold mt-0.5 ${parseFloat(usage) > 30.0 ? 'text-red-500 font-extrabold' : 'opacity-80'}`}>
-                        {usage}%
+                      <div className={`font-bold mt-0.5 ${usageHigh ? 'text-red-500 font-extrabold' : 'opacity-80'}`}>
+                        {usageStr}{limit > 0 ? '%' : ''}
                       </div>
                     </div>
                   </div>
@@ -298,23 +281,19 @@ export default function DigitalWalletPage() {
                       card.id === 'apple_gs' ? 'border-black/10' : 'border-white/10'
                     }`}>
                       {[
-                        { l: 'DINING', v: card.multipliers.dining, key: 'dining' },
-                        { l: 'GROC', v: card.multipliers.groceries, key: 'groceries' },
-                        { l: 'GAS', v: card.multipliers.gas, key: 'gas' },
-                        { l: 'TRAVEL', v: card.multipliers.travel, key: 'travel' },
-                        { l: 'BASE', v: card.multipliers.catchAll, key: 'catchAll' },
+                        { l: 'DINING', key: 'dining' },
+                        { l: 'GROC', key: 'groceries' },
+                        { l: 'GAS', key: 'gas' },
+                        { l: 'TRAVEL', key: 'travel' },
+                        { l: 'BASE', key: 'catchAll' },
                       ].map((m) => {
-                        const isTargetField = activeCategory === m.key;
+                        const v = card.multipliers[m.key as keyof typeof card.multipliers];
+                        const isTarget = activeCategory === m.key;
                         return (
-                          <div 
-                            key={m.l} 
-                            className={`py-1 rounded-md transition-colors ${
-                              isTargetField ? 'bg-[#f0a050]/20 border border-[#f0a050]/30' : ''
-                            }`}
-                          >
+                          <div key={m.l} className={`py-1 rounded-md transition-colors ${isTarget ? 'bg-[#f0a050]/20 border border-[#f0a050]/30' : ''}`}>
                             <div className="text-[8px] font-bold tracking-tighter opacity-40">{m.l}</div>
-                            <div className={`text-xs font-extrabold font-mono mt-0.5 ${isTargetField ? 'text-[#f0a050]' : ''}`}>
-                              {m.v}%
+                            <div className={`text-xs font-extrabold font-mono mt-0.5 ${isTarget ? 'text-[#f0a050]' : ''}`}>
+                              {v}%
                             </div>
                           </div>
                         );
@@ -324,8 +303,8 @@ export default function DigitalWalletPage() {
                     <div className={`pt-2 border-t text-[10px] space-y-1 opacity-80 ${
                       card.id === 'apple_gs' ? 'border-black/10' : 'border-white/10'
                     }`}>
-                      {card.perks.map((perk, pIdx) => (
-                        <div key={pIdx} className="flex items-start gap-1.5">
+                      {card.perks.map((perk, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
                           <span className="text-[#f0a050] font-bold select-none">•</span>
                           <p className="leading-tight">{perk}</p>
                         </div>
@@ -338,7 +317,6 @@ export default function DigitalWalletPage() {
           </div>
         </PullToRefresh>
       </div>
-
     </div>
   );
 }
