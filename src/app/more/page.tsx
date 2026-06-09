@@ -13,6 +13,12 @@ const GROUPS = [
     ],
   },
   {
+    label: 'Work',
+    items: [
+      { label: 'Work', href: '/work', icon: '🏭' },
+    ],
+  },
+  {
     label: 'Schedule',
     items: [
       { label: 'Calendar', href: '/calendar', icon: '📅' },
