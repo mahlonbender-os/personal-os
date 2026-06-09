@@ -374,27 +374,34 @@ export default function CommandCenterCards() {
   }, []);
 
   return (
-    <PullToRefresh onRefresh={handleRefresh}>
-      <div className="min-h-screen bg-black pb-24">
-        <div className="px-4 pt-12 pb-4 space-y-3">
-          <div className="flex items-start justify-between mb-1">
-            <div>
-              <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
-              <div className="text-[26px] font-extrabold text-white leading-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
-                {getGreeting()},<br />Mahlon
-              </div>
+    <div className="fixed inset-0 bg-black flex flex-col overflow-hidden">
+      {/* Locked header */}
+      <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 pb-3 z-30">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
+            <div className="text-[22px] font-extrabold text-white leading-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
+              {getGreeting()}, Mahlon
             </div>
-            <WeatherWidget />
           </div>
-          <HealthCard />
-          <FinanceRow />
-          <CalendarCard />
-          <TasksCard />
-          <NewsCard />
-          <KnoxCard />
+          <WeatherWidget />
         </div>
       </div>
-    </PullToRefresh>
+
+      {/* Scrollable cards */}
+      <div className="flex-1 overflow-y-auto">
+        <PullToRefresh onRefresh={handleRefresh}>
+          <div className="px-4 pt-4 pb-24 space-y-3">
+            <HealthCard />
+            <FinanceRow />
+            <CalendarCard />
+            <TasksCard />
+            <NewsCard />
+            <KnoxCard />
+          </div>
+        </PullToRefresh>
+      </div>
+    </div>
   );
 }
 
