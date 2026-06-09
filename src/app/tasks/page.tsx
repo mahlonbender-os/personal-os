@@ -5,8 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import EditTaskModal from '@/components/EditTaskModal';
 import {
-  ArrowLeft, Plus, Check, Trash2, ChevronDown,
-  X, Clock, Eye, EyeOff, List, CheckSquare, Pencil
+  ArrowLeft, Plus, Check, ChevronDown,
+  X, Clock, Eye, EyeOff, List, CheckSquare,
 } from 'lucide-react';
 
 interface GoogleTask {
@@ -51,34 +51,30 @@ export default function TasksPage() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [showNewList, setShowNewList] = useState(false);
   const [newListTitle, setNewListTitle] = useState('');
-  const [selectedTask, setSelectedTask] = useState<GoogleTask | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [creatingList, setCreatingList] = useState(false);
   const [editingTask, setEditingTask] = useState<GoogleTask | null>(null);
 
-  // Fetch lists on mount
   useEffect(() => {
     fetch('/api/tasks/lists')
       .then(r => r.json())
       .then(d => {
         const fetchedLists = d.lists || [];
-setLists(fetchedLists);
-if (fetchedLists.length > 0) {
-  const preferred = fetchedLists.find((l: { id: string; title: string }) => l.title === 'Personal OS');
-  setActiveListId((preferred || fetchedLists[0]).id);
-}
+        setLists(fetchedLists);
+        if (fetchedLists.length > 0) {
+          const preferred = fetchedLists.find((l: { id: string; title: string }) => l.title === 'Personal OS');
+          setActiveListId((preferred || fetchedLists[0]).id);
+        }
       })
       .catch(console.error)
       .finally(() => setLoadingLists(false));
   }, []);
 
-  // Fetch tasks when list or showCompleted changes
   const fetchTasks = useCallback(async () => {
     if (!activeListId) return;
     setLoadingTasks(true);
     try {
-      const res = await fetch(
-        `/api/tasks/items?listId=${activeListId}&showCompleted=${showCompleted}`
-      );
+      const res = await fetch(`/api/tasks/items?listId=${activeListId}&showCompleted=${showCompleted}`);
       const data = await res.json();
       setTasks(data.tasks || []);
     } catch (e) {
@@ -96,7 +92,6 @@ if (fetchedLists.length > 0) {
 
   const toggleComplete = async (task: GoogleTask) => {
     const newStatus = task.status === 'completed' ? 'needsAction' : 'completed';
-    // Optimistic update
     setTasks(prev =>
       prev.map(t => t.id === task.id ? { ...t, status: newStatus as GoogleTask['status'] } : t)
     );
@@ -110,10 +105,8 @@ if (fetchedLists.length > 0) {
 
   const deleteTask = async (taskId: string) => {
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    setSelectedTask(null);
-    await fetch(`/api/tasks/items?listId=${activeListId}&taskId=${taskId}`, {
-      method: 'DELETE',
-    });
+    setExpandedTaskId(null);
+    await fetch(`/api/tasks/items?listId=${activeListId}&taskId=${taskId}`, { method: 'DELETE' });
     fetchTasks();
   };
 
@@ -139,257 +132,252 @@ if (fetchedLists.length > 0) {
     }
   };
 
-  const displayedTasks = showCompleted
-    ? tasks
-    : tasks.filter(t => t.status === 'needsAction');
+  const displayedTasks = showCompleted ? tasks : tasks.filter(t => t.status === 'needsAction');
 
   return (
     <div className="min-h-screen bg-background">
       <PullToRefresh onRefresh={async () => { await fetchTasks(); }}>
         <div className="pb-24">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
-        <div className="flex items-center gap-3 px-4 pt-14 pb-3">
-          <button onClick={() => router.back()} className="p-2 -ml-2 rounded-full hover:bg-muted">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
 
-          {/* List switcher */}
-          <button
-            onClick={() => setShowListPicker(!showListPicker)}
-            className="flex items-center gap-1.5 flex-1 min-w-0"
-          >
-            <h1 className="text-xl font-semibold truncate">
-              {loadingLists ? 'Tasks' : (activeList?.title || 'Tasks')}
-            </h1>
-            <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${showListPicker ? 'rotate-180' : ''}`} />
-          </button>
-
-          {/* Show/hide completed */}
-          <button
-            onClick={() => setShowCompleted(!showCompleted)}
-            className={`p-2 rounded-full transition-colors ${showCompleted ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground'}`}
-            title={showCompleted ? 'Hide completed' : 'Show completed'}
-          >
-            {showCompleted ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-          </button>
-
-          {/* Add task */}
-          <button
-            onClick={() => setShowAddTask(true)}
-            className="bg-primary text-primary-foreground rounded-full p-2"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Stats row */}
-        {!loadingLists && activeList && (
-          <div className="flex items-center gap-3 px-4 pb-3">
-            <span className="text-xs text-muted-foreground">{pendingCount} pending</span>
-            {completedCount > 0 && (
-              <span className="text-xs text-muted-foreground">· {completedCount} completed</span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* List picker dropdown */}
-      {showListPicker && (
-        <div className="mx-4 mt-2 bg-card border border-border rounded-2xl overflow-hidden shadow-lg z-20 relative">
-          {lists.map(list => (
-            <button
-              key={list.id}
-              onClick={() => { setActiveListId(list.id); setShowListPicker(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-border/50 last:border-0 ${
-                list.id === activeListId ? 'bg-primary/5' : 'hover:bg-muted'
-              }`}
-            >
-              <List className="w-4 h-4 text-muted-foreground shrink-0" />
-              <span className="text-sm font-medium flex-1">{list.title}</span>
-              {list.id === activeListId && <Check className="w-4 h-4 text-primary" />}
-            </button>
-          ))}
-
-          {/* New list */}
-          {showNewList ? (
-            <div className="px-4 py-3 flex gap-2 border-t border-border">
-              <input
-                type="text"
-                value={newListTitle}
-                onChange={e => setNewListTitle(e.target.value)}
-                placeholder="List name"
-                className="flex-1 bg-muted rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
-                autoFocus
-                onKeyDown={e => e.key === 'Enter' && createList()}
-              />
-              <button
-                onClick={createList}
-                disabled={!newListTitle.trim() || creatingList}
-                className="bg-primary text-primary-foreground rounded-xl px-3 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {creatingList ? '…' : 'Add'}
+          {/* Header */}
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
+            <div className="flex items-center gap-3 px-4 pt-14 pb-3">
+              <button onClick={() => router.back()} className="p-2 -ml-2 rounded-full hover:bg-muted">
+                <ArrowLeft className="w-5 h-5" />
               </button>
-              <button onClick={() => setShowNewList(false)} className="p-2 text-muted-foreground">
-                <X className="w-4 h-4" />
+              <button
+                onClick={() => setShowListPicker(!showListPicker)}
+                className="flex items-center gap-1.5 flex-1 min-w-0"
+              >
+                <h1 className="text-xl font-semibold truncate">
+                  {loadingLists ? 'Tasks' : (activeList?.title || 'Tasks')}
+                </h1>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${showListPicker ? 'rotate-180' : ''}`} />
+              </button>
+              <button
+                onClick={() => setShowCompleted(!showCompleted)}
+                className={`p-2 rounded-full transition-colors ${showCompleted ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground'}`}
+              >
+                {showCompleted ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => setShowAddTask(true)}
+                className="bg-primary text-primary-foreground rounded-full p-2"
+              >
+                <Plus className="w-5 h-5" />
               </button>
             </div>
-          ) : (
-            <button
-              onClick={() => setShowNewList(true)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-primary border-t border-border"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-sm font-medium">New list</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Task list */}
-      <div className="px-4 py-3 space-y-1">
-        {loadingTasks ? (
-          [...Array(5)].map((_, i) => (
-            <div key={i} className="h-14 bg-muted rounded-xl animate-pulse mb-2" />
-          ))
-        ) : displayedTasks.length === 0 ? (
-          <div className="text-center py-16">
-            <CheckSquare className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
-            <p className="text-muted-foreground">
-              {showCompleted ? 'No tasks' : 'Nothing pending'}
-            </p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Tap + to add a task</p>
-          </div>
-        ) : (
-          displayedTasks.map(task => {
-            const due = task.due ? formatDue(task.due) : null;
-            const completed = task.status === 'completed';
-
-            return (
-              <div key={task.id}>
-                {/* Main task row */}
-                <div
-                  className={`flex items-start gap-3 rounded-xl px-1 py-2.5 ${
-                    completed ? 'opacity-50' : ''
-                  }`}
-                >
-                  {/* Checkbox */}
-                  <button
-                    onClick={() => toggleComplete(task)}
-                    className={`mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      completed
-                        ? 'bg-primary border-primary'
-                        : 'border-muted-foreground/40 hover:border-primary'
-                    }`}
-                  >
-                    {completed && <Check className="w-3 h-3 text-primary-foreground" />}
-                  </button>
-
-                  {/* Content */}
-                  <div
-                    className="flex-1 min-w-0 cursor-pointer"
-                    onClick={() => !completed && setSelectedTask(task)}
-                  >
-                    <p className={`text-sm leading-snug ${completed ? 'line-through text-muted-foreground' : ''}`}>
-                      {task.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      {task.notes && (
-                        <span className="text-xs text-muted-foreground truncate max-w-[160px]">
-                          {task.notes}
-                        </span>
-                      )}
-                      {due && (
-                        <span className={`text-xs flex items-center gap-0.5 ${
-                          due.overdue ? 'text-red-500' : due.urgent ? 'text-orange-500' : 'text-muted-foreground'
-                        }`}>
-                          <Clock className="w-3 h-3" />
-                          {due.label}
-                        </span>
-                      )}
-                      {task.subtasks && task.subtasks.length > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {task.subtasks.filter(s => s.status === 'completed').length}/{task.subtasks.length} subtasks
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Delete */}
-                  <button
-                    onClick={() => deleteTask(task.id)}
-                    className="p-1.5 text-muted-foreground/30 hover:text-destructive transition-colors shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Subtasks (indented) */}
-                {task.subtasks && task.subtasks.length > 0 && (
-                  <div className="ml-8 space-y-0.5 mb-1">
-                    {task.subtasks
-                      .filter(s => showCompleted || s.status === 'needsAction')
-                      .map(sub => (
-                        <div key={sub.id} className={`flex items-center gap-2.5 py-1.5 ${sub.status === 'completed' ? 'opacity-50' : ''}`}>
-                          <button
-                            onClick={() => toggleComplete(sub)}
-                            className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                              sub.status === 'completed'
-                                ? 'bg-primary border-primary'
-                                : 'border-muted-foreground/30 hover:border-primary'
-                            }`}
-                          >
-                            {sub.status === 'completed' && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
-                          </button>
-                          <span className={`text-xs ${sub.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                            {sub.title}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
+            {!loadingLists && activeList && (
+              <div className="flex items-center gap-3 px-4 pb-3">
+                <span className="text-xs text-muted-foreground">{pendingCount} pending</span>
+                {completedCount > 0 && (
+                  <span className="text-xs text-muted-foreground">· {completedCount} completed</span>
                 )}
               </div>
-            );
-          })
-        )}
-      </div>
+            )}
+          </div>
 
-      {/* Add Task Sheet */}
-      {showAddTask && activeListId && (
-        <AddTaskSheet
-          listId={activeListId}
-          onClose={() => setShowAddTask(false)}
-          onSave={() => { setShowAddTask(false); fetchTasks(); }}
-        />
-      )}
+          {/* List picker */}
+          {showListPicker && (
+            <div className="mx-4 mt-2 bg-card border border-border rounded-2xl overflow-hidden shadow-lg z-20 relative">
+              {lists.map(list => (
+                <button
+                  key={list.id}
+                  onClick={() => { setActiveListId(list.id); setShowListPicker(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-border/50 last:border-0 ${
+                    list.id === activeListId ? 'bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <List className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium flex-1">{list.title}</span>
+                  {list.id === activeListId && <Check className="w-4 h-4 text-primary" />}
+                </button>
+              ))}
+              {showNewList ? (
+                <div className="px-4 py-3 flex gap-2 border-t border-border">
+                  <input
+                    type="text"
+                    value={newListTitle}
+                    onChange={e => setNewListTitle(e.target.value)}
+                    placeholder="List name"
+                    className="flex-1 bg-muted rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+                    autoFocus
+                    onKeyDown={e => e.key === 'Enter' && createList()}
+                  />
+                  <button
+                    onClick={createList}
+                    disabled={!newListTitle.trim() || creatingList}
+                    className="bg-primary text-primary-foreground rounded-xl px-3 py-2 text-sm font-medium disabled:opacity-50"
+                  >
+                    {creatingList ? '…' : 'Add'}
+                  </button>
+                  <button onClick={() => setShowNewList(false)} className="p-2 text-muted-foreground">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowNewList(true)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-primary border-t border-border"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-medium">New list</span>
+                </button>
+              )}
+            </div>
+          )}
 
-      {/* Task Detail Sheet */}
-      {selectedTask && activeListId && (
-  <TaskDetailSheet
-    task={selectedTask}
-    listId={activeListId}
-    onClose={() => { setSelectedTask(null); fetchTasks(); }}
-    onDelete={() => deleteTask(selectedTask.id)}
-    onToggleSubtask={(sub) => toggleComplete(sub)}
-    showCompleted={showCompleted}
-    onEdit={() => { setEditingTask(selectedTask); setSelectedTask(null); }}
-  />
-)}
+          {/* Task list */}
+          <div className="px-4 py-3 space-y-1">
+            {loadingTasks ? (
+              [...Array(5)].map((_, i) => (
+                <div key={i} className="h-14 bg-muted rounded-xl animate-pulse mb-2" />
+              ))
+            ) : displayedTasks.length === 0 ? (
+              <div className="text-center py-16">
+                <CheckSquare className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+                <p className="text-muted-foreground">
+                  {showCompleted ? 'No tasks' : 'Nothing pending'}
+                </p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Tap + to add a task</p>
+              </div>
+            ) : (
+              displayedTasks.map(task => {
+                const due = task.due ? formatDue(task.due) : null;
+                const completed = task.status === 'completed';
+                const expanded = expandedTaskId === task.id;
 
-{editingTask && activeListId && (
-  <EditTaskModal
-    task={editingTask}
-    taskListId={activeListId}
-    onClose={() => setEditingTask(null)}
-    onSaved={(updated) => {
-      setTasks(prev =>
-        prev.map(t => t.id === updated.id ? { ...t, ...updated } : t)
-      );
-      setEditingTask(null);
-      fetchTasks();
-    }}
-  />
-)}
+                return (
+                  <div key={task.id}>
+                    {/* Main task row */}
+                    <div className={`flex items-center gap-3 rounded-xl px-1 py-2.5 ${completed ? 'opacity-50' : ''}`}>
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => toggleComplete(task)}
+                        className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                          completed ? 'bg-primary border-primary' : 'border-muted-foreground/40 hover:border-primary'
+                        }`}
+                      >
+                        {completed && <Check className="w-3 h-3 text-primary-foreground" />}
+                      </button>
+
+                      {/* Content */}
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => !completed && setExpandedTaskId(expanded ? null : task.id)}
+                      >
+                        <p className={`text-sm leading-snug ${completed ? 'line-through text-muted-foreground' : 'text-white'}`}>
+                          {task.title}
+                        </p>
+                        {due && !expanded && (
+                          <span className={`text-xs flex items-center gap-0.5 mt-0.5 ${
+                            due.overdue ? 'text-[#ef4444]' : due.urgent ? 'text-[#f0a050]' : 'text-[#555]'
+                          }`}>
+                            <Clock className="w-3 h-3" />
+                            {due.label}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Chevron */}
+                      {!completed && (
+                        <svg
+                          width="16" height="16" viewBox="0 0 24 24" fill="none"
+                          stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}
+                          onClick={() => setExpandedTaskId(expanded ? null : task.id)}
+                        >
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* Inline expanded panel */}
+                    {expanded && (
+                      <div className="ml-8 mb-2 bg-[#111] border border-[#1a1a1a] rounded-xl overflow-hidden">
+                        {(task.notes || due) && (
+                          <div className="px-4 py-3 border-b border-[#1a1a1a] space-y-1">
+                            {due && (
+                              <p className={`text-xs flex items-center gap-1 ${
+                                due.overdue ? 'text-[#ef4444]' : due.urgent ? 'text-[#f0a050]' : 'text-[#555]'
+                              }`}>
+                                <Clock className="w-3 h-3" />
+                                {due.overdue ? 'Overdue · ' : ''}{due.label}
+                              </p>
+                            )}
+                            {task.notes && (
+                              <p className="text-[11px] text-[#555] whitespace-pre-wrap">{task.notes}</p>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex">
+                          <button
+                            onClick={() => { setEditingTask(task); setExpandedTaskId(null); }}
+                            className="flex-1 py-3 text-sm font-semibold text-[#f0a050] border-r border-[#1a1a1a] active:bg-[#1a1a1a]"
+                          >
+                            Edit Task
+                          </button>
+                          <button
+                            onClick={() => deleteTask(task.id)}
+                            className="flex-1 py-3 text-sm font-semibold text-[#ef4444] active:bg-[#1a1a1a]"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subtasks (indented) */}
+                    {task.subtasks && task.subtasks.length > 0 && (
+                      <div className="ml-8 space-y-0.5 mb-1">
+                        {task.subtasks
+                          .filter(s => showCompleted || s.status === 'needsAction')
+                          .map(sub => (
+                            <div key={sub.id} className={`flex items-center gap-2.5 py-1.5 ${sub.status === 'completed' ? 'opacity-50' : ''}`}>
+                              <button
+                                onClick={() => toggleComplete(sub)}
+                                className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                  sub.status === 'completed' ? 'bg-primary border-primary' : 'border-muted-foreground/30 hover:border-primary'
+                                }`}
+                              >
+                                {sub.status === 'completed' && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
+                              </button>
+                              <span className={`text-xs ${sub.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
+                                {sub.title}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Add Task Sheet */}
+          {showAddTask && activeListId && (
+            <AddTaskSheet
+              listId={activeListId}
+              onClose={() => setShowAddTask(false)}
+              onSave={() => { setShowAddTask(false); fetchTasks(); }}
+            />
+          )}
+
+          {/* Edit Task Modal */}
+          {editingTask && activeListId && (
+            <EditTaskModal
+              task={editingTask}
+              taskListId={activeListId}
+              onClose={() => setEditingTask(null)}
+              onSaved={(updated) => {
+                setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+                setEditingTask(null);
+                fetchTasks();
+              }}
+            />
+          )}
+
         </div>
       </PullToRefresh>
     </div>
@@ -454,9 +442,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
               <X className="w-5 h-5" />
             </button>
           </div>
-
           <div className="space-y-4">
-            {/* Title */}
             <input
               type="text"
               value={title}
@@ -465,8 +451,6 @@ function AddTaskSheet({ listId, onClose, onSave }: {
               className="w-full bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
               autoFocus
             />
-
-            {/* Details / Notes */}
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Details</label>
               <textarea
@@ -477,8 +461,6 @@ function AddTaskSheet({ listId, onClose, onSave }: {
                 className="w-full mt-1.5 bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary resize-none"
               />
             </div>
-
-            {/* Due date + time */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Date</label>
@@ -499,8 +481,6 @@ function AddTaskSheet({ listId, onClose, onSave }: {
                 />
               </div>
             </div>
-
-            {/* Subtasks */}
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subtasks</label>
               <div className="space-y-2 mt-1.5">
@@ -528,7 +508,6 @@ function AddTaskSheet({ listId, onClose, onSave }: {
                 </button>
               </div>
             </div>
-
             <button
               onClick={handleSave}
               disabled={!title.trim() || saving}
@@ -537,98 +516,6 @@ function AddTaskSheet({ listId, onClose, onSave }: {
               {saving ? 'Adding…' : 'Add Task'}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Task Detail Sheet ────────────────────────────────────────────────────────
-
-function TaskDetailSheet({ task, listId, onClose, onDelete, onToggleSubtask, showCompleted, onEdit }: {
-  task: GoogleTask;
-  listId: string;
-  onClose: () => void;
-  onDelete: () => void;
-  onToggleSubtask: (sub: GoogleTask) => void;
-  showCompleted: boolean;
-  onEdit: () => void;
-}) {
-  const due = task.due ? formatDue(task.due) : null;
-  const sortedSubs = [...(task.subtasks || [])].filter(
-    s => showCompleted || s.status === 'needsAction'
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end">
-      <div className="w-full bg-background rounded-t-2xl max-h-[80vh] overflow-y-auto">
-        <div className="w-10 h-1 bg-muted-foreground/20 rounded-full mx-auto mt-3" />
-        <div className="px-4 pt-4 pb-8">
-          {/* Header */}
-          <div className="flex items-start justify-between mb-4">
-            <h2 className="text-lg font-semibold flex-1 pr-4">{task.title}</h2>
-            <div className="flex gap-2 shrink-0">
-  <button onClick={onEdit} className="p-2 text-muted-foreground hover:text-primary">
-    <Pencil className="w-4 h-4" />
-  </button>
-  <button onClick={onDelete} className="p-2 text-muted-foreground hover:text-destructive">
-    <Trash2 className="w-4 h-4" />
-  </button>
-  <button onClick={onClose} className="p-2 rounded-full hover:bg-muted">
-    <X className="w-5 h-5" />
-  </button>
-</div>
-          </div>
-
-          {/* Details */}
-          {task.notes && (
-            <div className="bg-muted rounded-xl p-3 mb-4">
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.notes}</p>
-            </div>
-          )}
-
-          {/* Due date */}
-          {due && (
-            <div className={`flex items-center gap-2 mb-4 text-sm ${
-              due.overdue ? 'text-red-500' : due.urgent ? 'text-orange-500' : 'text-muted-foreground'
-            }`}>
-              <Clock className="w-4 h-4" />
-              <span>
-                {due.overdue ? 'Overdue — ' : ''}{new Date(task.due!).toLocaleDateString('en-US', {
-                  weekday: 'long', month: 'long', day: 'numeric'
-                })}
-              </span>
-            </div>
-          )}
-
-          {/* Subtasks */}
-          {sortedSubs.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-                Subtasks · {task.subtasks?.filter(s => s.status === 'completed').length}/{task.subtasks?.length}
-              </p>
-              <div className="space-y-2">
-                {sortedSubs.map(sub => (
-                  <button
-                    key={sub.id}
-                    onClick={() => onToggleSubtask(sub)}
-                    className={`w-full flex items-center gap-3 bg-muted rounded-xl px-3 py-2.5 text-left ${
-                      sub.status === 'completed' ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      sub.status === 'completed' ? 'bg-primary border-primary' : 'border-muted-foreground/40'
-                    }`}>
-                      {sub.status === 'completed' && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
-                    </div>
-                    <span className={`text-sm ${sub.status === 'completed' ? 'line-through text-muted-foreground' : ''}`}>
-                      {sub.title}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
