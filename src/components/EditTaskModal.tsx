@@ -27,6 +27,7 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
   useEffect(() => {
