@@ -25,9 +25,25 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
   const [error, setError] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Lock body scroll and force viewport to top on iOS
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
   useEffect(() => {
