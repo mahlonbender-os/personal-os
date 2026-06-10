@@ -47,7 +47,7 @@ interface InvestmentData {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_KEY = 'investments-v1';
+const CACHE_KEY = 'investments-v2';
 const TABS = ['Overview', 'Trade Log'];
 const ACTIONS = ['BUY', 'SELL', 'REINVEST'];
 
@@ -102,16 +102,15 @@ export default function InvestmentsPage() {
   const [data, setData] = useState<InvestmentData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Add modal state
+  // Modal state
   const [showModal, setShowModal] = useState(false);
-  const [formDate, setFormDate] = useState(
-    new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' })
-  );
+  const [formDate, setFormDate] = useState('');
   const [formAccount, setFormAccount] = useState('Roth IRA');
   const [formSecurity, setFormSecurity] = useState('VOO');
   const [formAction, setFormAction] = useState('BUY');
-  const [formAmount, setFormAmount] = useState('');
   const [formShares, setFormShares] = useState('');
+  const [formPrice, setFormPrice] = useState('');
+  const [formAmount, setFormAmount] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Delete confirm state
@@ -143,27 +142,26 @@ export default function InvestmentsPage() {
     fetchData();
   }, []);
 
-  // Auto-calculate shares from dollar amount
+  // Auto-calculate total amount from shares x price
   useEffect(() => {
-    if (!formAmount || !data) return;
-    const price = formSecurity === 'VOO' ? data.vooPrice : data.tslaPrice;
-    if (price > 0) {
-      setFormShares((parseFloat(formAmount) / price).toFixed(6));
-    }
-  }, [formAmount, formSecurity, data]);
+    if (!formShares || !formPrice) return;
+    const total = parseFloat(formShares) * parseFloat(formPrice);
+    if (!isNaN(total)) setFormAmount(total.toFixed(2));
+  }, [formShares, formPrice]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   function openModal() {
     setFormDate(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }));
-    setFormAmount('');
     setFormShares('');
+    setFormPrice('');
+    setFormAmount('');
     setFormAction('BUY');
     setShowModal(true);
   }
 
   async function handleSaveTrade() {
-    if (!formDate || !formAmount || !formShares) return;
+    if (!formDate || !formAmount || !formShares || !formPrice) return;
     setSaving(true);
     try {
       const res = await fetch('/api/finance/investments', {
@@ -337,7 +335,7 @@ export default function InvestmentsPage() {
                                   style={{ color: gainColor(h.gainLoss) }}
                                 >
                                   {h.gainLossPct >= 0 ? '+' : ''}
-                                  {h.gainLossPct.toFixed(2)}%
+                                  {(h.gainLossPct ?? 0).toFixed(2)}%
                                 </div>
                               </div>
                             </div>
@@ -394,7 +392,7 @@ export default function InvestmentsPage() {
                                 onClick={() => setDeleteId(trade.id)}
                                 className="text-[#333] hover:text-[#ef4444] transition-colors text-xl leading-none"
                               >
-                                ×
+                                x
                               </button>
                             </div>
                           </div>
@@ -484,31 +482,44 @@ export default function InvestmentsPage() {
                 </div>
               </div>
 
-              {/* Dollar Amount */}
+              {/* Shares */}
               <div>
-                <div className="text-[#888] mb-1.5 uppercase tracking-wider">Dollar Amount</div>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formAmount}
-                  onChange={e => setFormAmount(e.target.value)}
-                  className="w-full bg-black border border-[#2a2a2a] p-3 rounded-xl text-white font-mono outline-none focus:border-[#f0a050] text-right"
-                />
-              </div>
-
-              {/* Shares — auto-calculated, overridable */}
-              <div>
-                <div className="text-[#888] mb-1.5 uppercase tracking-wider">
-                  Shares
-                  <span className="text-[#444] normal-case ml-1">(auto-calculated)</span>
-                </div>
+                <div className="text-[#888] mb-1.5 uppercase tracking-wider">Shares</div>
                 <input
                   type="number"
                   step="0.000001"
                   placeholder="0.000000"
                   value={formShares}
                   onChange={e => setFormShares(e.target.value)}
+                  className="w-full bg-black border border-[#2a2a2a] p-3 rounded-xl text-white font-mono outline-none focus:border-[#f0a050] text-right"
+                />
+              </div>
+
+              {/* Price per share */}
+              <div>
+                <div className="text-[#888] mb-1.5 uppercase tracking-wider">Price Per Share</div>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formPrice}
+                  onChange={e => setFormPrice(e.target.value)}
+                  className="w-full bg-black border border-[#2a2a2a] p-3 rounded-xl text-white font-mono outline-none focus:border-[#f0a050] text-right"
+                />
+              </div>
+
+              {/* Total amount — auto-calculated, overridable */}
+              <div>
+                <div className="text-[#888] mb-1.5 uppercase tracking-wider">
+                  Total Amount
+                  <span className="text-[#444] normal-case ml-1">(auto-calculated)</span>
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formAmount}
+                  onChange={e => setFormAmount(e.target.value)}
                   className="w-full bg-black border border-[#2a2a2a] p-3 rounded-xl text-[#888] font-mono outline-none text-right"
                 />
               </div>
@@ -523,7 +534,7 @@ export default function InvestmentsPage() {
                 </button>
                 <button
                   onClick={handleSaveTrade}
-                  disabled={saving || !formAmount || !formShares}
+                  disabled={saving || !formAmount || !formShares || !formPrice}
                   className="py-3 rounded-xl bg-[#f0a050] text-black text-xs font-bold disabled:opacity-40"
                 >
                   {saving ? 'Saving...' : 'Log Trade'}
