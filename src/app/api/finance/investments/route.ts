@@ -109,7 +109,7 @@ export async function GET() {
       if (!acc) return;
       const shares = parseFloat(String(tx.shares));
       const amount = parseFloat(String(tx.amount));
-      if (tx.action === 'BUY') {
+      if (action === 'BUY' || action === 'REINVEST') {
         acc.shares[tx.security] = (acc.shares[tx.security] || 0) + shares;
         acc.spent[tx.security] = (acc.spent[tx.security] || 0) + amount;
       } else if (tx.action === 'SELL') {
