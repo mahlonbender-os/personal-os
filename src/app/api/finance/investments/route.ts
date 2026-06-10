@@ -19,7 +19,7 @@ async function fetchPrice(symbol: string): Promise<number> {
       `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`
     );
     const data = await res.json();
-    return data.c || 0; // 'c' = current price in Finnhub
+    return data.c || 0;
   } catch {
     return 0;
   }
@@ -37,13 +37,13 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // 1. Live prices from Finnhub
+    // 1. Live prices
     const [vooPrice, tslaPrice] = await Promise.all([
       fetchPrice('VOO'),
       fetchPrice('TSLA'),
     ]);
 
-    // 2. Account totals from Google Sheets (assets rows B9:E15)
+    // 2. Account totals from Sheets
     const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Accounts!B9:E15')}`;
     const sheetsRes = await fetch(sheetsUrl, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
@@ -62,21 +62,18 @@ export async function GET() {
       if (name.includes('hsa')) sheetHsa = val;
     });
 
-    // 3. Contributions from transactions table (money that flowed INTO these accounts)
-    const { data: contributions } = await supabase
-      .from('transactions')
-      .select('category, amount')
-      .in('category', ['Roth IRA', 'HSA']);
+    // 3. Current cash balances (source of truth)
+    const { data: cashRows } = await supabase
+      .from('investment_cash')
+      .select('account, cash_balance')
+      .eq('user_id', USER_ID);
 
-    let contribRoth = 0;
-    let contribHsa = 0;
-    (contributions || []).forEach(tx => {
-      const amt = Math.abs(parseFloat(String(tx.amount)));
-      if (tx.category === 'Roth IRA') contribRoth += amt;
-      if (tx.category === 'HSA') contribHsa += amt;
+    const cashMap: Record<string, number> = {};
+    (cashRows || []).forEach(r => {
+      cashMap[r.account] = parseFloat(String(r.cash_balance));
     });
 
-    // 4. Logged trades from investment_transactions
+    // 4. Logged trades
     const { data: trades } = await supabase
       .from('investment_transactions')
       .select('*')
@@ -87,13 +84,24 @@ export async function GET() {
     const accounts: Record<string, {
       name: string;
       sheetTotal: number;
-      contribTotal: number;
       uninvestedCash: number;
       shares: Record<string, number>;
       spent: Record<string, number>;
     }> = {
-      'Roth IRA': { name: 'Roth IRA', sheetTotal: sheetRoth, contribTotal: contribRoth, uninvestedCash: contribRoth, shares: { VOO: 0, TSLA: 0 }, spent: { VOO: 0, TSLA: 0 } },
-      'HSA':      { name: 'HSA',      sheetTotal: sheetHsa,  contribTotal: contribHsa,  uninvestedCash: contribHsa,  shares: { VOO: 0, TSLA: 0 }, spent: { VOO: 0, TSLA: 0 } },
+      'Roth IRA': {
+        name: 'Roth IRA',
+        sheetTotal: sheetRoth,
+        uninvestedCash: cashMap['Roth IRA'] ?? 0,
+        shares: { VOO: 0, TSLA: 0 },
+        spent: { VOO: 0, TSLA: 0 },
+      },
+      'HSA': {
+        name: 'HSA',
+        sheetTotal: sheetHsa,
+        uninvestedCash: cashMap['HSA'] ?? 0,
+        shares: { VOO: 0, TSLA: 0 },
+        spent: { VOO: 0, TSLA: 0 },
+      },
     };
 
     (trades || []).forEach(tx => {
@@ -104,11 +112,9 @@ export async function GET() {
       if (tx.action === 'BUY') {
         acc.shares[tx.security] = (acc.shares[tx.security] || 0) + shares;
         acc.spent[tx.security] = (acc.spent[tx.security] || 0) + amount;
-        acc.uninvestedCash -= amount;
       } else if (tx.action === 'SELL') {
         acc.shares[tx.security] = (acc.shares[tx.security] || 0) - shares;
         acc.spent[tx.security] = (acc.spent[tx.security] || 0) - amount;
-        acc.uninvestedCash += amount;
       }
     });
 
@@ -127,14 +133,13 @@ export async function GET() {
         .filter(h => h.shares > 0);
 
       const stockValue = holdings.reduce((s, h) => s + h.marketValue, 0);
-      const cash = Math.max(0, acc.uninvestedCash);
 
       return {
         name: acc.name,
         sheetTotal: acc.sheetTotal,
-        uninvestedCash: cash,
+        uninvestedCash: acc.uninvestedCash,
         stockValue,
-        totalValue: cash + stockValue,
+        totalValue: acc.uninvestedCash + stockValue,
         holdings,
       };
     });
@@ -172,6 +177,9 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
+    const dollarAmount = parseFloat(amount);
+
+    // Insert trade
     const { data, error } = await supabase
       .from('investment_transactions')
       .insert({
@@ -180,13 +188,41 @@ export async function POST(req: Request) {
         account,
         security,
         action,
-        amount: parseFloat(amount),
+        amount: dollarAmount,
         shares: parseFloat(shares),
       })
       .select()
       .single();
 
     if (error) throw error;
+
+    // Update cash balance: BUY subtracts, SELL adds
+    const delta = action === 'BUY' ? -dollarAmount : dollarAmount;
+    await supabase.rpc('increment_cash_balance', {
+      p_account: account,
+      p_delta: delta,
+      p_user_id: USER_ID,
+    }).then(() => {}).catch(() => {
+      // Fallback if RPC not available: read then write
+    });
+
+    // Safe fallback — read current, write updated
+    const { data: cashRow } = await supabase
+      .from('investment_cash')
+      .select('cash_balance')
+      .eq('account', account)
+      .eq('user_id', USER_ID)
+      .single();
+
+    if (cashRow) {
+      const newBalance = parseFloat(String(cashRow.cash_balance)) + delta;
+      await supabase
+        .from('investment_cash')
+        .update({ cash_balance: Math.max(0, newBalance), updated_at: new Date().toISOString() })
+        .eq('account', account)
+        .eq('user_id', USER_ID);
+    }
+
     return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -206,6 +242,14 @@ export async function DELETE(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
+    // Get the trade before deleting so we can reverse the cash impact
+    const { data: trade } = await supabase
+      .from('investment_transactions')
+      .select('account, action, amount')
+      .eq('id', id)
+      .eq('user_id', USER_ID)
+      .single();
+
     const { error } = await supabase
       .from('investment_transactions')
       .delete()
@@ -213,6 +257,30 @@ export async function DELETE(req: Request) {
       .eq('user_id', USER_ID);
 
     if (error) throw error;
+
+    // Reverse the cash impact of the deleted trade
+    if (trade) {
+      const delta = trade.action === 'BUY'
+        ? parseFloat(String(trade.amount))   // BUY deleted → cash goes back up
+        : -parseFloat(String(trade.amount)); // SELL deleted → cash goes back down
+
+      const { data: cashRow } = await supabase
+        .from('investment_cash')
+        .select('cash_balance')
+        .eq('account', trade.account)
+        .eq('user_id', USER_ID)
+        .single();
+
+      if (cashRow) {
+        const newBalance = parseFloat(String(cashRow.cash_balance)) + delta;
+        await supabase
+          .from('investment_cash')
+          .update({ cash_balance: Math.max(0, newBalance), updated_at: new Date().toISOString() })
+          .eq('account', trade.account)
+          .eq('user_id', USER_ID);
+      }
+    }
+
     return NextResponse.json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
