@@ -97,7 +97,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Transfer: '#94a3b8',
 };
 
-const INCOME_CATEGORIES = ['Income', 'Other Inc.', 'Roth IRA', '401K', 'HSA'];
+const INCOME_CATEGORIES = ['Income', 'Other Inc.', 'Roth IRA', '401K', 'HSA', 'Bree'];
 
 const ACCOUNTS = [
   '1stFinancial', '401K', 'AidVantage', 'American Express Blue Cash Preferred',
