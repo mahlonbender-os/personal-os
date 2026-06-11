@@ -14,26 +14,23 @@ function fmtDate(d: Date): string {
   return `${y}${m}${day}`;
 }
 
-// Stooq works well for VOO and most ETFs
 async function fetchStooq(symbol: string): Promise<Record<string, number>> {
+  const now = new Date();
+  const oneYearAgo = new Date(now);
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const url = `https://stooq.com/q/d/l/?s=${symbol.toLowerCase()}.us&d1=${fmtDate(oneYearAgo)}&d2=${fmtDate(now)}&i=d`;
   try {
-    const now = new Date();
-    const oneYearAgo = new Date(now);
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-    const url = `https://stooq.com/q/d/l/?s=${symbol.toLowerCase()}.us&d1=${fmtDate(oneYearAgo)}&d2=${fmtDate(now)}&i=d`;
     const res = await fetch(url, {
       cache: 'no-store',
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://stooq.com/' },
     });
-    if (!res.ok) {
-      console.error(`Stooq ${symbol}: HTTP ${res.status}`);
-      return {};
-    }
+    if (!res.ok) { console.error(`[history] Stooq ${symbol} HTTP ${res.status}`); return {}; }
     const text = await res.text();
     const lines = text.trim().split('\n');
-    if (lines.length < 2 || lines[0].toLowerCase().includes('no data')) {
-      console.error(`Stooq ${symbol}: no data`);
+    if (lines.length < 2) { console.error(`[history] Stooq ${symbol} no lines`); return {}; }
+    // Check if it's an HTML error page instead of CSV
+    if (lines[0].startsWith('<') || lines[0].startsWith('!')) {
+      console.error(`[history] Stooq ${symbol} non-CSV response: ${lines[0].slice(0, 60)}`);
       return {};
     }
     const map: Record<string, number> = {};
@@ -44,25 +41,24 @@ async function fetchStooq(symbol: string): Promise<Record<string, number>> {
       const close = parseFloat(parts[4]);
       if (date && !isNaN(close) && close > 0) map[date] = close;
     }
-    console.log(`Stooq ${symbol}: ${Object.keys(map).length} days`);
+    console.error(`[history] Stooq ${symbol} OK: ${Object.keys(map).length} days, first=${Object.keys(map).sort()[0]}`);
     return map;
-  } catch (err) {
-    console.error(`Stooq ${symbol} error:`, err);
+  } catch (err: any) {
+    console.error(`[history] Stooq ${symbol} exception: ${err.message}`);
     return {};
   }
 }
 
-// Finnhub candles — works for individual stocks like TSLA
 async function fetchFinnhubCandles(symbol: string): Promise<Record<string, number>> {
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 366 * 24 * 60 * 60;
+  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${now}&token=${process.env.FINNHUB_API_KEY}`;
   try {
-    const now = Math.floor(Date.now() / 1000);
-    const from = now - 366 * 24 * 60 * 60;
-    const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${now}&token=${process.env.FINNHUB_API_KEY}`;
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) { console.error(`Finnhub ${symbol}: HTTP ${res.status}`); return {}; }
+    if (!res.ok) { console.error(`[history] Finnhub ${symbol} HTTP ${res.status}`); return {}; }
     const data = await res.json();
-    if (!data || data.s !== 'ok' || !data.t) {
-      console.error(`Finnhub ${symbol}: status=${data?.s}`);
+    if (!data || data.s !== 'ok' || !data.t?.length) {
+      console.error(`[history] Finnhub ${symbol} bad response: s=${data?.s}, t_len=${data?.t?.length ?? 'none'}`);
       return {};
     }
     const map: Record<string, number> = {};
@@ -71,10 +67,10 @@ async function fetchFinnhubCandles(symbol: string): Promise<Record<string, numbe
       const price = (data.c as number[])[i];
       if (price > 0) map[date] = price;
     });
-    console.log(`Finnhub ${symbol}: ${Object.keys(map).length} days`);
+    console.error(`[history] Finnhub ${symbol} OK: ${Object.keys(map).length} days`);
     return map;
-  } catch (err) {
-    console.error(`Finnhub ${symbol} error:`, err);
+  } catch (err: any) {
+    console.error(`[history] Finnhub ${symbol} exception: ${err.message}`);
     return {};
   }
 }
@@ -82,14 +78,18 @@ async function fetchFinnhubCandles(symbol: string): Promise<Record<string, numbe
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session) {
+      console.error('[history] No session - returning 401');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    console.error('[history] Session OK, fetching prices + trades');
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // VOO from Stooq (reliable), TSLA from Finnhub candles
     const [vooMap, tslaMap, tradesResult] = await Promise.all([
       fetchStooq('VOO'),
       fetchFinnhubCandles('TSLA'),
@@ -100,27 +100,23 @@ export async function GET() {
         .order('date', { ascending: true }),
     ]);
 
-    // TSLA fallback: also try Stooq if Finnhub fails
     const finalTslaMap = Object.keys(tslaMap).length > 0 ? tslaMap : await fetchStooq('TSLA');
 
+    const tradeCount = (tradesResult.data || []).length;
+    console.error(`[history] voo=${Object.keys(vooMap).length} tsla=${Object.keys(finalTslaMap).length} trades=${tradeCount}`);
+
     if (Object.keys(vooMap).length === 0 && Object.keys(finalTslaMap).length === 0) {
-      console.error('No price history data from any source');
-      return NextResponse.json({ points: [] }, {
-        headers: { 'Cache-Control': 'no-store, max-age=0' },
-      });
+      console.error('[history] No price data from any source - returning empty');
+      return NextResponse.json({ points: [] }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     const allDates = Array.from(
       new Set([...Object.keys(vooMap), ...Object.keys(finalTslaMap)])
     ).sort();
 
-    console.log(`Date range: ${allDates[0]} to ${allDates[allDates.length - 1]}, ${allDates.length} days`);
-
     const trades = (tradesResult.data || []) as {
       date: string; account: string; security: string; action: string; shares: string | number;
     }[];
-
-    console.log(`Trades: ${trades.length}`);
 
     const positions: Record<string, number> = {};
     let tradeIdx = 0;
@@ -138,28 +134,23 @@ export async function GET() {
         }
         tradeIdx++;
       }
-
       let value = 0;
       for (const [key, shares] of Object.entries(positions)) {
         if (shares <= 0) continue;
         const security = key.split(':')[1];
-        const price =
-          security === 'VOO' ? (vooMap[date] || 0) :
-          security === 'TSLA' ? (finalTslaMap[date] || 0) : 0;
+        const price = security === 'VOO' ? (vooMap[date] || 0) :
+                      security === 'TSLA' ? (finalTslaMap[date] || 0) : 0;
         value += shares * price;
       }
-
       if (value > 0) points.push({ date, value });
     }
 
-    console.log(`Returning ${points.length} history points`);
+    console.error(`[history] Returning ${points.length} points`);
 
-    return NextResponse.json({ points }, {
-      headers: { 'Cache-Control': 'no-store, max-age=0' },
-    });
+    return NextResponse.json({ points }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
 
   } catch (err: any) {
-    console.error('History error:', err);
+    console.error(`[history] Caught exception: ${err.message}`);
     return NextResponse.json({ points: [] }, { status: 500 });
   }
 }
