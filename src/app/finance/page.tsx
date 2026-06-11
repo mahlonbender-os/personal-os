@@ -1,965 +1,812 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
-import BottomNav from '@/components/BottomNav';
+import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Transaction {
+interface Holding {
+  symbol: string;
+  shares: number;
+  avgCost: number;
+  currentPrice: number;
+  marketValue: number;
+  costBasis: number;
+  gainLoss: number;
+  gainLossPct: number;
+  dailyGainLoss: number;
+  dailyGainLossPct: number;
+}
+
+interface Account {
+  name: string;
+  sheetTotal: number;
+  uninvestedCash: number;
+  stockValue: number;
+  totalValue: number;
+  holdings: Holding[];
+}
+
+interface Trade {
   id: string;
   date: string;
-  merchant: string;
   account: string;
+  security: string;
+  action: string;
   amount: number;
-  category: string;
-  month: string;
+  shares: number;
 }
 
-interface Bill {
-  id: string;
-  name: string;
-  category: string;
-  amount: number;
-  due_day: number | null;
-  due_date: string | null;
-  payment_account: string;
-  status: string;
+interface InvestmentData {
+  vooPrice: number;
+  vooDailyChange: number;
+  vooDailyChangePct: number;
+  tslaPrice: number;
+  tslaDailyChange: number;
+  tslaDailyChangePct: number;
+  accounts: Account[];
+  trades: Trade[];
+  totalPortfolioValue: number;
+  totalDailyGainLoss: number;
+  lastUpdated: string;
 }
 
-interface NetWorthAccount {
-  name: string;
-  value: number;
-  type: 'asset' | 'liability';
-}
-
-interface BudgetItem {
-  category: string;
-  section: 'income' | 'essentials' | 'discretionary';
-  budget: number;
-  actual: number;
-  remaining: number;
-  over: number;
-  percent: number;
-}
-
-interface CashFlowMonth {
-  month: string;
-  rawHeader: string;
-  income: number;
-  essentials: number;
-  discretionary: number;
-  net: number;
-}
-
-interface NetWorthSnapshot {
+interface HistoryPoint {
   date: string;
-  net_worth: number;
-  assets: number;
-  liabilities: number;
+  value: number;
 }
-
-type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v6'; // Increment to bust localized stale caches
-const AMBER = '#f0a050';
-const GREEN = '#22c55e';
-const RED = '#ef4444';
+const CACHE_KEY = 'investments-data-v2';
+const HISTORY_CACHE_KEY = 'investments-history-v2';
+const TABS = ['Overview', 'Trade Log'];
+const RANGES = ['1M', '3M', '6M', '1Y'];
 
-const CATEGORY_COLORS: Record<string, string> = {
-  'Knox 🐾': '#f59e0b',
-  Housing: '#6366f1',
-  'Dining Out': '#ef4444',
-  Transportation: '#3b82f6',
-  Groceries: '#22c55e',
-  Electric: '#eab308',
-  Internet: '#8b5cf6',
-  Phone: '#06b6d4',
-  Gym: '#f97316',
-  'Student Loan': '#64748b',
-  'UGI Gas': '#f59e0b',
-  Water: '#0ea5e9',
-  'Car Insurance': '#84cc16',
-  Subscriptions: '#a855f7',
-  Personal: '#ec4899',
-  Entertainment: '#14b8a6',
-  Income: '#22c55e',
-  Bree: '#f43f5e',
-  HSA: '#06b6d4',
-  'Roth IRA': '#8b5cf6',
-  '401K': '#6366f1',
-  'Other Exp.': '#94a3b8',
-  'Other Inc.': '#34d399',
-  Transfer: '#94a3b8',
-};
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const INCOME_CATEGORIES = ['Income', 'Other Inc.', 'Roth IRA', '401K', 'HSA', 'Bree'];
+const fmt = (n: number) =>
+  `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const ACCOUNTS = [
-  '1stFinancial', '401K', 'AidVantage', 'American Express Blue Cash Preferred',
-  'Apple', "Capital One BJ's", 'Capital One Savor', 'Chase Sapphire Preferred',
-  'Fidelity', 'Home — Zestimate', 'HSA', 'Members 1st Checking',
-  'Members 1st HELOC', 'Roth IRA', 'Wells Fargo',
-];
+const fmtShares = (n: number) => n.toFixed(3);
 
-const CATEGORIES_LIST = [
-  '401K', 'Bree', 'Car Insurance', 'Dining Out', 'Electric', 'Entertainment',
-  'Groceries', 'Gym', 'Housing', 'HSA', 'Income', 'Internet', 'Knox 🐾',
-  'Other Exp.', 'Other Inc.', 'Personal', 'Phone', 'Roth IRA', 'Student Loan',
-  'Subscriptions', 'Transfer', 'Transportation', 'UGI Gas', 'Water',
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function catColor(cat: string) { return CATEGORY_COLORS[cat] || '#94a3b8'; }
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n));
+function gainColor(v: number) {
+  return v >= 0 ? '#22c55e' : '#ef4444';
 }
 
-function fmtDate(s: string) {
-  if (!s) return '';
-  return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function actionColor(action: string) {
+  if (action === 'BUY') return { bg: 'bg-[#22c55e]/10', text: 'text-[#22c55e]' };
+  if (action === 'REINVEST') return { bg: 'bg-[#f0a050]/10', text: 'text-[#f0a050]' };
+  return { bg: 'bg-[#ef4444]/10', text: 'text-[#ef4444]' };
 }
 
-function monthLabel(key: string) {
-  if (!key) return '';
-  if (!key.includes('-')) return key;
-  const [y, m] = key.split('-');
-  return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+function actionBtnClass(action: string, selected: string) {
+  const active = action === selected;
+  if (!active) return 'bg-black border-[#2a2a2a] text-[#555]';
+  if (action === 'BUY') return 'bg-[#22c55e]/20 border-[#22c55e] text-[#22c55e]';
+  if (action === 'SELL') return 'bg-[#ef4444]/20 border-[#ef4444] text-[#ef4444]';
+  return 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]';
 }
 
-async function syncSheets() {
-  await fetch('/api/sync/sheets', { method: 'POST' });
-  try {
-    Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k));
-  } catch {}
-}
-
-// ─── Shared UI ────────────────────────────────────────────────────────────────
+// ─── Spinner ─────────────────────────────────────────────────────────────────
 
 function Spinner() {
-  return <div className="w-5 h-5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />;
-}
-
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl bg-[#111] border border-[#1a1a1a] ${className}`}>
-      {children}
+    <div className="flex items-center justify-center pt-20">
+      <div className="w-5 h-5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2 px-1">{children}</p>;
-}
+// ─── Portfolio Chart ──────────────────────────────────────────────────────────
 
-// ─── Overview Tab ─────────────────────────────────────────────────────────────
-
-function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNavigateRow: (tab: Tab) => void }) {
-  const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number } | null>(null);
-  const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number } | null>(null);
-  const [recentTx, setRecentTx] = useState<Transaction[]>([]);
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    try {
-      const cached = localStorage.getItem(`finance_overview_${CACHE_VERSION}`);
-      if (cached) {
-        const { cf, nw, tx, bl } = JSON.parse(cached);
-        if (cf) setCashFlow(cf);
-        if (nw) setNetWorth(nw);
-        if (tx) setRecentTx(tx);
-        if (bl) setBills(bl);
-        setLoading(false);
-      }
-    } catch {}
-    try {
-      const [cfRes, nwRes, txRes, blRes] = await Promise.all([
-        fetch('/api/finance/cash-flow'), fetch('/api/finance/net-worth'),
-        fetch('/api/finance/transactions?limit=5'), fetch('/api/finance/bills'),
-      ]);
-      const [cfData, nwData, txData, blData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json(), blRes.json()]);
-      
-      const now = new Date();
-      const monthName = now.toLocaleString('default', { month: 'long' });
-      const cur = cfData.months?.find((m: { month: string }) => m.month.toLowerCase().includes(monthName.toLowerCase()));
-      const cf = cur ? { income: cur.income, expenses: cur.essentials + cur.discretionary, net: cur.net } : null;
-      
-      if (cf) setCashFlow(cf);
-      setNetWorth(nwData);
-      setRecentTx(txData.transactions || []);
-      setBills(blData.bills || []);
-      try { localStorage.setItem(`finance_overview_${CACHE_VERSION}`, JSON.stringify({ cf, nw: nwData, tx: txData.transactions || [], bl: blData.bills || [] })); } catch {}
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load, onRefresh]);
-
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const in7 = new Date(today); in7.setDate(today.getDate() + 7);
-  const dueSoon = bills.filter(b => { if (!b.due_date) return false; return new Date(b.due_date + 'T00:00:00') <= in7; });
-  const dueTotal = dueSoon.reduce((s, b) => s + Math.abs(b.amount), 0);
-
-  if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
-
-  return (
-    <div className="space-y-4 animate-fadeIn">
-      {/* Net Worth hero layout block */}
-      <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('networth')}>
-        <Card className="p-5">
-          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-1">Net Worth</p>
-          <p className="text-[32px] font-extrabold text-white leading-none" style={{ fontFamily: 'system-ui' }}>
-            {netWorth ? fmt(netWorth.netWorth) : '—'}
-          </p>
-          {netWorth && (
-            <div className="flex gap-4 mt-2 text-[11px] text-[#555]">
-              <span>Assets {fmt(netWorth.totalAssets)}</span>
-              <span>·</span>
-              <span>Liabilities {fmt(netWorth.totalLiabilities)}</span>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* Cash Flow */}
-      {cashFlow && (
-        <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('budget')}>
-          <Card className="p-4">
-            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">This Month</p>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div>
-                <p className="text-[10px] text-[#444] mb-0.5">Income</p>
-                <p className="text-base font-bold text-[#22c55e] font-mono">{fmt(cashFlow.income)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-[#444] mb-0.5">Expenses</p>
-                <p className="text-base font-bold text-[#ef4444] font-mono">{fmt(cashFlow.expenses)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-[#444] mb-0.5">Net</p>
-                <p className={`text-base font-bold font-mono ${cashFlow.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(Math.abs(cashFlow.net))}</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Bills due soon */}
-      {dueSoon.length > 0 && (
-        <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('bills')}>
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Bills Due Soon</p>
-              <p className="text-[9px] text-[#f0a050]">See all →</p>
-            </div>
-            <p className="text-xl font-bold text-[#f0a050] font-mono">{fmt(dueTotal)}</p>
-            <p className="text-[10px] text-[#444]">{dueSoon.length} bill{dueSoon.length !== 1 ? 's' : ''} in next 7 days</p>
-          </Card>
-        </div>
-      )}
-
-      {/* Recent Transactions */}
-      <Card className="overflow-hidden">
-        <div className="w-full px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between active:bg-[#161616] cursor-pointer" onClick={() => onNavigateRow('transactions')}>
-          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Recent Transactions</p>
-          <p className="text-[9px] text-[#f0a050]">See all →</p>
-        </div>
-        {recentTx.length === 0 ? (
-          <p className="px-4 py-6 text-center text-[11px] text-[#333]">Pull down to sync latest data</p>
-        ) : (
-          <div className="divide-y divide-[#141414]">
-            {recentTx.map(tx => (
-              <div key={tx.id} className="flex items-center px-4 py-3 gap-3">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor(tx.category) }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#e0e0e0] truncate">{tx.merchant}</p>
-                  <p className="text-[10px] text-[#444]">{tx.category} · {fmtDate(tx.date)}</p>
-                </div>
-                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : tx.category === 'Transfer' ? 'text-[#888]' : 'text-[#ef4444]'}`}>{fmt(tx.amount)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-// ─── Budget Tab ───────────────────────────────────────────────────────────────
-
-function BudgetTab({ onRefresh }: { onRefresh: number }) {
-  const [items, setItems] = useState<BudgetItem[]>([]);
-  const [totalIncomeBudget, setTotalIncomeBudget] = useState(0);
-  const [totalIncomeActual, setTotalIncomeActual] = useState(0);
-  const [totalExpenseBudget, setTotalExpenseBudget] = useState(0);
-  const [totalExpenseActual, setTotalExpenseActual] = useState(0);
-  const [projectedCashFlow, setProjectedCashFlow] = useState(0);
-  const [actualCashFlow, setActualCashFlow] = useState(0);
-  const [selectedMonth, setSelectedMonth] = useState('');
-  const [currentMonth, setCurrentMonth] = useState('');
-  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
-  const [historicalMonths, setHistoricalMonths] = useState<CashFlowMonth[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async (month?: string) => {
-    setLoading(true); setError(null);
-    try {
-      const url = month ? `/api/finance/budget?month=${month}` : '/api/finance/budget';
-      const data = await fetch(url).then(r => r.json());
-      if (data.error) throw new Error(data.error);
-      setItems(data.items || []);
-      setTotalIncomeBudget(data.totalIncomeBudget || 0);
-      setTotalIncomeActual(data.totalIncomeActual || 0);
-      setTotalExpenseBudget(data.totalExpenseBudget || 0);
-      setTotalExpenseActual(data.totalExpenseActual || 0);
-      setProjectedCashFlow(data.projectedCashFlow || 0);
-      setActualCashFlow(data.actualCashFlow || 0);
-      setSelectedMonth(data.month);
-      setCurrentMonth(data.currentMonth);
-      setAvailableMonths(data.availableMonths || []);
-
-      const cfData = await fetch('/api/finance/cash-flow').then(r => r.json());
-      if (cfData.months) {
-        // Build chronological historical graph tracking backward from selected month point
-        const targetMonthIndex = cfData.months.findIndex((m: CashFlowMonth) => m.rawHeader === (month || data.month));
-        if (targetMonthIndex !== -1) {
-          const sliceStart = Math.max(0, targetMonthIndex - 5);
-          setHistoricalMonths(cfData.months.slice(sliceStart, targetMonthIndex + 1));
-        } else {
-          setHistoricalMonths(cfData.months.slice(-6));
-        }
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load');
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load, onRefresh]);
-
-  const incomeItems = items.filter(i => i.section === 'income');
-  const essentialItems = items.filter(i => i.section === 'essentials');
-  const discretionaryItems = items.filter(i => i.section === 'discretionary');
-
-  function CashFlowTrendChart() {
-    if (historicalMonths.length < 2) return null;
-    const maxVal = Math.max(...historicalMonths.map(m => Math.max(m.income, m.essentials + m.discretionary, 1)));
-
+function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: string }) {
+  if (!points || points.length < 2) {
     return (
-      <div>
-        <SectionLabel>Historical Cash Flow Trends</SectionLabel>
-        <Card className="p-4 space-y-4">
-          <div className="h-28 flex items-end justify-between gap-2 pt-2 px-1">
-            {historicalMonths.map((m, i) => {
-              const totalExp = m.essentials + m.discretionary;
-              const incHeight = (m.income / maxVal) * 100;
-              const expHeight = (totalExp / maxVal) * 100;
-              const labelShort = m.month.split(' ')[0].substring(0, 3);
-
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center h-full justify-end">
-                  <div className="flex items-end justify-center gap-1.5 w-full h-full pb-1">
-                    <div className="w-[7px] bg-[#22c55e] rounded-t-sm" style={{ height: `${Math.max(incHeight, 2)}%` }} />
-                    <div className="w-[7px] bg-[#ef4444] rounded-t-sm" style={{ height: `${Math.max(expHeight, 2)}%` }} />
-                  </div>
-                  <span className="text-[9px] text-[#444] font-semibold uppercase mt-1">{labelShort}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex items-center justify-center gap-4 text-[10px] border-t border-[#1a1a1a] pt-2 text-[#555]">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-[#22c55e]" />
-              <span>Income</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-[#ef4444]" />
-              <span>Expenses</span>
-            </div>
-          </div>
-        </Card>
+      <div className="flex items-center justify-center h-20 text-[#666] text-xs font-mono">
+        No history available
       </div>
     );
   }
 
-  function BudgetSection({ title, rows, totalBudget, totalActual }: { title: string; rows: BudgetItem[]; totalBudget: number; totalActual: number }) {
-    const isIncome = title === 'Income';
-    const pct = totalBudget > 0 ? Math.min(Math.round((totalActual / totalBudget) * 100), 100) : 0;
+  // Filter by selected range
+  const now = new Date();
+  const cutoff = new Date(now);
+  if (range === '1M') cutoff.setMonth(cutoff.getMonth() - 1);
+  else if (range === '3M') cutoff.setMonth(cutoff.getMonth() - 3);
+  else if (range === '6M') cutoff.setMonth(cutoff.getMonth() - 6);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const filtered = range === '1Y' ? points : points.filter(p => p.date >= cutoffStr);
+
+  if (filtered.length < 2) {
     return (
-      <div>
-        <div className="flex items-baseline justify-between mb-2 px-1">
-          <p className="text-[10px] font-bold text-[#444] uppercase tracking-widest">{title}</p>
-          <p className="text-[10px] text-[#444] font-mono">{fmt(totalActual)} / {fmt(totalBudget)}</p>
-        </div>
-        <Card className="overflow-hidden">
-          {rows.map((item, idx) => (
-            <div key={item.category} className={`px-4 py-3 ${idx !== rows.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor(item.category) }} />
-                  <p className="text-sm font-medium text-[#e0e0e0] truncate">{item.category}</p>
-                </div>
-                <p className="text-sm font-semibold text-[#ccc] font-mono flex-shrink-0 ml-2">
-                  {fmt(item.actual)}<span className="text-[10px] text-[#444] font-normal"> / {fmt(item.budget)}</span>
-                </p>
-              </div>
-              <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${isIncome ? 'bg-[#22c55e]' : item.percent >= 100 ? 'bg-[#ef4444]' : item.percent >= 80 ? 'bg-[#f59e0b]' : ''}`}
-                  style={{ width: `${Math.min(item.percent, 100)}%`, backgroundColor: (!isIncome && item.percent < 80) ? catColor(item.category) : undefined }} />
-              </div>
-              {!isIncome && item.over > 0 && <p className="text-[10px] text-[#ef4444] mt-0.5">{fmt(item.over)} over</p>}
-            </div>
-          ))}
-          <div className="px-4 py-2 bg-[#161616] border-t border-[#1a1a1a]">
-            <div className="h-[3px] bg-[#222] rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${isIncome ? 'bg-[#22c55e]' : pct >= 100 ? 'bg-[#ef4444]' : pct >= 80 ? 'bg-[#f59e0b]' : 'bg-[#f0a050]'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-            </div>
-            <div className="flex justify-between mt-1">
-              <p className="text-[9px] text-[#333]">{pct}% used</p>
-              <p className={`text-[9px] font-medium ${isIncome ? totalActual >= totalBudget ? 'text-[#22c55e]' : 'text-[#444]' : totalActual > totalBudget ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
-                {isIncome ? totalActual >= totalBudget ? `${fmt(totalActual - totalBudget)} extra` : `${fmt(totalBudget - totalActual)} remaining` : totalActual > totalBudget ? `${fmt(totalActual - totalBudget)} over` : `${fmt(totalBudget - totalActual)} left`}
-              </p>
-            </div>
-          </div>
-        </Card>
+      <div className="flex items-center justify-center h-20 text-[#666] text-xs font-mono">
+        Not enough data for {range}
       </div>
     );
   }
 
-  return (
-    <div className="space-y-4 animate-fadeIn">
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">
-            {selectedMonth === currentMonth ? 'This Month' : monthLabel(selectedMonth)}
-          </p>
-          <select value={selectedMonth} onChange={e => load(e.target.value)} className="text-[11px] text-[#f0a050] bg-transparent border-none outline-none cursor-pointer">
-            {availableMonths.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-          </select>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div>
-            <p className="text-[10px] text-[#444] mb-0.5">Income</p>
-            <p className="text-sm font-bold text-[#22c55e] font-mono">{fmt(totalIncomeActual)}</p>
-            <p className="text-[9px] text-[#333] font-mono">/ {fmt(totalIncomeBudget)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[#444] mb-0.5">Expenses</p>
-            <p className="text-sm font-bold text-[#ef4444] font-mono">{fmt(totalExpenseActual)}</p>
-            <p className="text-[9px] text-[#333] font-mono">/ {fmt(totalExpenseBudget)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[#444] mb-0.5">Cash Flow</p>
-            <p className={`text-sm font-bold font-mono ${actualCashFlow >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(Math.abs(actualCashFlow))}</p>
-            <p className="text-[9px] text-[#333] font-mono">/ {fmt(Math.abs(projectedCashFlow))}</p>
-          </div>
-        </div>
-      </Card>
+  const W = 340, H = 110;
+  const PL = 48, PR = 8, PT = 6, PB = 18;
+  const plotW = W - PL - PR;
+  const plotH = H - PT - PB;
 
-      {loading ? (
-        <div className="flex justify-center py-8"><Spinner /></div>
-      ) : error ? (
-        <Card className="p-4 text-sm text-[#ef4444]">{error} — pull down to refresh</Card>
-      ) : (
-        <>
-          <CashFlowTrendChart />
-          <BudgetSection title="Income" rows={incomeItems} totalBudget={totalIncomeBudget} totalActual={totalIncomeActual} />
-          <BudgetSection title="Essentials" rows={essentialItems} totalBudget={essentialItems.reduce((s, i) => s + i.budget, 0)} totalActual={essentialItems.reduce((s, i) => s + i.actual, 0)} />
-          <BudgetSection title="Discretionary" rows={discretionaryItems} totalBudget={discretionaryItems.reduce((s, i) => s + i.budget, 0)} totalActual={discretionaryItems.reduce((s, i) => s + i.actual, 0)} />
-        </>
-      )}
+  const vals = filtered.map(p => p.value);
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const pad = (maxV - minV) * 0.1 || 500;
+  const minVP = minV - pad;
+  const maxVP = maxV + pad;
+  const rangeV = maxVP - minVP;
+
+  const xS = (i: number) => PL + (i / (filtered.length - 1)) * plotW;
+  const yS = (v: number) => PT + plotH - ((v - minVP) / rangeV) * plotH;
+
+  const pts = filtered.map((p, i) => `${xS(i).toFixed(1)},${yS(p.value).toFixed(1)}`).join(' ');
+  const lastX = xS(filtered.length - 1);
+  const lastY = yS(filtered[filtered.length - 1].value);
+  const area = `${PL},${(PT + plotH).toFixed(1)} ${pts} ${lastX.toFixed(1)},${(PT + plotH).toFixed(1)}`;
+
+  const first = filtered[0].value;
+  const last = filtered[filtered.length - 1].value;
+  const isUp = last >= first;
+  const tc = isUp ? '#22c55e' : '#ef4444';
+  const changePct = ((last - first) / first) * 100;
+  const changeAbs = last - first;
+
+  const yTicks = [
+    minVP + rangeV * 0.15,
+    minVP + rangeV * 0.5,
+    minVP + rangeV * 0.85,
+  ];
+
+  const fmtXDate = (d: string) => {
+    const dt = new Date(d + 'T12:00:00');
+    if (range === '1M') return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return dt.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  };
+
+  return (
+    <div>
+      <div className="flex items-baseline gap-2 mb-3">
+        <span className="font-mono text-sm font-bold" style={{ color: tc }}>
+          {isUp ? '+' : ''}{fmt(changeAbs)}
+        </span>
+        <span className="font-mono text-xs" style={{ color: tc }}>
+          ({isUp ? '+' : ''}{changePct.toFixed(2)}%)
+        </span>
+        <span className="text-[#555] text-[10px]">this {range}</span>
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: `${H}px` }}>
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={tc} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={tc} stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+
+        {yTicks.map((v, i) => (
+          <line
+            key={i}
+            x1={PL} y1={yS(v).toFixed(1)}
+            x2={W - PR} y2={yS(v).toFixed(1)}
+            stroke="#222" strokeWidth="1"
+          />
+        ))}
+
+        {yTicks.map((v, i) => (
+          <text
+            key={i}
+            x={PL - 3}
+            y={(yS(v) + 4).toFixed(1)}
+            textAnchor="end"
+            fill="#555"
+            fontSize="7"
+            fontFamily="monospace"
+          >
+            {v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`}
+          </text>
+        ))}
+
+        <polygon points={area} fill="url(#areaGrad)" />
+
+        <polyline
+          points={pts}
+          fill="none"
+          stroke={tc}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        <circle cx={lastX.toFixed(1)} cy={lastY.toFixed(1)} r="2.5" fill={tc} />
+
+        <text x={PL} y={H - 3} textAnchor="start" fill="#555" fontSize="7" fontFamily="monospace">
+          {fmtXDate(filtered[0].date)}
+        </text>
+        <text x={W - PR} y={H - 3} textAnchor="end" fill="#555" fontSize="7" fontFamily="monospace">
+          {fmtXDate(filtered[filtered.length - 1].date)}
+        </text>
+      </svg>
     </div>
   );
 }
 
-// ─── Transactions Tab ─────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
-function TransactionsTab({ onRefresh }: { onRefresh: number }) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+export default function InvestmentsPage() {
+  const [activeTab, setActiveTab] = useState(0);
+  const [data, setData] = useState<InvestmentData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [showDaily, setShowDaily] = useState(false);
+  const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
+  const [historyRange, setHistoryRange] = useState('1Y');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [formDate, setFormDate] = useState('');
+  const [formAccount, setFormAccount] = useState('Roth IRA');
+  const [formSecurity, setFormSecurity] = useState('VOO');
+  const [formAction, setFormAction] = useState('BUY');
+  const [formShares, setFormShares] = useState('');
+  const [formPrice, setFormPrice] = useState('');
+  const [formAmount, setFormAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Delete confirm state
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
+
+  async function fetchData() {
     try {
-      const data = await fetch(`/api/finance/transactions?limit=300&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
-      setTransactions(data.transactions || []);
+      const res = await fetch('/api/finance/investments');
+      if (!res.ok) return;
+      const json = await res.json();
+      setData(json);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(json));
     } catch (e) {
-      console.error('Failed to load transactions:', e);
+      console.error('Investments fetch error:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => { setSearchQuery(''); setSelectedCategory('All'); load(); }, [load, onRefresh]);
-
-  const categories = ['All', ...Array.from(new Set(transactions.map(t => t.category))).sort()];
-  const filtered = transactions.filter(tx => {
-    const matchCat = selectedCategory === 'All' || tx.category === selectedCategory;
-    const matchSearch = !searchQuery || tx.merchant.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchCat && matchSearch;
-  });
-
-  const grouped = filtered.reduce<Record<string, Transaction[]>>((acc, tx) => {
-    const key = tx.date ? tx.date.substring(0, 7) : 'Unknown';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(tx);
-    return acc;
-  }, {});
-
-  const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-
-  function monthTotal(txs: Transaction[]) {
-    return txs.reduce((sum, tx) => INCOME_CATEGORIES.includes(tx.category) ? sum + tx.amount : sum - tx.amount, 0);
   }
 
-  return (
-    <div className="space-y-3 h-full flex flex-col animate-fadeIn">
-      <div className="space-y-2 flex-shrink-0">
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#333] text-sm">🔍</span>
-          <input type="text" placeholder="Search transactions…" value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] placeholder-[#333] outline-none focus:ring-1 focus:ring-[#f0a050]" />
-        </div>
-
-        <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
-          className="w-full px-3 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] outline-none focus:ring-1 focus:ring-[#f0a050]">
-          {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-        </select>
-      </div>
-
-      {/* Local scroll containment framework */}
-      <div className="flex-1 overflow-y-auto pb-16 space-y-4 pr-1 scrollbar-hide">
-        {loading ? (
-          <div className="flex justify-center py-12"><Spinner /></div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-[#333] text-sm">{transactions.length === 0 ? 'Pull down to sync data' : 'No results'}</div>
-        ) : (
-          sortedMonths.map(monthKey => {
-            const monthTxs = grouped[monthKey];
-            const total = monthTotal(monthTxs);
-            return (
-              <div key={monthKey}>
-                <div className="flex justify-between items-baseline mb-2 px-1">
-                  <p className="text-[10px] font-bold text-[#444] uppercase tracking-widest">{monthLabel(monthKey)}</p>
-                  <div className="flex items-center gap-2">
-                    <p className="text-[10px] text-[#333]">{monthTxs.length} tx</p>
-                    <p className={`text-[10px] font-semibold font-mono ${total >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(Math.abs(total))}</p>
-                  </div>
-                </div>
-                <Card className="overflow-hidden">
-                  {monthTxs.map((tx, idx) => (
-                    <div key={tx.id} className={`flex items-center px-4 py-3 gap-3 ${idx !== monthTxs.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor(tx.category) }} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[#e0e0e0] truncate">{tx.merchant}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: catColor(tx.category) + '20', color: catColor(tx.category) }}>
-                            {tx.category}
-                          </span>
-                          <span className="text-[10px] text-[#444] flex-shrink-0">{fmtDate(tx.date)}</span>
-                          {tx.account && <span className="text-[10px] text-[#333] truncate min-w-0">{tx.account}</span>}
-                        </div>
-                      </div>
-                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : tx.category === 'Transfer' ? 'text-[#888]' : 'text-[#ef4444]'}`}>{fmt(tx.amount)}</p>
-                    </div>
-                  ))}
-                </Card>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Bills Tab ────────────────────────────────────────────────────────────────
-
-function BillsTab({ onRefresh }: { onRefresh: number }) {
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
+  async function fetchHistory() {
     try {
-      const cached = localStorage.getItem(`finance_bills_${CACHE_VERSION}`);
-      if (cached) { setBills(JSON.parse(cached)); setLoading(false); }
-    } catch {}
-    try {
-      const data = await fetch('/api/finance/bills').then(r => r.json());
-      setBills(data.bills || []);
-      try { localStorage.setItem(`finance_bills_${CACHE_VERSION}`, JSON.stringify(data.bills || [])); } catch {}
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load, onRefresh]);
-
-  const totalMonthly = bills.reduce((s, b) => s + Math.abs(b.amount || 0), 0);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const in7 = new Date(today); in7.setDate(today.getDate() + 7);
-  const dueSoon = bills.filter(b => b.due_date && new Date(b.due_date + 'T00:00:00') <= in7);
-  const dueLater = bills.filter(b => b.due_date && new Date(b.due_date + 'T00:00:00') > in7);
-
-  function BillRow({ bill, idx, total }: { bill: Bill; idx: number; total: number }) {
-    return (
-      <div className={`flex items-center px-4 py-3 gap-3 ${idx !== total - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-        <div className="w-12 flex-shrink-0 text-center">
-          <span className="text-[11px] font-bold text-[#555]">{bill.due_date ? fmtDate(bill.due_date) : ''}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-[#e0e0e0]">{bill.name}</p>
-          <p className="text-[10px] text-[#444]">{bill.payment_account || bill.category}</p>
-        </div>
-        <p className="text-sm font-semibold text-[#f0a050] flex-shrink-0 font-mono">{fmt(Math.abs(bill.amount))}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 animate-fadeIn">
-      <Card className="p-4">
-        <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-1">Upcoming Bills Total</p>
-        <p className="text-2xl font-bold text-white font-mono">{fmt(totalMonthly)}</p>
-        <p className="text-[10px] text-[#444] mt-0.5">{bills.length} unpaid bills</p>
-      </Card>
-
-      {loading ? <div className="flex justify-center py-8"><Spinner /></div> : bills.length === 0 ? (
-        <div className="text-center py-10 text-[#333] text-sm">No upcoming bills — pull down to sync</div>
-      ) : (
-        <>
-          {dueSoon.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold text-[#f0a050] uppercase tracking-widest mb-2 px-1">Due Within 7 Days</p>
-              <Card className="overflow-hidden border-[#f0a050]/20">
-                {dueSoon.map((bill, idx) => <BillRow key={bill.id} bill={bill} idx={idx} total={dueSoon.length} />)}
-              </Card>
-            </div>
-          )}
-          {dueLater.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold text-[#444] uppercase tracking-widest mb-2 px-1">Coming Up</p>
-              <Card className="overflow-hidden">
-                {dueLater.map((bill, idx) => <BillRow key={bill.id} bill={bill} idx={idx} total={dueLater.length} />)}
-              </Card>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Net Worth Tab ────────────────────────────────────────────────────────────
-
-function NetWorthTab({ onRefresh }: { onRefresh: number }) {
-  const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; history?: NetWorthSnapshot[] } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const d = await fetch('/api/finance/net-worth').then(r => r.json());
-      if (d.error) throw new Error(d.error);
-      setData(d);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to load'); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load, onRefresh]);
-
-  if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
-  if (error) return <Card className="p-4 text-sm text-[#ef4444]">Unable to load — pull down to refresh</Card>;
-  if (!data) return null;
-
-  const assets = data.accounts.filter(a => a.type === 'asset');
-  const liabilities = data.accounts.filter(a => a.type === 'liability');
-  const historyList = data.history || [];
-
-  function NetWorthSparkline() {
-    if (historyList.length < 2) return null;
-    
-    const values = historyList.map(h => h.net_worth);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = max - min === 0 ? 1 : max - min;
-
-    const width = 340;
-    const height = 80;
-    const padding = 10;
-    
-    const points = historyList.map((h, i) => {
-      const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
-      const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
-      return `${x},${y}`;
-    }).join(' ');
-
-    return (
-      <div>
-        <SectionLabel>Net Worth Trajectory Baseline</SectionLabel>
-        <Card className="p-4 flex flex-col items-center">
-          <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-            <polyline fill="none" stroke="#f0a050" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
-            {historyList.map((h, i) => {
-              if (i !== 0 && i !== historyList.length - 1) return null;
-              const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
-              const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
-              return <circle key={i} cx={x} cy={y} r="4" fill="#111" stroke="#f0a050" strokeWidth="2" />;
-            })}
-          </svg>
-          <div className="w-full flex justify-between text-[9px] text-[#444] font-semibold uppercase mt-2 px-1">
-            <span>{monthLabel(historyList[0].date.substring(0, 7)).split(' ')[0]}</span>
-            <span>{monthLabel(historyList[historyList.length - 1].date.substring(0, 7)).split(' ')[0]}</span>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 animate-fadeIn">
-      <div className="rounded-2xl bg-gradient-to-br from-[#1a1000] to-[#111] border border-[#f0a050]/20 p-5">
-        <p className="text-[#f0a050]/60 text-sm mb-1">Net Worth</p>
-        <p className="text-4xl font-bold text-white font-mono tracking-tight">{fmt(data.netWorth)}</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="bg-white/5 rounded-xl p-3">
-            <p className="text-[#555] text-[10px]">Total Assets</p>
-            <p className="text-white font-bold font-mono">{fmt(data.totalAssets)}</p>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3">
-            <p className="text-[#555] text-[10px]">Total Liabilities</p>
-            <p className="text-white font-bold font-mono">{fmt(data.totalLiabilities)}</p>
-          </div>
-        </div>
-      </div>
-
-      <NetWorthSparkline />
-
-      {assets.length > 0 && (
-        <div>
-          <SectionLabel>Assets</SectionLabel>
-          <Card className="overflow-hidden">
-            {assets.map((acct, idx) => (
-              <div key={idx} className={`flex items-center px-4 py-3 gap-3 ${idx !== assets.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                <div className="w-2 h-2 rounded-full bg-[#22c55e] flex-shrink-0" />
-                <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
-                <p className="text-sm font-semibold text-[#22c55e] font-mono">{fmt(acct.value)}</p>
-              </div>
-            ))}
-          </Card>
-        </div>
-      )}
-
-      {liabilities.length > 0 && (
-        <div>
-          <SectionLabel>Liabilities</SectionLabel>
-          <Card className="overflow-hidden">
-            {liabilities.map((acct, idx) => (
-              <div key={idx} className={`flex items-center px-4 py-3 gap-3 ${idx !== liabilities.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                <div className="w-2 h-2 rounded-full bg-[#ef4444] flex-shrink-0" />
-                <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
-                <p className="text-sm font-semibold text-[#ef4444] font-mono">{fmt(acct.value)}</p>
-              </div>
-            ))}
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
-function FinancePageInner() {
-  const { data: session, status } = useSession();
-  const searchParams = useSearchParams();
-  const initialTab = (searchParams.get('tab') as Tab) || 'overview';
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
-  const [refreshCount, setRefreshCount] = useState(0);
-  const [syncing, setSyncing] = useState(false);
-  const [showAddTx, setShowAddTx] = useState(false);
-  const [txForm, setTxForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    merchant: '', account: '', amount: '', category: '',
-  });
-  const [txSaving, setTxSaving] = useState(false);
-  const [txError, setTxError] = useState('');
-
-  async function handleAddTransaction() {
-    setTxError('');
-    if (!txForm.date || !txForm.merchant || !txForm.account || !txForm.amount || !txForm.category) {
-      setTxError('All fields are required.'); return;
-    }
-    setTxSaving(true);
-    try {
-      const res = await fetch('/api/finance/transactions/add', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(txForm),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: 'Failed to save' }));
-        throw new Error(errData.error || 'Failed to save');
+      // Check cache — valid for 6 hours, but skip if empty
+      const raw = localStorage.getItem(HISTORY_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (
+          parsed.ts &&
+          Date.now() - parsed.ts < 6 * 60 * 60 * 1000 &&
+          parsed.data?.length > 0
+        ) {
+          setHistoryData(parsed.data);
+          return;
+        }
       }
-
-      setShowAddTx(false);
-      setTxForm({ date: new Date().toISOString().split('T')[0], merchant: '', account: '', amount: '', category: '' });
-
-      try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
-      setRefreshCount(c => c + 1);
-
-      syncSheets().then(() => setRefreshCount(c => c + 1));
-
-    } catch (e: unknown) {
-      setTxError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
+      const res = await fetch('/api/finance/investments/history');
+      if (!res.ok) return;
+      const json = await res.json();
+      const pts: HistoryPoint[] = json.points || [];
+      setHistoryData(pts);
+      // Only cache if we got actual data
+      if (pts.length > 0) {
+        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ data: pts, ts: Date.now() }));
+      }
+    } catch (e) {
+      console.error('History fetch error:', e);
     }
-    finally { setTxSaving(false); }
   }
 
-  const handleRefresh = useCallback(async () => {
-    setSyncing(true);
-    await syncSheets();
-    setSyncing(false);
-    setRefreshCount(c => c + 1);
+  useEffect(() => {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try { setData(JSON.parse(cached)); } catch {}
+      setLoading(false);
+    }
+    // Seed history from cache immediately
+    try {
+      const raw = localStorage.getItem(HISTORY_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.data?.length > 0) setHistoryData(parsed.data);
+      }
+    } catch {}
+    fetchData();
+    fetchHistory();
   }, []);
 
-  if (status === 'loading') return <div className="min-h-screen flex items-center justify-center bg-black"><Spinner /></div>;
-  if (!session) return <div className="min-h-screen flex items-center justify-center bg-black"><p className="text-[#555]">Please sign in</p></div>;
+  // Auto-calculate total amount from shares × price
+  useEffect(() => {
+    if (!formShares || !formPrice) return;
+    const total = parseFloat(formShares) * parseFloat(formPrice);
+    if (!isNaN(total)) setFormAmount(total.toFixed(2));
+  }, [formShares, formPrice]);
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'budget', label: 'Budget' },
-    { id: 'transactions', label: 'Transactions' },
-    { id: 'bills', label: 'Bills' },
-    { id: 'networth', label: 'Net Worth' },
-  ];
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
+  function openModal() {
+    setFormDate(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }));
+    setFormShares('');
+    setFormPrice('');
+    setFormAmount('');
+    setFormAction('BUY');
+    setShowModal(true);
+  }
+
+  async function handleSaveTrade() {
+    if (!formDate || !formAmount || !formShares || !formPrice) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/finance/investments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: formDate,
+          account: formAccount,
+          security: formSecurity,
+          action: formAction,
+          amount: parseFloat(formAmount),
+          shares: parseFloat(formShares),
+        }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      setShowModal(false);
+      await fetchData();
+    } catch (e) {
+      console.error('Save trade error:', e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/finance/investments?id=${deleteId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      setDeleteId(null);
+      await fetchData();
+    } catch (e) {
+      console.error('Delete error:', e);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  const hasHoldings = (data?.accounts || []).some(a => a.holdings.length > 0);
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
-      {/* Header element - locked to top */}
-      <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-bold text-white">Finance</h1>
-          {syncing && (
-            <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050]">
-              <div className="w-3 h-3 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
-              Syncing…
-            </div>
-          )}
+    <>
+    <PullToRefresh onRefresh={async () => {
+      localStorage.removeItem(HISTORY_CACHE_KEY);
+      await Promise.all([fetchData(), fetchHistory()]);
+    }}>
+      <div className="pb-24">
+
+        {/* Header */}
+        <div className="px-4 pt-5 pb-2">
+          <h1 className="text-xl font-bold" style={{ fontFamily: 'Syne, sans-serif' }}>
+            Investments
+          </h1>
         </div>
-        <div className="flex gap-0 overflow-x-auto scrollbar-hide">
-          {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${
-                activeTab === tab.id ? 'border-[#f0a050] text-[#f0a050]' : 'border-transparent text-[#555]'
-              }`}>
-              {tab.label}
+
+        {/* Tab bar */}
+        <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
+          {TABS.map((tab, i) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setActiveTab(i);
+                window.scrollTo(0, 0);
+                if (navigator.vibrate) navigator.vibrate(8);
+              }}
+              className={`flex-1 py-3 text-xs font-semibold transition-colors ${
+                activeTab === i
+                  ? 'text-[#f0a050] border-b-2 border-[#f0a050]'
+                  : 'text-[#555]'
+              }`}
+            >
+              {tab}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Structured tab rendering block preventing endless scrolling loops */}
-      <div className="flex-1 overflow-hidden relative bg-black">
-        {activeTab === 'transactions' ? (
-          // Transactions logs run separate full-viewport scroll metrics
-          <div className="h-full px-4 pt-4">
-            <TransactionsTab onRefresh={refreshCount} />
-          </div>
-        ) : (
-          // Static layout blocks remain fully encapsulated inside pull-to-refresh
-          <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
-            <PullToRefresh onRefresh={handleRefresh}>
-              {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} />}
-              {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
-              {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
-              {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
-            </PullToRefresh>
+        {loading && !data ? <Spinner /> : (
+          <div className="px-4 pt-4 space-y-3">
+
+            {/* ── OVERVIEW TAB ─────────────────────────────────────────── */}
+            {activeTab === 0 && (
+              <>
+                {/* Total portfolio value */}
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-5 text-center">
+                  <div className="text-[#888] text-xs font-semibold uppercase tracking-wider mb-1">
+                    Total Portfolio
+                  </div>
+                  <div className="text-3xl font-mono font-bold text-[#22c55e]">
+                    {fmt(data?.totalPortfolioValue || 0)}
+                  </div>
+                  {data?.totalDailyGainLoss !== undefined && data.totalDailyGainLoss !== 0 && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <span className="font-mono text-xs" style={{ color: gainColor(data.totalDailyGainLoss) }}>
+                        {data.totalDailyGainLoss >= 0 ? '+' : ''}{fmt(Math.abs(data.totalDailyGainLoss))} today
+                      </span>
+                    </div>
+                  )}
+                  {data?.lastUpdated && (
+                    <div className="text-[#444] text-[10px] font-mono mt-1">
+                      Updated {new Date(data.lastUpdated).toLocaleTimeString('en-US', {
+                        hour: 'numeric', minute: '2-digit',
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Historical chart */}
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-semibold text-white">Portfolio History</span>
+                    <div className="flex gap-1">
+                      {RANGES.map(r => (
+                        <button
+                          key={r}
+                          onClick={() => setHistoryRange(r)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold transition-colors ${
+                            historyRange === r
+                              ? 'bg-[#f0a050] text-black'
+                              : 'bg-[#1a1a1a] text-[#555]'
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <PortfolioChart points={historyData} range={historyRange} />
+                </div>
+
+                {/* Live prices */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    {
+                      symbol: 'VOO',
+                      label: 'S&P 500 ETF',
+                      price: data?.vooPrice,
+                      d: data?.vooDailyChange,
+                      dp: data?.vooDailyChangePct,
+                    },
+                    {
+                      symbol: 'TSLA',
+                      label: 'Tesla',
+                      price: data?.tslaPrice,
+                      d: data?.tslaDailyChange,
+                      dp: data?.tslaDailyChangePct,
+                    },
+                  ].map(t => (
+                    <div key={t.symbol} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                      <div className="text-[#f0a050] text-xs font-mono font-bold">{t.symbol}</div>
+                      <div className="text-[#555] text-[10px] mb-1.5">{t.label}</div>
+                      <div className="text-white font-mono font-bold text-sm">{fmt(t.price || 0)}</div>
+                      {t.d !== undefined && t.d !== 0 && (
+                        <div className="font-mono text-[10px] mt-0.5" style={{ color: gainColor(t.d) }}>
+                          {t.d >= 0 ? '+' : ''}{t.d?.toFixed(2)} ({t.dp >= 0 ? '+' : ''}{t.dp?.toFixed(2)}%)
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Holdings label + Overall / Today toggle */}
+                {hasHoldings && (
+                  <div className="flex items-center justify-between px-1 pt-1">
+                    <span className="text-[#555] text-xs font-semibold uppercase tracking-wider">
+                      Holdings
+                    </span>
+                    <div className="flex bg-[#1a1a1a] rounded-full p-0.5">
+                      {['Overall', 'Today'].map(label => (
+                        <button
+                          key={label}
+                          onClick={() => setShowDaily(label === 'Today')}
+                          className={`px-3 py-1 rounded-full text-[10px] font-semibold transition-all ${
+                            (label === 'Today') === showDaily
+                              ? 'bg-[#f0a050] text-black'
+                              : 'text-[#555]'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Account cards */}
+                {(data?.accounts || []).map((acc, i) => (
+                  <div key={i} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 space-y-3">
+
+                    <div className="flex justify-between items-center pb-2 border-b border-[#1a1a1a]">
+                      <span className="text-sm font-bold">{acc.name}</span>
+                      <span className="font-mono font-bold text-[#22c55e]">{fmt(acc.totalValue)}</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-black/40 border border-[#1a1a1a] rounded-xl p-3">
+                        <div className="text-[#555] text-[10px] uppercase mb-1">Uninvested Cash</div>
+                        <div className="font-mono text-white text-sm font-bold">{fmt(acc.uninvestedCash)}</div>
+                      </div>
+                      <div className="bg-black/40 border border-[#1a1a1a] rounded-xl p-3">
+                        <div className="text-[#555] text-[10px] uppercase mb-1">Market Value</div>
+                        <div className="font-mono text-white text-sm font-bold">{fmt(acc.stockValue)}</div>
+                      </div>
+                    </div>
+
+                    {acc.holdings.length > 0 ? (
+                      <div className="space-y-2">
+                        {acc.holdings.map((h, j) => {
+                          const gl = showDaily ? h.dailyGainLoss : h.gainLoss;
+                          const glPct = showDaily ? h.dailyGainLossPct : h.gainLossPct;
+                          return (
+                            <div
+                              key={j}
+                              className="flex justify-between items-center bg-black/20 border border-[#151515] rounded-xl p-3"
+                            >
+                              <div>
+                                <div className="text-[#f0a050] text-xs font-mono font-bold">{h.symbol}</div>
+                                <div className="text-[#555] text-[10px] font-mono">{fmtShares(h.shares)} shares</div>
+                                <div className="text-[#555] text-[10px] font-mono">avg {fmt(h.avgCost)}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-mono font-bold text-sm">{fmt(h.marketValue)}</div>
+                                <div className="font-mono text-xs" style={{ color: gainColor(gl) }}>
+                                  {gl >= 0 ? '+' : '-'}{fmt(Math.abs(gl))}
+                                </div>
+                                <div className="font-mono text-[10px]" style={{ color: gainColor(glPct) }}>
+                                  {glPct >= 0 ? '+' : ''}{(glPct ?? 0).toFixed(2)}%
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-[#555] text-xs font-mono text-center py-2">No positions</div>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* ── TRADE LOG TAB ─────────────────────────────────────────── */}
+            {activeTab === 1 && (
+              <>
+                {(!data?.trades || data.trades.length === 0) ? (
+                  <div className="text-center text-[#555] text-sm font-mono pt-12">No trades logged yet</div>
+                ) : (
+                  <div className="space-y-2">
+                    {data.trades.map((t) => {
+                      const ac = actionColor(t.action);
+                      return (
+                        <div key={t.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${ac.bg} ${ac.text}`}>
+                                  {t.action}
+                                </span>
+                                <span className="text-[#f0a050] text-xs font-mono font-bold">{t.security}</span>
+                                <span className="text-[#555] text-[10px]">{t.account}</span>
+                              </div>
+                              <div className="text-white font-mono font-bold text-sm">{fmt(t.amount)}</div>
+                              <div className="text-[#555] text-[10px] font-mono">
+                                {fmtShares(parseFloat(String(t.shares)))} shares
+                              </div>
+                              <div className="text-[#444] text-[10px] font-mono mt-1">
+                                {new Date(t.date + 'T12:00:00').toLocaleDateString('en-US', {
+                                  month: 'short', day: 'numeric', year: 'numeric',
+                                })}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setDeleteId(t.id)}
+                              className="text-[#333] hover:text-[#ef4444] transition-colors p-1 ml-2 flex-shrink-0"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
+
       </div>
+    </PullToRefresh>
 
-      {/* FAB */}
-      {activeTab === 'transactions' && (
-        <button onClick={() => setShowAddTx(true)}
-          className="fixed z-40 w-14 h-14 rounded-full bg-[#f0a050] text-black text-3xl font-light shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 84px)', right: '20px' }}>
-          +
-        </button>
-      )}
+        {/* ── FAB — only on Trade Log tab ────────────────────────────────── */}
+        {activeTab === 1 && (
+          <button
+            onClick={openModal}
+            className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center shadow-lg"
+          >
+            <svg className="w-7 h-7 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        )}
 
-      {/* Add Transaction Modal wrapper */}
-      {showAddTx && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddTx(false)}>
-          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
-              <button onClick={() => setShowAddTx(false)} className="text-[#f0a050] text-sm">Cancel</button>
-              <h2 className="text-base font-semibold text-white">New Transaction</h2>
-              <button onClick={handleAddTransaction} disabled={txSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
-                {txSaving ? 'Saving…' : 'Add'}
-              </button>
-            </div>
-            <div className="px-4 pt-4 space-y-3">
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
-                  <input type="date" value={txForm.date} onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
+        {/* ── Log Trade Modal ─────────────────────────────────────────────── */}
+        {showModal && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+            <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6">
+              <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
+                <span className="font-bold text-base">Log Trade</span>
+                <button onClick={() => setShowModal(false)} className="text-[#555] text-2xl leading-none">×</button>
+              </div>
+              <div className="px-5 pt-4 space-y-4">
+
+                <div>
+                  <div className="text-[#888] text-xs mb-1.5">Date</div>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={e => setFormDate(e.target.value)}
+                    className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  />
                 </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Merchant</span>
-                  <input type="text" placeholder="Name" value={txForm.merchant} onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+
+                <div>
+                  <div className="text-[#888] text-xs mb-1.5">Account</div>
+                  <div className="flex gap-2">
+                    {['Roth IRA', 'HSA'].map(a => (
+                      <button
+                        key={a}
+                        onClick={() => setFormAccount(a)}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+                          formAccount === a
+                            ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]'
+                            : 'bg-black border-[#2a2a2a] text-[#555]'
+                        }`}
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[#888] text-xs mb-1.5">Security</div>
+                  <div className="flex gap-2">
+                    {['VOO', 'TSLA'].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setFormSecurity(s)}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-mono font-semibold border transition-colors ${
+                          formSecurity === s
+                            ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]'
+                            : 'bg-black border-[#2a2a2a] text-[#555]'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[#888] text-xs mb-1.5">Action</div>
+                  <div className="flex gap-2">
+                    {['BUY', 'SELL', 'REINVEST'].map(a => (
+                      <button
+                        key={a}
+                        onClick={() => setFormAction(a)}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${actionBtnClass(a, formAction)}`}
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[#888] text-xs mb-1.5">Shares</div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0.000"
+                    value={formShares}
+                    onChange={e => setFormShares(e.target.value)}
+                    className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  />
+                </div>
+
+                <div>
+                  <div className="text-[#888] text-xs mb-1.5">Price Per Share</div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={formPrice}
+                    onChange={e => setFormPrice(e.target.value)}
+                    className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  />
+                </div>
+
+                <div>
+                  <div className="text-[#888] text-xs mb-1.5">Total Amount (auto-calculated)</div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={formAmount}
+                    onChange={e => setFormAmount(e.target.value)}
+                    className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  />
                 </div>
               </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
-                  <input type="number" placeholder="0.00" step="0.01" value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
+
+              <div className="flex gap-3 px-5 pt-5">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 py-3 bg-[#2a2a2a] rounded-xl text-sm font-semibold text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveTrade}
+                  disabled={saving}
+                  className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-semibold text-black disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
               </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Account</span>
-                  <select value={txForm.account} onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none">
-                    <option value="" className="bg-[#2c2c2e]">Select…</option>
-                    {ACCOUNTS.map(a => <option key={a} className="bg-[#2c2c2e]">{a}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
-                  <select value={txForm.category} onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none">
-                    <option value="" className="bg-[#2c2c2e]">Select…</option>
-                    {CATEGORIES_LIST.map(c => <option key={c} className="bg-[#2c2c2e]">{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              {txError && <p className="text-[#ef4444] text-xs px-1">{txError}</p>}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <BottomNav active="finance" />
-    </div>
-  );
-}
+        {/* ── Delete Confirm Sheet ─────────────────────────────────────────── */}
+        {deleteId && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+            <div className="bg-[#1c1c1e] rounded-2xl w-full p-5">
+              <div className="text-center mb-5">
+                <div className="text-base font-bold mb-1">Delete Trade</div>
+                <div className="text-[#888] text-sm">
+                  This will remove the trade and recalculate your position.
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteId(null)}
+                  className="flex-1 py-3 bg-[#2a2a2a] rounded-xl text-sm font-semibold text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 py-3 bg-[#ef4444] rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-export default function FinancePage() {
-  return (
-    <Suspense fallback={null}>
-      <FinancePageInner />
-    </Suspense>
+    </>
   );
 }
