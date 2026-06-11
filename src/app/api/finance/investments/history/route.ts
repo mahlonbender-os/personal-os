@@ -7,51 +7,55 @@ export const dynamic = 'force-dynamic';
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
-// Fetch 1-year daily price history from Yahoo Finance (no API key needed)
-async function fetchYahooHistory(symbol: string): Promise<Record<string, number>> {
+function fmtDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+// Fetch 1-year daily close prices from Stooq (free, no API key, no rate limits)
+async function fetchStooqHistory(symbol: string): Promise<Record<string, number>> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`;
-    const res = await fetch(url, {
-      cache: 'no-store',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json,text/plain,*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    });
+    const now = new Date();
+    const oneYearAgo = new Date(now);
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
+    // Stooq format: lowercase ticker + .us suffix
+    const ticker = symbol.toLowerCase() + '.us';
+    const url = `https://stooq.com/q/d/l/?s=${ticker}&d1=${fmtDate(oneYearAgo)}&d2=${fmtDate(now)}&i=d`;
+
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
-      console.error(`Yahoo Finance ${symbol}: HTTP ${res.status}`);
+      console.error(`Stooq ${symbol}: HTTP ${res.status}`);
       return {};
     }
 
-    const data = await res.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) {
-      console.error(`Yahoo Finance ${symbol}: no result in response`);
+    const text = await res.text();
+    const lines = text.trim().split('\n');
+
+    if (lines.length < 2) {
+      console.error(`Stooq ${symbol}: no data returned`);
       return {};
     }
 
-    const timestamps: number[] = result.timestamp || [];
-    // Prefer adjusted close for accuracy (accounts for splits/dividends)
-    const closes: (number | null)[] =
-      result.indicators?.adjclose?.[0]?.adjclose ||
-      result.indicators?.quote?.[0]?.close ||
-      [];
-
+    // CSV format: Date,Open,High,Low,Close,Volume
+    // Header is line 0, data starts at line 1
     const map: Record<string, number> = {};
-    timestamps.forEach((ts, i) => {
-      const price = closes[i];
-      if (price != null && price > 0) {
-        const date = new Date(ts * 1000).toISOString().split('T')[0];
-        map[date] = price;
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(',');
+      if (parts.length < 5) continue;
+      const date = parts[0].trim(); // YYYY-MM-DD
+      const close = parseFloat(parts[4]);
+      if (date && !isNaN(close) && close > 0) {
+        map[date] = close;
       }
-    });
+    }
 
-    console.log(`Yahoo Finance ${symbol}: ${Object.keys(map).length} trading days`);
+    console.log(`Stooq ${symbol}: ${Object.keys(map).length} trading days loaded`);
     return map;
   } catch (err) {
-    console.error(`Yahoo Finance fetch error for ${symbol}:`, err);
+    console.error(`Stooq fetch error for ${symbol}:`, err);
     return {};
   }
 }
@@ -68,8 +72,8 @@ export async function GET() {
 
     // Fetch price history + all trades in parallel
     const [vooMap, tslaMap, tradesResult] = await Promise.all([
-      fetchYahooHistory('VOO'),
-      fetchYahooHistory('TSLA'),
+      fetchStooqHistory('VOO'),
+      fetchStooqHistory('TSLA'),
       supabase
         .from('investment_transactions')
         .select('date, account, security, action, shares')
@@ -78,7 +82,7 @@ export async function GET() {
     ]);
 
     if (Object.keys(vooMap).length === 0 && Object.keys(tslaMap).length === 0) {
-      console.error('No price history data returned from Yahoo Finance');
+      console.error('Stooq returned no price data for VOO or TSLA');
       return NextResponse.json({ points: [] }, {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
       });
@@ -105,7 +109,7 @@ export async function GET() {
     const points: { date: string; value: number }[] = [];
 
     for (const date of allDates) {
-      // Apply every trade whose date is on or before this trading day
+      // Apply every trade on or before this trading day
       while (tradeIdx < trades.length && trades[tradeIdx].date <= date) {
         const t = trades[tradeIdx];
         const key = `${t.account}:${t.security}`;
@@ -134,7 +138,7 @@ export async function GET() {
       }
     }
 
-    console.log(`History route: returning ${points.length} points`);
+    console.log(`History: returning ${points.length} points`);
 
     return NextResponse.json({ points }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },

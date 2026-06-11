@@ -239,7 +239,7 @@ export default function InvestmentsPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [data, setData] = useState<InvestmentData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showDaily, setShowDaily] = useState(false);
+  const [showDaily, setShowDaily] = useState(true);
   const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
   const [historyRange, setHistoryRange] = useState('1Y');
 
@@ -587,6 +587,22 @@ export default function InvestmentsPage() {
             {/* ── TRADE LOG TAB ─────────────────────────────────────────── */}
             {activeTab === 1 && (
               <>
+                {/* Section header with Log Trade button — no FAB needed */}
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[#555] text-xs font-semibold uppercase tracking-wider">
+                    {data?.trades?.length ? `${data.trades.length} trades` : 'Trades'}
+                  </span>
+                  <button
+                    onClick={openModal}
+                    className="flex items-center gap-1.5 bg-[#f0a050] text-black text-xs font-bold px-3 py-1.5 rounded-xl"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Log Trade
+                  </button>
+                </div>
+
                 {(!data?.trades || data.trades.length === 0) ? (
                   <div className="text-center text-[#555] text-sm font-mono pt-12">No trades logged yet</div>
                 ) : (
@@ -636,18 +652,6 @@ export default function InvestmentsPage() {
 
       </div>
     </PullToRefresh>
-
-        {/* ── FAB — only on Trade Log tab ────────────────────────────────── */}
-        {activeTab === 1 && (
-          <button
-            onClick={openModal}
-            className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center shadow-lg"
-          >
-            <svg className="w-7 h-7 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        )}
 
         {/* ── Log Trade Modal ─────────────────────────────────────────────── */}
         {showModal && (
