@@ -13,15 +13,20 @@ function parseDollar(val: any): number {
   return Math.abs(parseFloat(val.toString().replace(/[$,()]/g, '')) || 0);
 }
 
-async function fetchPrice(symbol: string): Promise<number> {
+// Returns price + daily change from Finnhub quote endpoint
+async function fetchQuote(symbol: string): Promise<{ price: number; d: number; dp: number }> {
   try {
     const res = await fetch(
       `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`
     );
     const data = await res.json();
-    return data.c || 0;
+    return {
+      price: data.c || 0,
+      d: data.d || 0,   // daily change in dollars
+      dp: data.dp || 0, // daily change in percent
+    };
   } catch {
-    return 0;
+    return { price: 0, d: 0, dp: 0 };
   }
 }
 
@@ -37,13 +42,20 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // 1. Live prices
-    const [vooPrice, tslaPrice] = await Promise.all([
-      fetchPrice('VOO'),
-      fetchPrice('TSLA'),
+    // 1. Live prices + daily change
+    const [vooQuote, tslaQuote] = await Promise.all([
+      fetchQuote('VOO'),
+      fetchQuote('TSLA'),
     ]);
 
-    const priceMap: Record<string, number> = { VOO: vooPrice, TSLA: tslaPrice };
+    const priceMap: Record<string, number> = {
+      VOO: vooQuote.price,
+      TSLA: tslaQuote.price,
+    };
+    const dailyChangeMap: Record<string, { d: number; dp: number }> = {
+      VOO: { d: vooQuote.d, dp: vooQuote.dp },
+      TSLA: { d: tslaQuote.d, dp: tslaQuote.dp },
+    };
 
     // 2. Sheet totals — non-fatal if fails
     let sheetRoth = 0;
@@ -65,7 +77,7 @@ export async function GET() {
         });
       }
     } catch {
-      // non-fatal — sheet totals are display context only
+      // non-fatal
     }
 
     // 3. Cash balances
@@ -96,6 +108,8 @@ export async function GET() {
     const accountNames = ['Roth IRA', 'HSA'];
     const sheetMap: Record<string, number> = { 'Roth IRA': sheetRoth, 'HSA': sheetHsa };
 
+    let totalDailyGainLoss = 0;
+
     const accountList = accountNames.map(accountName => {
       const accountPositions = (positionRows || []).filter(p => p.account === accountName);
       const cash = cashMap[accountName] ?? 0;
@@ -105,9 +119,12 @@ export async function GET() {
           const shares = parseFloat(String(p.shares));
           const avgCost = parseFloat(String(p.avg_cost));
           const price = priceMap[p.security] || 0;
+          const dc = dailyChangeMap[p.security] || { d: 0, dp: 0 };
           const marketValue = shares * price;
           const costBasis = shares * avgCost;
           const gainLoss = marketValue - costBasis;
+          const dailyGainLoss = shares * dc.d;
+          totalDailyGainLoss += dailyGainLoss;
           return {
             symbol: p.security,
             shares,
@@ -117,6 +134,8 @@ export async function GET() {
             costBasis,
             gainLoss,
             gainLossPct: costBasis > 0 ? (gainLoss / costBasis) * 100 : 0,
+            dailyGainLoss,
+            dailyGainLossPct: dc.dp,
           };
         })
         .filter(h => h.shares > 0);
@@ -136,11 +155,16 @@ export async function GET() {
     const totalPortfolioValue = accountList.reduce((s, a) => s + a.totalValue, 0);
 
     return NextResponse.json({
-      vooPrice,
-      tslaPrice,
+      vooPrice: vooQuote.price,
+      vooDailyChange: vooQuote.d,
+      vooDailyChangePct: vooQuote.dp,
+      tslaPrice: tslaQuote.price,
+      tslaDailyChange: tslaQuote.d,
+      tslaDailyChangePct: tslaQuote.dp,
       accounts: accountList,
       trades: trades || [],
       totalPortfolioValue,
+      totalDailyGainLoss,
       lastUpdated: new Date().toISOString(),
     }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
@@ -188,7 +212,7 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
-    // Update position: shares and avg cost
+    // Update position
     const { data: existing } = await supabase
       .from('investment_positions')
       .select('shares, avg_cost')
@@ -230,23 +254,26 @@ export async function POST(req: Request) {
     const { data: cashRow } = await supabase
       .from('investment_cash')
       .select('cash_balance')
-      .eq('account', account)
       .eq('user_id', USER_ID)
+      .eq('account', account)
       .single();
 
     if (cashRow) {
       const newBalance = parseFloat(String(cashRow.cash_balance)) + delta;
       await supabase
         .from('investment_cash')
-        .update({ cash_balance: Math.max(0, newBalance), updated_at: new Date().toISOString() })
-        .eq('account', account)
-        .eq('user_id', USER_ID);
+        .update({ cash_balance: newBalance, updated_at: new Date().toISOString() })
+        .eq('user_id', USER_ID)
+        .eq('account', account);
     }
 
-    return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ success: true, trade: data }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    });
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('Investments POST error:', err);
+    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
   }
 }
 
@@ -255,7 +282,8 @@ export async function DELETE(req: Request) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { id } = await req.json();
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
     const supabase = createClient(
@@ -263,14 +291,17 @@ export async function DELETE(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Get trade before deleting to reverse its effects
+    // Get the trade first so we know account/security to rebuild
     const { data: trade } = await supabase
       .from('investment_transactions')
-      .select('account, action, amount, shares, security')
+      .select('*')
       .eq('id', id)
       .eq('user_id', USER_ID)
       .single();
 
+    if (!trade) return NextResponse.json({ error: 'Trade not found' }, { status: 404 });
+
+    // Delete trade
     const { error } = await supabase
       .from('investment_transactions')
       .delete()
@@ -279,57 +310,45 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
-    if (trade) {
-      const tradeShares = parseFloat(String(trade.shares));
-      const tradeAmount = parseFloat(String(trade.amount));
+    // Rebuild position from remaining trades for this account/security
+    const { data: remaining } = await supabase
+      .from('investment_transactions')
+      .select('action, shares, amount')
+      .eq('user_id', USER_ID)
+      .eq('account', trade.account)
+      .eq('security', trade.security)
+      .order('date', { ascending: true });
 
-      // Reverse position
-      const { data: pos } = await supabase
-        .from('investment_positions')
-        .select('shares, avg_cost')
-        .eq('user_id', USER_ID)
-        .eq('account', trade.account)
-        .eq('security', trade.security)
-        .single();
-
-      if (pos) {
-        const currentShares = parseFloat(String(pos.shares));
-        const newShares = (trade.action === 'BUY' || trade.action === 'REINVEST')
-          ? Math.max(0, currentShares - tradeShares)
-          : currentShares + tradeShares;
-        await supabase
-          .from('investment_positions')
-          .update({ shares: newShares, updated_at: new Date().toISOString() })
-          .eq('user_id', USER_ID)
-          .eq('account', trade.account)
-          .eq('security', trade.security);
-      }
-
-      // Reverse cash
-      const cashDelta = (trade.action === 'BUY' || trade.action === 'REINVEST')
-        ? tradeAmount
-        : -tradeAmount;
-
-      const { data: cashRow } = await supabase
-        .from('investment_cash')
-        .select('cash_balance')
-        .eq('account', trade.account)
-        .eq('user_id', USER_ID)
-        .single();
-
-      if (cashRow) {
-        const newBalance = parseFloat(String(cashRow.cash_balance)) + cashDelta;
-        await supabase
-          .from('investment_cash')
-          .update({ cash_balance: Math.max(0, newBalance), updated_at: new Date().toISOString() })
-          .eq('account', trade.account)
-          .eq('user_id', USER_ID);
+    let totalShares = 0;
+    let totalCost = 0;
+    for (const t of (remaining || [])) {
+      const s = parseFloat(String(t.shares));
+      const a = parseFloat(String(t.amount));
+      if (t.action === 'BUY' || t.action === 'REINVEST') {
+        totalCost += a;
+        totalShares += s;
+      } else if (t.action === 'SELL') {
+        const pps = totalShares > 0 ? totalCost / totalShares : 0;
+        totalCost -= pps * s;
+        totalShares = Math.max(0, totalShares - s);
       }
     }
 
-    return NextResponse.json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
+    const newAvgCost = totalShares > 0 ? totalCost / totalShares : 0;
+
+    await supabase
+      .from('investment_positions')
+      .update({ shares: totalShares, avg_cost: newAvgCost, updated_at: new Date().toISOString() })
+      .eq('user_id', USER_ID)
+      .eq('account', trade.account)
+      .eq('security', trade.security);
+
+    return NextResponse.json({ success: true }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    });
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('Investments DELETE error:', err);
+    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
   }
 }
