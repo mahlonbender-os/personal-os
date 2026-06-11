@@ -7,15 +7,52 @@ export const dynamic = 'force-dynamic';
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
-async function fetchCandles(symbol: string, from: number, to: number) {
+// Fetch 1-year daily price history from Yahoo Finance (no API key needed)
+async function fetchYahooHistory(symbol: string): Promise<Record<string, number>> {
   try {
-    const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}&token=${process.env.FINNHUB_API_KEY}`;
-    const res = await fetch(url, { cache: 'no-store' });
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`;
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json,text/plain,*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+
+    if (!res.ok) {
+      console.error(`Yahoo Finance ${symbol}: HTTP ${res.status}`);
+      return {};
+    }
+
     const data = await res.json();
-    if (data.s !== 'ok') return null;
-    return data as { c: number[]; t: number[]; s: string };
-  } catch {
-    return null;
+    const result = data?.chart?.result?.[0];
+    if (!result) {
+      console.error(`Yahoo Finance ${symbol}: no result in response`);
+      return {};
+    }
+
+    const timestamps: number[] = result.timestamp || [];
+    // Prefer adjusted close for accuracy (accounts for splits/dividends)
+    const closes: (number | null)[] =
+      result.indicators?.adjclose?.[0]?.adjclose ||
+      result.indicators?.quote?.[0]?.close ||
+      [];
+
+    const map: Record<string, number> = {};
+    timestamps.forEach((ts, i) => {
+      const price = closes[i];
+      if (price != null && price > 0) {
+        const date = new Date(ts * 1000).toISOString().split('T')[0];
+        map[date] = price;
+      }
+    });
+
+    console.log(`Yahoo Finance ${symbol}: ${Object.keys(map).length} trading days`);
+    return map;
+  } catch (err) {
+    console.error(`Yahoo Finance fetch error for ${symbol}:`, err);
+    return {};
   }
 }
 
@@ -29,13 +66,10 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const now = Math.floor(Date.now() / 1000);
-    const oneYearAgo = now - 366 * 24 * 60 * 60;
-
-    // Fetch candle data + all trades in parallel
-    const [vooCandles, tslaCandles, tradesResult] = await Promise.all([
-      fetchCandles('VOO', oneYearAgo, now),
-      fetchCandles('TSLA', oneYearAgo, now),
+    // Fetch price history + all trades in parallel
+    const [vooMap, tslaMap, tradesResult] = await Promise.all([
+      fetchYahooHistory('VOO'),
+      fetchYahooHistory('TSLA'),
       supabase
         .from('investment_transactions')
         .select('date, account, security, action, shares')
@@ -43,30 +77,14 @@ export async function GET() {
         .order('date', { ascending: true }),
     ]);
 
-    if (!vooCandles && !tslaCandles) {
+    if (Object.keys(vooMap).length === 0 && Object.keys(tslaMap).length === 0) {
+      console.error('No price history data returned from Yahoo Finance');
       return NextResponse.json({ points: [] }, {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
       });
     }
 
-    // Build date → price lookup maps
-    const vooMap: Record<string, number> = {};
-    const tslaMap: Record<string, number> = {};
-
-    if (vooCandles) {
-      vooCandles.t.forEach((ts, i) => {
-        const date = new Date(ts * 1000).toISOString().split('T')[0];
-        vooMap[date] = vooCandles.c[i];
-      });
-    }
-    if (tslaCandles) {
-      tslaCandles.t.forEach((ts, i) => {
-        const date = new Date(ts * 1000).toISOString().split('T')[0];
-        tslaMap[date] = tslaCandles.c[i];
-      });
-    }
-
-    // All trading days sorted (union of both symbols)
+    // All trading days — union of both tickers, sorted ascending
     const allDates = Array.from(
       new Set([...Object.keys(vooMap), ...Object.keys(tslaMap)])
     ).sort();
@@ -79,14 +97,15 @@ export async function GET() {
       shares: string | number;
     }[];
 
-    // Running positions map: "account:security" → shares
+    console.log(`Processing ${trades.length} trades across ${allDates.length} trading days`);
+
+    // Running positions: "account:security" → shares held
     const positions: Record<string, number> = {};
     let tradeIdx = 0;
-
     const points: { date: string; value: number }[] = [];
 
     for (const date of allDates) {
-      // Apply all trades on or before this date
+      // Apply every trade whose date is on or before this trading day
       while (tradeIdx < trades.length && trades[tradeIdx].date <= date) {
         const t = trades[tradeIdx];
         const key = `${t.account}:${t.security}`;
@@ -99,22 +118,23 @@ export async function GET() {
         tradeIdx++;
       }
 
-      // Calculate portfolio stock value on this date
+      // Sum portfolio stock value for this date
       let value = 0;
       for (const [key, shares] of Object.entries(positions)) {
         if (shares <= 0) continue;
         const security = key.split(':')[1];
-        let price = 0;
-        if (security === 'VOO') price = vooMap[date] || 0;
-        else if (security === 'TSLA') price = tslaMap[date] || 0;
+        const price =
+          security === 'VOO' ? (vooMap[date] || 0) :
+          security === 'TSLA' ? (tslaMap[date] || 0) : 0;
         value += shares * price;
       }
 
-      // Only include points where we have both holdings and price data
       if (value > 0) {
         points.push({ date, value });
       }
     }
+
+    console.log(`History route: returning ${points.length} points`);
 
     return NextResponse.json({ points }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },

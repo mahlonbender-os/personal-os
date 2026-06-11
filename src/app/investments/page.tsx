@@ -59,7 +59,7 @@ interface HistoryPoint {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CACHE_KEY = 'investments-data-v2';
-const HISTORY_CACHE_KEY = 'investments-history-v1';
+const HISTORY_CACHE_KEY = 'investments-history-v2';
 const TABS = ['Overview', 'Trade Log'];
 const RANGES = ['1M', '3M', '6M', '1Y'];
 
@@ -103,7 +103,7 @@ function Spinner() {
 function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: string }) {
   if (!points || points.length < 2) {
     return (
-      <div className="flex items-center justify-center h-20 text-[#333] text-xs font-mono">
+      <div className="flex items-center justify-center h-20 text-[#666] text-xs font-mono">
         No history available
       </div>
     );
@@ -120,14 +120,14 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
 
   if (filtered.length < 2) {
     return (
-      <div className="flex items-center justify-center h-20 text-[#333] text-xs font-mono">
+      <div className="flex items-center justify-center h-20 text-[#666] text-xs font-mono">
         Not enough data for {range}
       </div>
     );
   }
 
   const W = 340, H = 110;
-  const PL = 46, PR = 8, PT = 6, PB = 18;
+  const PL = 48, PR = 8, PT = 6, PB = 18;
   const plotW = W - PL - PR;
   const plotH = H - PT - PB;
 
@@ -145,7 +145,7 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
   const pts = filtered.map((p, i) => `${xS(i).toFixed(1)},${yS(p.value).toFixed(1)}`).join(' ');
   const lastX = xS(filtered.length - 1);
   const lastY = yS(filtered[filtered.length - 1].value);
-  const area = `${PL},${PT + plotH} ${pts} ${lastX},${PT + plotH}`;
+  const area = `${PL},${(PT + plotH).toFixed(1)} ${pts} ${lastX.toFixed(1)},${(PT + plotH).toFixed(1)}`;
 
   const first = filtered[0].value;
   const last = filtered[filtered.length - 1].value;
@@ -154,14 +154,12 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
   const changePct = ((last - first) / first) * 100;
   const changeAbs = last - first;
 
-  // Y ticks (3 levels)
   const yTicks = [
     minVP + rangeV * 0.15,
     minVP + rangeV * 0.5,
     minVP + rangeV * 0.85,
   ];
 
-  // X labels
   const fmtXDate = (d: string) => {
     const dt = new Date(d + 'T12:00:00');
     if (range === '1M') return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -170,7 +168,6 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
 
   return (
     <div>
-      {/* Change summary for range */}
       <div className="flex items-baseline gap-2 mb-3">
         <span className="font-mono text-sm font-bold" style={{ color: tc }}>
           {isUp ? '+' : ''}{fmt(changeAbs)}
@@ -178,7 +175,7 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
         <span className="font-mono text-xs" style={{ color: tc }}>
           ({isUp ? '+' : ''}{changePct.toFixed(2)}%)
         </span>
-        <span className="text-[#444] text-[10px]">this {range}</span>
+        <span className="text-[#555] text-[10px]">this {range}</span>
       </div>
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: `${H}px` }}>
@@ -189,24 +186,22 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
           </linearGradient>
         </defs>
 
-        {/* Grid lines */}
         {yTicks.map((v, i) => (
           <line
             key={i}
             x1={PL} y1={yS(v).toFixed(1)}
             x2={W - PR} y2={yS(v).toFixed(1)}
-            stroke="#1a1a1a" strokeWidth="1"
+            stroke="#222" strokeWidth="1"
           />
         ))}
 
-        {/* Y axis labels */}
         {yTicks.map((v, i) => (
           <text
             key={i}
             x={PL - 3}
             y={(yS(v) + 4).toFixed(1)}
             textAnchor="end"
-            fill="#444"
+            fill="#555"
             fontSize="7"
             fontFamily="monospace"
           >
@@ -214,10 +209,8 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
           </text>
         ))}
 
-        {/* Area fill */}
         <polygon points={area} fill="url(#areaGrad)" />
 
-        {/* Line */}
         <polyline
           points={pts}
           fill="none"
@@ -227,14 +220,12 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
           strokeLinejoin="round"
         />
 
-        {/* Current value dot */}
         <circle cx={lastX.toFixed(1)} cy={lastY.toFixed(1)} r="2.5" fill={tc} />
 
-        {/* X labels */}
-        <text x={PL} y={H - 3} textAnchor="start" fill="#444" fontSize="7" fontFamily="monospace">
+        <text x={PL} y={H - 3} textAnchor="start" fill="#555" fontSize="7" fontFamily="monospace">
           {fmtXDate(filtered[0].date)}
         </text>
-        <text x={W - PR} y={H - 3} textAnchor="end" fill="#444" fontSize="7" fontFamily="monospace">
+        <text x={W - PR} y={H - 3} textAnchor="end" fill="#555" fontSize="7" fontFamily="monospace">
           {fmtXDate(filtered[filtered.length - 1].date)}
         </text>
       </svg>
@@ -285,21 +276,28 @@ export default function InvestmentsPage() {
 
   async function fetchHistory() {
     try {
-      // Check cache first — valid for 6 hours
+      // Check cache — valid for 6 hours, but skip if empty
       const raw = localStorage.getItem(HISTORY_CACHE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000) {
-          setHistoryData(parsed.data || []);
+        if (
+          parsed.ts &&
+          Date.now() - parsed.ts < 6 * 60 * 60 * 1000 &&
+          parsed.data?.length > 0
+        ) {
+          setHistoryData(parsed.data);
           return;
         }
       }
       const res = await fetch('/api/finance/investments/history');
       if (!res.ok) return;
       const json = await res.json();
-      const pts = json.points || [];
+      const pts: HistoryPoint[] = json.points || [];
       setHistoryData(pts);
-      localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ data: pts, ts: Date.now() }));
+      // Only cache if we got actual data
+      if (pts.length > 0) {
+        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ data: pts, ts: Date.now() }));
+      }
     } catch (e) {
       console.error('History fetch error:', e);
     }
@@ -311,12 +309,12 @@ export default function InvestmentsPage() {
       try { setData(JSON.parse(cached)); } catch {}
       setLoading(false);
     }
-    // Try history from cache immediately
+    // Seed history from cache immediately
     try {
       const raw = localStorage.getItem(HISTORY_CACHE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.data) setHistoryData(parsed.data);
+        if (parsed.data?.length > 0) setHistoryData(parsed.data);
       }
     } catch {}
     fetchData();
@@ -388,7 +386,6 @@ export default function InvestmentsPage() {
 
   return (
     <PullToRefresh onRefresh={async () => {
-      // Bust history cache on manual refresh
       localStorage.removeItem(HISTORY_CACHE_KEY);
       await Promise.all([fetchData(), fetchHistory()]);
     }}>
@@ -436,13 +433,9 @@ export default function InvestmentsPage() {
                   <div className="text-3xl font-mono font-bold text-[#22c55e]">
                     {fmt(data?.totalPortfolioValue || 0)}
                   </div>
-                  {/* Today's change */}
                   {data?.totalDailyGainLoss !== undefined && data.totalDailyGainLoss !== 0 && (
                     <div className="flex items-center justify-center gap-1 mt-1">
-                      <span
-                        className="font-mono text-xs"
-                        style={{ color: gainColor(data.totalDailyGainLoss) }}
-                      >
+                      <span className="font-mono text-xs" style={{ color: gainColor(data.totalDailyGainLoss) }}>
                         {data.totalDailyGainLoss >= 0 ? '+' : ''}{fmt(Math.abs(data.totalDailyGainLoss))} today
                       </span>
                     </div>
@@ -502,10 +495,7 @@ export default function InvestmentsPage() {
                       <div className="text-[#555] text-[10px] mb-1.5">{t.label}</div>
                       <div className="text-white font-mono font-bold text-sm">{fmt(t.price || 0)}</div>
                       {t.d !== undefined && t.d !== 0 && (
-                        <div
-                          className="font-mono text-[10px] mt-0.5"
-                          style={{ color: gainColor(t.d) }}
-                        >
+                        <div className="font-mono text-[10px] mt-0.5" style={{ color: gainColor(t.d) }}>
                           {t.d >= 0 ? '+' : ''}{t.d?.toFixed(2)} ({t.dp >= 0 ? '+' : ''}{t.dp?.toFixed(2)}%)
                         </div>
                       )}
@@ -513,7 +503,7 @@ export default function InvestmentsPage() {
                   ))}
                 </div>
 
-                {/* Holdings header with Overall / Today toggle */}
+                {/* Holdings label + Overall / Today toggle */}
                 {hasHoldings && (
                   <div className="flex items-center justify-between px-1 pt-1">
                     <span className="text-[#555] text-xs font-semibold uppercase tracking-wider">
@@ -541,31 +531,22 @@ export default function InvestmentsPage() {
                 {(data?.accounts || []).map((acc, i) => (
                   <div key={i} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 space-y-3">
 
-                    {/* Header */}
                     <div className="flex justify-between items-center pb-2 border-b border-[#1a1a1a]">
                       <span className="text-sm font-bold">{acc.name}</span>
-                      <span className="font-mono font-bold text-[#22c55e]">
-                        {fmt(acc.totalValue)}
-                      </span>
+                      <span className="font-mono font-bold text-[#22c55e]">{fmt(acc.totalValue)}</span>
                     </div>
 
-                    {/* Cash vs invested */}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="bg-black/40 border border-[#1a1a1a] rounded-xl p-3">
                         <div className="text-[#555] text-[10px] uppercase mb-1">Uninvested Cash</div>
-                        <div className="font-mono text-white text-sm font-bold">
-                          {fmt(acc.uninvestedCash)}
-                        </div>
+                        <div className="font-mono text-white text-sm font-bold">{fmt(acc.uninvestedCash)}</div>
                       </div>
                       <div className="bg-black/40 border border-[#1a1a1a] rounded-xl p-3">
                         <div className="text-[#555] text-[10px] uppercase mb-1">Market Value</div>
-                        <div className="font-mono text-white text-sm font-bold">
-                          {fmt(acc.stockValue)}
-                        </div>
+                        <div className="font-mono text-white text-sm font-bold">{fmt(acc.stockValue)}</div>
                       </div>
                     </div>
 
-                    {/* Holdings */}
                     {acc.holdings.length > 0 ? (
                       <div className="space-y-2">
                         {acc.holdings.map((h, j) => {
@@ -577,30 +558,16 @@ export default function InvestmentsPage() {
                               className="flex justify-between items-center bg-black/20 border border-[#151515] rounded-xl p-3"
                             >
                               <div>
-                                <div className="text-[#f0a050] text-xs font-mono font-bold">
-                                  {h.symbol}
-                                </div>
-                                <div className="text-[#555] text-[10px] font-mono">
-                                  {fmtShares(h.shares)} shares
-                                </div>
-                                <div className="text-[#555] text-[10px] font-mono">
-                                  avg {fmt(h.avgCost)}
-                                </div>
+                                <div className="text-[#f0a050] text-xs font-mono font-bold">{h.symbol}</div>
+                                <div className="text-[#555] text-[10px] font-mono">{fmtShares(h.shares)} shares</div>
+                                <div className="text-[#555] text-[10px] font-mono">avg {fmt(h.avgCost)}</div>
                               </div>
                               <div className="text-right">
-                                <div className="font-mono font-bold text-sm">
-                                  {fmt(h.marketValue)}
-                                </div>
-                                <div
-                                  className="font-mono text-xs"
-                                  style={{ color: gainColor(gl) }}
-                                >
+                                <div className="font-mono font-bold text-sm">{fmt(h.marketValue)}</div>
+                                <div className="font-mono text-xs" style={{ color: gainColor(gl) }}>
                                   {gl >= 0 ? '+' : '-'}{fmt(Math.abs(gl))}
                                 </div>
-                                <div
-                                  className="font-mono text-[10px]"
-                                  style={{ color: gainColor(glPct) }}
-                                >
+                                <div className="font-mono text-[10px]" style={{ color: gainColor(glPct) }}>
                                   {glPct >= 0 ? '+' : ''}{(glPct ?? 0).toFixed(2)}%
                                 </div>
                               </div>
@@ -609,9 +576,7 @@ export default function InvestmentsPage() {
                         })}
                       </div>
                     ) : (
-                      <div className="text-[#333] text-xs font-mono text-center py-2">
-                        No positions
-                      </div>
+                      <div className="text-[#555] text-xs font-mono text-center py-2">No positions</div>
                     )}
                   </div>
                 ))}
@@ -622,9 +587,7 @@ export default function InvestmentsPage() {
             {activeTab === 1 && (
               <>
                 {(!data?.trades || data.trades.length === 0) ? (
-                  <div className="text-center text-[#333] text-sm font-mono pt-12">
-                    No trades logged yet
-                  </div>
+                  <div className="text-center text-[#555] text-sm font-mono pt-12">No trades logged yet</div>
                 ) : (
                   <div className="space-y-2">
                     {data.trades.map((t) => {
@@ -637,14 +600,10 @@ export default function InvestmentsPage() {
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${ac.bg} ${ac.text}`}>
                                   {t.action}
                                 </span>
-                                <span className="text-[#f0a050] text-xs font-mono font-bold">
-                                  {t.security}
-                                </span>
+                                <span className="text-[#f0a050] text-xs font-mono font-bold">{t.security}</span>
                                 <span className="text-[#555] text-[10px]">{t.account}</span>
                               </div>
-                              <div className="text-white font-mono font-bold text-sm">
-                                {fmt(t.amount)}
-                              </div>
+                              <div className="text-white font-mono font-bold text-sm">{fmt(t.amount)}</div>
                               <div className="text-[#555] text-[10px] font-mono">
                                 {fmtShares(parseFloat(String(t.shares)))} shares
                               </div>
@@ -674,15 +633,17 @@ export default function InvestmentsPage() {
           </div>
         )}
 
-        {/* ── FAB ────────────────────────────────────────────────────────── */}
-        <button
-          onClick={openModal}
-          className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center shadow-lg"
-        >
-          <svg className="w-7 h-7 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
+        {/* ── FAB — only on Trade Log tab ────────────────────────────────── */}
+        {activeTab === 1 && (
+          <button
+            onClick={openModal}
+            className="fixed bottom-24 right-5 w-14 h-14 bg-[#f0a050] rounded-full z-40 flex items-center justify-center shadow-lg"
+          >
+            <svg className="w-7 h-7 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        )}
 
         {/* ── Log Trade Modal ─────────────────────────────────────────────── */}
         {showModal && (
@@ -690,16 +651,10 @@ export default function InvestmentsPage() {
             <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6">
               <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
                 <span className="font-bold text-base">Log Trade</span>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="text-[#555] text-2xl leading-none"
-                >
-                  ×
-                </button>
+                <button onClick={() => setShowModal(false)} className="text-[#555] text-2xl leading-none">×</button>
               </div>
               <div className="px-5 pt-4 space-y-4">
 
-                {/* Date */}
                 <div>
                   <div className="text-[#888] text-xs mb-1.5">Date</div>
                   <input
@@ -710,7 +665,6 @@ export default function InvestmentsPage() {
                   />
                 </div>
 
-                {/* Account */}
                 <div>
                   <div className="text-[#888] text-xs mb-1.5">Account</div>
                   <div className="flex gap-2">
@@ -730,7 +684,6 @@ export default function InvestmentsPage() {
                   </div>
                 </div>
 
-                {/* Security */}
                 <div>
                   <div className="text-[#888] text-xs mb-1.5">Security</div>
                   <div className="flex gap-2">
@@ -750,7 +703,6 @@ export default function InvestmentsPage() {
                   </div>
                 </div>
 
-                {/* Action */}
                 <div>
                   <div className="text-[#888] text-xs mb-1.5">Action</div>
                   <div className="flex gap-2">
@@ -766,7 +718,6 @@ export default function InvestmentsPage() {
                   </div>
                 </div>
 
-                {/* Shares */}
                 <div>
                   <div className="text-[#888] text-xs mb-1.5">Shares</div>
                   <input
@@ -779,7 +730,6 @@ export default function InvestmentsPage() {
                   />
                 </div>
 
-                {/* Price Per Share */}
                 <div>
                   <div className="text-[#888] text-xs mb-1.5">Price Per Share</div>
                   <input
@@ -792,7 +742,6 @@ export default function InvestmentsPage() {
                   />
                 </div>
 
-                {/* Total Amount */}
                 <div>
                   <div className="text-[#888] text-xs mb-1.5">Total Amount (auto-calculated)</div>
                   <input
@@ -806,7 +755,6 @@ export default function InvestmentsPage() {
                 </div>
               </div>
 
-              {/* Footer */}
               <div className="flex gap-3 px-5 pt-5">
                 <button
                   onClick={() => setShowModal(false)}
