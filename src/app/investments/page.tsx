@@ -59,7 +59,7 @@ interface HistoryPoint {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CACHE_KEY = 'investments-data-v2';
-const HISTORY_CACHE_KEY = 'investments-history-v3';
+const HISTORY_CACHE_KEY = 'investments-history-v4';
 const TABS = ['Overview', 'Trade Log'];
 const RANGES = ['1M', '3M', '6M', '1Y'];
 
@@ -453,7 +453,7 @@ export default function InvestmentsPage() {
                 {/* Historical chart */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-xs font-semibold text-white">Portfolio History</span>
+                    <span className="text-xs font-semibold text-white">Position Growth</span>
                     <div className="flex gap-1">
                       {RANGES.map(r => (
                         <button
