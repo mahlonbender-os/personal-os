@@ -517,9 +517,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
   const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
   function monthTotal(txs: Transaction[]) {
-    return txs
-      .filter(tx => tx.category !== 'Transfer')
-      .reduce((sum, tx) => sum + tx.amount, 0);
+    return txs.reduce((sum, tx) => INCOME_CATEGORIES.includes(tx.category) ? sum + tx.amount : sum - tx.amount, 0);
   }
 
   return (
