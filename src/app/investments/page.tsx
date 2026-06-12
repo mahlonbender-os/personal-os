@@ -657,7 +657,8 @@ export default function InvestmentsPage() {
           </div>
         )}
 
-      </PullToRefresh>
+      </div>
+    </PullToRefresh>
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS

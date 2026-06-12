@@ -427,8 +427,52 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
               </p>
             </div>
           </div>
+        </Card>
+      </div>
+  );
+}
+return (
+    <div className="space-y-4 animate-fadeIn">
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">
+            {selectedMonth === currentMonth ? 'This Month' : monthLabel(selectedMonth)}
+          </p>
+          <select value={selectedMonth} onChange={e => load(e.target.value)} className="text-[11px] text-[#f0a050] bg-transparent border-none outline-none cursor-pointer">
+            {availableMonths.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p className="text-[10px] text-[#444] mb-0.5">Income</p>
+            <p className="text-sm font-bold text-[#22c55e] font-mono">{fmt(totalIncomeActual)}</p>
+            <p className="text-[9px] text-[#333] font-mono">/ {fmt(totalIncomeBudget)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-[#444] mb-0.5">Expenses</p>
+            <p className="text-sm font-bold text-[#ef4444] font-mono">{fmt(totalExpenseActual)}</p>
+            <p className="text-[9px] text-[#333] font-mono">/ {fmt(totalExpenseBudget)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-[#444] mb-0.5">Cash Flow</p>
+            <p className={`text-sm font-bold font-mono ${actualCashFlow >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(Math.abs(actualCashFlow))}</p>
+            <p className="text-[9px] text-[#333] font-mono">/ {fmt(Math.abs(projectedCashFlow))}</p>
+          </div>
         </div>
       </Card>
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Spinner /></div>
+      ) : error ? (
+        <Card className="p-4 text-sm text-[#ef4444]">{error} — pull down to refresh</Card>
+      ) : (
+        <>
+          <CashFlowTrendChart />
+          <BudgetSection title="Income" rows={incomeItems} totalBudget={totalIncomeBudget} totalActual={totalIncomeActual} />
+          <BudgetSection title="Essentials" rows={essentialItems} totalBudget={essentialItems.reduce((s, i) => s + i.budget, 0)} totalActual={essentialItems.reduce((s, i) => s + i.actual, 0)} />
+          <BudgetSection title="Discretionary" rows={discretionaryItems} totalBudget={discretionaryItems.reduce((s, i) => s + i.budget, 0)} totalActual={discretionaryItems.reduce((s, i) => s + i.actual, 0)} />
+        </>
+      )}
     </div>
   );
 }
