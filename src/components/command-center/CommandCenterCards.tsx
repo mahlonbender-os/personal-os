@@ -258,7 +258,7 @@ function TasksCard() {
           <span className="text-sm">☑</span>
           <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Tasks</span>
         </div>
-        <span className="text-[9px] text-[#f0a050]">{tasks.length} pending →</span>
+        <span className="text-[9px] text-[#f0a050]">+{tasks.length} pending →</span>
       </a>
       {tasks.length === 0 ? (
         <div className="px-4 py-4 text-[11px] text-[#333]">No pending tasks</div>
@@ -364,18 +364,22 @@ function KnoxCard() {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function CommandCenterCards() {
+  const [syncing, setSyncing] = useState(false);
+
   const handleRefresh = useCallback(async () => {
+    setSyncing(true);
     await fetch('/api/sync/sheets', { method: 'POST' });
     try {
       ['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v1']
         .forEach(k => localStorage.removeItem(k));
     } catch {}
+    setSyncing(false);
     window.location.reload();
   }, []);
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col overflow-hidden">
-      {/* Locked header */}
+      {/* Locked header with premium contextual action link alignment */}
       <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 pb-3 z-30">
         <div className="flex items-center justify-between">
           <div>
@@ -383,8 +387,29 @@ export default function CommandCenterCards() {
             <div className="text-[22px] font-extrabold text-white leading-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
               {getGreeting()}, Mahlon
             </div>
+            {syncing && (
+              <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono">
+                <div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+                Processing Sheets…
+              </div>
+            )}
           </div>
-          <WeatherWidget />
+          
+          <div className="flex items-center gap-3">
+            <WeatherWidget />
+            
+            {/* Standardized header action link matching Knox/Investments */}
+            <button
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                handleRefresh();
+              }}
+              disabled={syncing}
+              className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1 disabled:opacity-40"
+            >
+              Sync
+            </button>
+          </div>
         </div>
       </div>
 
