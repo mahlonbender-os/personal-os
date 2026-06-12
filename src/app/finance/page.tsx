@@ -427,53 +427,8 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
               </p>
             </div>
           </div>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 animate-fadeIn">
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">
-            {selectedMonth === currentMonth ? 'This Month' : monthLabel(selectedMonth)}
-          </p>
-          <select value={selectedMonth} onChange={e => load(e.target.value)} className="text-[11px] text-[#f0a050] bg-transparent border-none outline-none cursor-pointer">
-            {availableMonths.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-          </select>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div>
-            <p className="text-[10px] text-[#444] mb-0.5">Income</p>
-            <p className="text-sm font-bold text-[#22c55e] font-mono">{fmt(totalIncomeActual)}</p>
-            <p className="text-[9px] text-[#333] font-mono">/ {fmt(totalIncomeBudget)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[#444] mb-0.5">Expenses</p>
-            <p className="text-sm font-bold text-[#ef4444] font-mono">{fmt(totalExpenseActual)}</p>
-            <p className="text-[9px] text-[#333] font-mono">/ {fmt(totalExpenseBudget)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[#444] mb-0.5">Cash Flow</p>
-            <p className={`text-sm font-bold font-mono ${actualCashFlow >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(Math.abs(actualCashFlow))}</p>
-            <p className="text-[9px] text-[#333] font-mono">/ {fmt(Math.abs(projectedCashFlow))}</p>
-          </div>
         </div>
       </Card>
-
-      {loading ? (
-        <div className="flex justify-center py-8"><Spinner /></div>
-      ) : error ? (
-        <Card className="p-4 text-sm text-[#ef4444]">{error} — pull down to refresh</Card>
-      ) : (
-        <>
-          <CashFlowTrendChart />
-          <BudgetSection title="Income" rows={incomeItems} totalBudget={totalIncomeBudget} totalActual={totalIncomeActual} />
-          <BudgetSection title="Essentials" rows={essentialItems} totalBudget={essentialItems.reduce((s, i) => s + i.budget, 0)} totalActual={essentialItems.reduce((s, i) => s + i.actual, 0)} />
-          <BudgetSection title="Discretionary" rows={discretionaryItems} totalBudget={discretionaryItems.reduce((s, i) => s + i.budget, 0)} totalActual={discretionaryItems.reduce((s, i) => s + i.actual, 0)} />
-        </>
-      )}
     </div>
   );
 }
@@ -847,13 +802,31 @@ function FinancePageInner() {
       {/* Header element - locked to top */}
       <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-bold text-white">Finance</h1>
-          {syncing && (
-            <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050]">
-              <div className="w-3 h-3 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
-              Syncing…
-            </div>
-          )}
+          <div>
+            <h1 className="text-xl font-bold text-white">Finance</h1>
+            {syncing && (
+              <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
+                <div className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+                Syncing…
+              </div>
+            )}
+          </div>
+
+          {/* Context-aware text link header action button */}
+          <button
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(8);
+              if (activeTab === 'transactions') {
+                setTxForm(f => ({ ...f, date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }) }));
+                setShowAddTx(true);
+              } else {
+                handleRefresh();
+              }
+            }}
+            className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+          >
+            {activeTab === 'transactions' ? 'Log Tx' : 'Sync'}
+          </button>
         </div>
         <div className="flex gap-0 overflow-x-auto scrollbar-hide">
           {tabs.map(tab => (
@@ -887,20 +860,12 @@ function FinancePageInner() {
         )}
       </div>
 
-      {/* FAB */}
-      {activeTab === 'transactions' && (
-        <button onClick={() => setShowAddTx(true)}
-          className="fixed z-40 w-14 h-14 rounded-full bg-[#f0a050] text-black text-3xl font-light shadow-lg flex items-center justify-center active:scale-95 transition-transform"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 84px)', right: '20px' }}>
-          +
-        </button>
-      )}
-
+      {/* Viewport fixed structural overlays completely outside scroll container nodes */}
       {/* Add Transaction Modal wrapper */}
       {showAddTx && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddTx(false)}>
-          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
+          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
               <button onClick={() => setShowAddTx(false)} className="text-[#f0a050] text-sm">Cancel</button>
               <h2 className="text-base font-semibold text-white">New Transaction</h2>
               <button onClick={handleAddTransaction} disabled={txSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
@@ -931,21 +896,21 @@ function FinancePageInner() {
                 <div className="flex items-center px-4 py-3 border-b border-white/10">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Account</span>
                   <select value={txForm.account} onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none">
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
                     <option value="" className="bg-[#2c2c2e]">Select…</option>
-                    {ACCOUNTS.map(a => <option key={a} className="bg-[#2c2c2e]">{a}</option>)}
+                    {ACCOUNTS.map(a => <option key={a} value={a} className="bg-[#2c2c2e]">{a}</option>)}
                   </select>
                 </div>
                 <div className="flex items-center px-4 py-3">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
                   <select value={txForm.category} onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none">
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
                     <option value="" className="bg-[#2c2c2e]">Select…</option>
-                    {CATEGORIES_LIST.map(c => <option key={c} className="bg-[#2c2c2e]">{c}</option>)}
+                    {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
                   </select>
                 </div>
               </div>
-              {txError && <p className="text-[#ef4444] text-xs px-1">{txError}</p>}
+              {txError && <p className="text-[#ef4444] text-xs px-1 font-mono">{txError}</p>}
             </div>
           </div>
         </div>
