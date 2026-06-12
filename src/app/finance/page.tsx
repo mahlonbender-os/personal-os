@@ -788,7 +788,7 @@ function FinancePageInner() {
   const [syncing, setSyncing] = useState(false);
   const [showAddTx, setShowAddTx] = useState(false);
   const [txForm, setTxForm] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
     merchant: '', account: '', amount: '', category: '',
   });
   const [txSaving, setTxSaving] = useState(false);
@@ -811,7 +811,7 @@ function FinancePageInner() {
       }
 
       setShowAddTx(false);
-      setTxForm({ date: new Date().toISOString().split('T')[0], merchant: '', account: '', amount: '', category: '' });
+      setTxForm({ date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }), merchant: '', account: '', amount: '', category: '' });
 
       try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
       setRefreshCount(c => c + 1);
