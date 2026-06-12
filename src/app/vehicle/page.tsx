@@ -85,7 +85,7 @@ function renewalColor(d: string) {
 }
 
 function mapsUrl(q: string) {
-  return `https://maps.google.com/?q=${encodeURIComponent(q)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -416,7 +416,7 @@ export default function VehiclePage() {
   return (
     <>
       <PullToRefresh onRefresh={fetchAll}>
-        <div className="pb-24 min-h-screen bg-black">
+        <div className="pb-24 min-h-screen bg-black text-white">
 
           {/* Sticky context header row perfectly matching Knox and Investments template */}
           <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
@@ -433,7 +433,7 @@ export default function VehiclePage() {
               {/* Context-aware inline amber text trigger button */}
               <button
                 onClick={() => {
-                  navigator.vibrate && navigator.vibrate(8);
+                  if (navigator.vibrate) navigator.vibrate(8);
                   if (activeTab === 0) openSetup();
                   if (activeTab === 1) openAddFuel();
                   if (activeTab === 2) openAddMaint();
@@ -523,7 +523,7 @@ export default function VehiclePage() {
                       <p className="text-white text-2xl font-mono font-bold">${costPerMile.toFixed(2)}</p>
                       <p className="text-[#555] text-xs mt-0.5">per driving mile</p>
                     </>
-                  ) : <p className="text-[#555] text-sm mt-1">No calculations</p>}
+                  ) : <p className="text-[#555] text-sm mt-1">No spend logged</p>}
                 </div>
               </div>
 
@@ -589,11 +589,11 @@ export default function VehiclePage() {
                   <p className="text-white font-semibold mb-3">{yr} Running Cost Summary</p>
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <p className="text-[#ccc] text-sm">Fuel Fleet Spend</p>
+                      <p className="text-[#ccc] text-sm">Fuel Spend</p>
                       <p className="text-[#ccc] text-sm font-mono">{fmt(yrFuelSpend)}</p>
                     </div>
                     <div className="flex justify-between">
-                      <p className="text-[#ccc] text-sm">Maintenance Maintenance</p>
+                      <p className="text-[#ccc] text-sm">Maintenance</p>
                       <p className="text-[#ccc] text-sm font-mono">{fmt(yrMaintSpend)}</p>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-[#1a1a1a]">
@@ -667,9 +667,9 @@ export default function VehiclePage() {
                         {e.station ? (
                           <div className="flex items-center gap-1.5 mt-1">
                             <p className="text-[#888] text-xs truncate flex-1">{e.station}</p>
-                            <button onClick={() => window.open(mapsUrl(e.station), '_blank')} className="text-[#f0a050] shrink-0" aria-label="View on Google Maps">
+                            <div onClick={() => window.open(mapsUrl(e.station), '_blank')} className="text-[#f0a050] shrink-0 cursor-pointer" aria-label="View on Google Maps">
                               <span className="text-xs">📍</span>
-                            </button>
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -751,9 +751,9 @@ export default function VehiclePage() {
                           {e.shop ? (
                             <div className="flex items-center gap-1.5">
                               <p className="text-[#888] text-sm flex-1 truncate">{e.shop}</p>
-                              <button onClick={() => window.open(mapsUrl(e.shop), '_blank')} className="text-[#f0a050] px-1" aria-label="View on Google Maps">
+                              <div onClick={() => window.open(mapsUrl(e.shop), '_blank')} className="text-[#f0a050] px-1 cursor-pointer" aria-label="View on Google Maps">
                                 <span className="text-xs">📍</span>
-                              </button>
+                              </div>
                             </div>
                           ) : null}
                           {e.notes ? <p className="text-[#555] text-sm bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap">{e.notes}</p> : null}
@@ -1007,7 +1007,7 @@ export default function VehiclePage() {
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Station</label>
-                <PlacesInput value={editFuel.station} onChange={v => setEditFuel(f => ({ ...f, station: v }))} placeholder="Search stations..." />
+                <PlacesInput value={editFuel.station} onChange={v => setEditFuel(f => ({ ...f, station: v }))} placeholder="Search gas stations..." />
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Notes</label>
@@ -1035,7 +1035,7 @@ export default function VehiclePage() {
             </div>
             <div className="px-5 pt-4 space-y-3">
               <div>
-                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Date</label>
+                <label className="text-[#888] text-date mb-1 block uppercase tracking-wide font-mono">Date</label>
                 <input type="date" value={editMaint.date} onChange={e => setEditMaint(f => ({ ...f, date: e.target.value }))}
                   className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
               </div>
