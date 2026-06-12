@@ -88,11 +88,11 @@ function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) 
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="text-sm text-blue-500 bg-transparent outline-none text-right"
+      className="text-sm text-[#f0a050] bg-transparent outline-none text-right"
     >
       {!value && <option value="">Select</option>}
       {options.map((opt) => (
-        <option key={opt} value={opt}>{toDisplay(opt)}</option>
+        <option key={opt} value={opt} className="bg-[#2c2c2e] text-white">{toDisplay(opt)}</option>
       ))}
     </select>
   );
@@ -216,288 +216,131 @@ export default function CalendarPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-muted-foreground text-sm">Loading</div>
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-[#555] text-sm font-mono">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
       <PullToRefresh onRefresh={async () => { await fetchEvents(); }}>
-        <div className="pb-24">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
-        <div className="flex items-center justify-between px-4 pt-12 pb-3">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Calendar</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{events.length} upcoming events</p>
+        <div className="pb-24 min-h-screen bg-black text-white">
+          
+          {/* Aligned Top Lock Header */}
+          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+            <div className="flex items-center justify-between px-4 pt-14 pb-3">
+              <div>
+                <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>Calendar</h1>
+                <p className="text-[10px] text-[#555] mt-0.5">{events.length} upcoming events</p>
+              </div>
+              
+              {/* Premium inline header action link trigger */}
+              <button
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8);
+                  setNewEvent(p => ({
+                    ...p,
+                    date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' })
+                  }));
+                  setShowAddModal(true);
+                }}
+                className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+              >
+                Add Event
+              </button>
+            </div>
+            
+            {/* Range chips section */}
+            <div className="flex gap-2 px-4 pb-3 border-t border-[#1a1a1a] pt-2.5">
+              {[7, 14, 30].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setSelectedDays(d)}
+                  className={"px-3 py-1.5 rounded-full text-xs font-medium font-mono transition-colors " + (selectedDays === d ? "bg-[#f0a050] text-black" : "bg-[#111] text-[#555] border border-[#1a1a1a]")}
+                >
+                  {d} days
+                </button>
+              ))}
+            </div>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-sm"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex gap-2 px-4 pb-3">
-          {[7, 14, 30].map((d) => (
-            <button
-              key={d}
-              onClick={() => setSelectedDays(d)}
-              className={"px-3 py-1 rounded-full text-xs font-medium " + (selectedDays === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}
-            >
-              {d} days
-            </button>
-          ))}
-        </div>
-      </div>
 
-      <div className="px-4 pt-4">
-        {loading ? (
-          <div className="flex flex-col gap-3">
-            {[1,2,3].map((i) => (
-              <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />
-            ))}
-          </div>
-        ) : error ? (
-          <div className="text-center py-12">
-            <p className="text-red-500 text-sm mb-2">Error loading calendar</p>
-            <p className="text-muted-foreground text-xs mb-4">{error}</p>
-            <button onClick={fetchEvents} className="text-primary text-sm underline">Try again</button>
-          </div>
-        ) : events.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-4xl mb-3">📅</div>
-            <p className="text-foreground font-medium">No upcoming events</p>
-            <p className="text-muted-foreground text-sm mt-1">Your next {selectedDays} days are clear</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-6">
-            {dateKeys.map((dateKey) => {
-              const dayEvents = grouped[dateKey];
-              const dateObj = new Date(dayEvents[0].start);
-              return (
-                <div key={dateKey}>
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className={"w-10 h-10 rounded-full flex flex-col items-center justify-center shrink-0 " + (sameDay(dateObj, today) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
-                      <span className="text-[10px] leading-none uppercase">{dateObj.toLocaleDateString("en-US", { weekday: "short" })}</span>
-                      <span className="text-base leading-tight font-bold">{dateObj.getDate()}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-foreground">{formatDateHeader(dayEvents[0].start)}</span>
-                  </div>
-                  <div className="flex flex-col gap-2 pl-13">
-                    {dayEvents.map((ev) => (
-                      <button key={ev.id} onClick={() => setSelectedEvent(ev)} className="w-full text-left bg-card border border-border rounded-xl p-3">
-                        <div className="flex items-start gap-3">
-                          <div className="w-2.5 h-2.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: ev.calendarColor || "#4285f4" }} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">{ev.title}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {formatTime(ev.start, ev.allDay)}
-                              {!ev.allDay && ev.end ? " - " + formatTime(ev.end, false) : ""}
-                              {ev.location ? "  📍 " + ev.location : ""}
-                            </p>
-                            {ev.calendarName ? <p className="text-[10px] text-muted-foreground mt-0.5">{ev.calendarName}</p> : null}
-                          </div>
+          {/* Agenda Grid layout */}
+          <div className="px-4 pt-4">
+            {loading ? (
+              <div className="flex flex-col gap-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-16 bg-[#111] border border-[#1a1a1a] rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="text-center py-12">
+                <p className="text-[#ef4444] text-sm mb-2 font-mono">Error loading calendar</p>
+                <p className="text-[#555] text-xs mb-4 font-mono">{error}</p>
+                <button onClick={fetchEvents} className="text-[#f0a050] text-sm underline">Try again</button>
+              </div>
+            ) : events.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="text-4xl mb-3">📅</div>
+                <p className="text-white font-medium">No upcoming events</p>
+                <p className="text-[#555] text-sm mt-1">Your next {selectedDays} days are clear</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                {dateKeys.map((dateKey) => {
+                  const dayEvents = grouped[dateKey];
+                  const dateObj = new Date(dayEvents[0].start);
+                  return (
+                    <div key={dateKey}>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={"w-10 h-10 rounded-full flex flex-col items-center justify-center shrink-0 font-mono " + (sameDay(dateObj, today) ? "bg-[#f0a050] text-black font-bold" : "bg-[#111] border border-[#1a1a1a] text-[#ccc]")}>
+                          <span className="text-[9px] leading-none uppercase">{dateObj.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                          <span className="text-base leading-tight font-bold">{dateObj.getDate()}</span>
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {selectedEvent ? (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4" onClick={() => setSelectedEvent(null)}>
-  <div className="w-full bg-background rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-1 rounded-full mx-auto mb-6" style={{ backgroundColor: selectedEvent.calendarColor || "#4285f4" }} />
-            <h2 className="text-xl font-semibold text-foreground mb-1">{selectedEvent.title}</h2>
-            <p className="text-sm text-muted-foreground mb-4">{selectedEvent.calendarName}</p>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-start gap-3">
-                <span className="text-base">🗓️</span>
-                <div>
-                  <p className="text-sm text-foreground">
-                    {new Date(selectedEvent.start).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
-                  </p>
-                  {selectedEvent.allDay ? (
-                    <p className="text-xs text-muted-foreground">All day</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{formatTime(selectedEvent.start, false)} - {formatTime(selectedEvent.end, false)}</p>
-                  )}
-                </div>
+                        <span className="text-sm font-semibold text-[#ccc]">{formatDateHeader(dayEvents[0].start)}</span>
+                      </div>
+                      
+                      <div className="flex flex-col gap-2 pl-12">
+                        {dayEvents.map((ev) => (
+                          <button key={ev.id} onClick={() => setSelectedEvent(ev)} className="w-full text-left bg-[#111] border border-[#1a1a1a] rounded-xl p-3 active:scale-[0.99] transition-transform">
+                            <div className="flex items-start gap-3">
+                              <div className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: ev.calendarColor || "#f0a050" }} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-white truncate">{ev.title}</p>
+                                <p className="text-xs text-[#555] mt-0.5">
+                                  {formatTime(ev.start, ev.allDay)}
+                                  {!ev.allDay && ev.end ? " - " + formatTime(ev.end, false) : ""}
+                                  {ev.location ? "  📍 " + ev.location : ""}
+                                </p>
+                                {ev.calendarName ? <p className="text-[10px] text-[#333] mt-0.5">{ev.calendarName}</p> : null}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              {selectedEvent.location ? (
-                <div className="flex items-start gap-3">
-                  <span className="text-base">📍</span>
-                  <p className="text-sm text-foreground">{selectedEvent.location}</p>
-                </div>
-              ) : null}
-              {selectedEvent.description ? (
-                <div className="flex items-start gap-3">
-                  <span className="text-base">📝</span>
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{selectedEvent.description}</p>
-                </div>
-              ) : null}
-            </div>
-            <div className="flex gap-3 mt-6">
-              {selectedEvent.htmlLink ? (
-                <a href={selectedEvent.htmlLink} target="_blank" rel="noopener noreferrer" className="flex-1 text-center py-3 rounded-xl border border-border text-sm font-medium text-foreground">
-                  Open in Google
-                </a>
-              ) : null}
-              <button onClick={() => handleDeleteEvent(selectedEvent)} disabled={deleting} className="flex-1 py-3 rounded-xl bg-red-500/10 text-red-500 text-sm font-medium disabled:opacity-50">
-                {deleting ? "Deleting" : "Delete Event"}
-              </button>
-            </div>
+            )}
           </div>
         </div>
-      ) : null}
-
-      {showAddModal ? (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-end justify-center" onClick={() => setShowAddModal(false)}>
-          <div className="w-full bg-white rounded-t-2xl max-h-[92vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
-
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-5 pb-4 border-b border-gray-200">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-sm text-gray-500 font-medium"
-              >
-                Cancel
-              </button>
-              <h2 className="text-base font-semibold text-black">New Event</h2>
-              <button
-                onClick={handleAddEvent}
-                disabled={saving || !newEvent.title || !newEvent.date}
-                className="text-sm font-semibold text-blue-500 disabled:opacity-30"
-              >
-                {saving ? "Saving…" : "Add"}
-              </button>
-            </div>
-
-            <div className="px-4 py-5 flex flex-col gap-4">
-
-              {/* Title + Location group */}
-              <div className="bg-gray-100 rounded-2xl overflow-hidden">
-                <input
-                  type="text"
-                  value={newEvent.title}
-                  onChange={(e) => setNewEvent((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="Title"
-                  className="w-full px-4 py-3.5 bg-transparent text-black text-base placeholder-gray-400 outline-none border-b border-gray-200"
-                />
-              </div>
-
-              {/* Location — separate card so dropdown isn't clipped */}
-              <div className="bg-gray-100 rounded-2xl">
-                <LocationAutocomplete
-                  value={newEvent.location}
-                  onChange={(val) => setNewEvent((p) => ({ ...p, location: val }))}
-                  placeholder="Location"
-                />
-              </div>
-
-              {/* Date + Time group */}
-              <div className="bg-gray-100 rounded-2xl overflow-hidden">
-                {/* All day toggle */}
-                <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
-                  <span className="text-sm text-black">All-day</span>
-                  <button
-                    onClick={() => setNewEvent((p) => ({ ...p, allDay: !p.allDay }))}
-                    className={`w-12 h-7 rounded-full transition-colors relative ${newEvent.allDay ? 'bg-blue-500' : 'bg-gray-300'}`}
-                  >
-                    <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${newEvent.allDay ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                  </button>
-                </div>
-
-                {/* Date row */}
-                <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
-                  <span className="text-sm text-black">Date</span>
-                  <input
-                    type="date"
-                    value={newEvent.date}
-                    onChange={(e) => setNewEvent((p) => ({ ...p, date: e.target.value }))}
-                    className="text-sm text-blue-500 bg-transparent outline-none text-right"
-                  />
-                </div>
-
-                {/* Start time */}
-                {!newEvent.allDay && (
-                  <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-200">
-                    <span className="text-sm text-black">Start</span>
-                    <TimeSelect
-                      value={newEvent.startTime}
-                      onChange={(v) => setNewEvent((p) => ({ ...p, startTime: v }))}
-                    />
-                  </div>
-                )}
-
-                {/* End time */}
-                {!newEvent.allDay && (
-                  <div className="flex items-center justify-between px-4 py-3.5">
-                    <span className="text-sm text-black">End</span>
-                    <TimeSelect
-                      value={newEvent.endTime}
-                      onChange={(v) => setNewEvent((p) => ({ ...p, endTime: v }))}
-                    />
-                  </div>
-                )}
-
-                {/* All day — no time rows needed, close group */}
-                {newEvent.allDay && <div />}
-              </div>
-
-              {/* Description */}
-              <div className="bg-gray-100 rounded-2xl overflow-hidden">
-                <textarea
-                  value={newEvent.description}
-                  onChange={(e) => setNewEvent((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="Add notes"
-                  rows={3}
-                  className="w-full px-4 py-3.5 bg-transparent text-black text-sm placeholder-gray-400 outline-none resize-none"
-                />
-              </div>
-
-              {/* Calendar picker */}
-              {calendars.length > 0 && (
-                <div className="bg-gray-100 rounded-2xl overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3.5">
-                    <span className="text-sm text-black">Calendar</span>
-                    <select
-                      value={newEvent.calendarId}
-                      onChange={(e) => setNewEvent((p) => ({ ...p, calendarId: e.target.value }))}
-                      className="text-sm text-blue-500 bg-transparent outline-none text-right max-w-[55%] truncate"
-                    >
-                      <option value="primary">Primary</option>
-                      {calendars.map((cal: any) => (
-                        <option key={cal.id} value={cal.id}>{cal.summary}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      </div>
       </PullToRefresh>
+
       <BottomNav active="more" />
 
-      {selectedEvent ? (
+      {/* ═══════════════════════════════════════════════════════════════
+          VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
+      ═══════════════════════════════════════════════════════════════ */}
+
+      {/* Event Details View Overlay */}
+      {selectedEvent && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4" onClick={() => setSelectedEvent(null)}>
-          <div className="w-full bg-[#1c1c1e] rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full bg-[#1c1c1e] border border-[#1a1a1a] rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1 rounded-full mx-auto mb-6" style={{ backgroundColor: selectedEvent.calendarColor || '#818cf8' }} />
             <h2 className="text-xl font-semibold text-white mb-1">{selectedEvent.title}</h2>
-            <p className="text-sm text-[#666] mb-4">{selectedEvent.calendarName}</p>
+            <p className="text-sm text-[#555] mb-4 font-mono">{selectedEvent.calendarName}</p>
+            
             <div className="flex flex-col gap-3">
               <div className="flex items-start gap-3">
                 <span className="text-base">🗓️</span>
@@ -506,9 +349,9 @@ export default function CalendarPage() {
                     {new Date(selectedEvent.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                   </p>
                   {selectedEvent.allDay ? (
-                    <p className="text-xs text-[#666]">All day</p>
+                    <p className="text-xs text-[#555] font-mono">All day</p>
                   ) : (
-                    <p className="text-xs text-[#666]">{formatTime(selectedEvent.start, false)} – {formatTime(selectedEvent.end, false)}</p>
+                    <p className="text-xs text-[#555] font-mono">{formatTime(selectedEvent.start, false)} – {formatTime(selectedEvent.end, false)}</p>
                   )}
                 </div>
               </div>
@@ -525,41 +368,46 @@ export default function CalendarPage() {
                 </div>
               )}
             </div>
+            
             <div className="flex gap-3 mt-6">
               {selectedEvent.htmlLink && (
-                <a href={selectedEvent.htmlLink} target="_blank" rel="noopener noreferrer"
-                  className="flex-1 text-center py-3 rounded-xl border border-[#2a2a2a] text-sm font-medium text-white">
+                <div onClick={() => window.open(selectedEvent.htmlLink, '_blank')}
+                  className="flex-1 text-center py-3 rounded-xl border border-[#2a2a2a] text-sm font-semibold text-white cursor-pointer active:bg-[#2c2c2e]">
                   Open in Google
-                </a>
+                </div>
               )}
               <button onClick={() => handleDeleteEvent(selectedEvent)} disabled={deleting}
-                className="flex-1 py-3 rounded-xl bg-red-500/10 text-red-500 text-sm font-medium disabled:opacity-50">
+                className="flex-1 py-3 rounded-xl bg-red-500/10 text-red-500 text-sm font-semibold disabled:opacity-50">
                 {deleting ? 'Deleting…' : 'Delete Event'}
               </button>
             </div>
           </div>
         </div>
-      ) : null}
+      )}
 
+      {/* Add New Event Popup Card Overlay */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddModal(false)}>
-          <div className="bg-[#1c1c1e] w-full rounded-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
-              <button onClick={() => setShowAddModal(false)} className="text-[#f0a050] text-sm">Cancel</button>
+          <div className="bg-[#1c1c1e] border border-[#1a1a1a] w-full max-w-md rounded-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+              <button onClick={() => setShowAddModal(false)} className="text-[#f0a050] text-sm font-medium">Cancel</button>
               <h2 className="text-base font-semibold text-white">New Event</h2>
               <button onClick={handleAddEvent} disabled={saving || !newEvent.title || !newEvent.date}
                 className="text-[#f0a050] text-sm font-semibold disabled:opacity-30">
                 {saving ? 'Saving…' : 'Add'}
               </button>
             </div>
+            
             <div className="px-4 py-4 space-y-3 pb-12">
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <input type="text" value={newEvent.title}
                   onChange={(e) => setNewEvent(p => ({ ...p, title: e.target.value }))}
                   placeholder="Title"
                   className="w-full px-4 py-3.5 bg-transparent text-white text-base placeholder-[#555] outline-none"
+                  autoFocus
                 />
               </div>
+              
               <div className="rounded-xl bg-[#2c2c2e]">
                 <LocationAutocomplete
                   value={newEvent.location}
@@ -567,6 +415,7 @@ export default function CalendarPage() {
                   placeholder="Location"
                 />
               </div>
+              
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
                   <span className="text-sm text-white">All-day</span>
@@ -575,6 +424,7 @@ export default function CalendarPage() {
                     <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${newEvent.allDay ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
+                
                 <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
                   <span className="text-sm text-white">Date</span>
                   <input type="date" value={newEvent.date}
@@ -582,6 +432,7 @@ export default function CalendarPage() {
                     className="text-sm text-[#f0a050] bg-transparent outline-none text-right"
                   />
                 </div>
+                
                 {!newEvent.allDay && (
                   <>
                     <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
@@ -595,23 +446,25 @@ export default function CalendarPage() {
                   </>
                 )}
               </div>
+              
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <textarea value={newEvent.description}
                   onChange={(e) => setNewEvent(p => ({ ...p, description: e.target.value }))}
-                  placeholder="Notes" rows={3}
+                  placeholder="Add notes" rows={3}
                   className="w-full px-4 py-3.5 bg-transparent text-white text-sm placeholder-[#555] outline-none resize-none"
                 />
               </div>
+              
               {calendars.length > 0 && (
                 <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3.5">
                     <span className="text-sm text-white">Calendar</span>
                     <select value={newEvent.calendarId}
                       onChange={(e) => setNewEvent(p => ({ ...p, calendarId: e.target.value }))}
-                      className="text-sm text-[#f0a050] bg-transparent outline-none text-right max-w-[55%]">
-                      <option value="primary" className="bg-[#2c2c2e]">Primary</option>
+                      className="text-sm text-[#f0a050] bg-transparent outline-none text-right max-w-[55%] truncate">
+                      <option value="primary" className="bg-[#2c2c2e] text-white">Primary</option>
                       {calendars.map((cal: any) => (
-                        <option key={cal.id} value={cal.id} className="bg-[#2c2c2e]">{cal.summary}</option>
+                        <option key={cal.id} value={cal.id} className="bg-[#2c2c2e] text-white">{cal.summary}</option>
                       ))}
                     </select>
                   </div>
@@ -621,6 +474,6 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
