@@ -88,15 +88,6 @@ function mapsUrl(q: string) {
   return `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 }
 
-function MapPin() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function VehiclePage() {
   const [activeTab, setActiveTab] = useState(0);
@@ -286,7 +277,7 @@ export default function VehiclePage() {
   }
 
   function openAddFuel() {
-    setAddFuel({ date: new Date().toISOString().split('T')[0], gallons: '', price_per_gallon: '', total_cost: '', odometer: '', station: '', notes: '' });
+    setAddFuel({ date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }), gallons: '', price_per_gallon: '', total_cost: '', odometer: '', station: '', notes: '' });
     setFuelAutoCalc(true);
     setShowAddFuel(true);
   }
@@ -330,7 +321,7 @@ export default function VehiclePage() {
   // ─── Maintenance CRUD ──────────────────────────────────────────────────────
   function openAddMaint() {
     setAddMaint({
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
       service_type: 'Oil Change',
       mileage: currentMileage ? String(currentMileage) : '',
       cost: '', shop: '', notes: '',
@@ -422,804 +413,795 @@ export default function VehiclePage() {
     setImportSaving(false);
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <PullToRefresh onRefresh={fetchAll}>
-      <div className="pb-24 min-h-screen bg-black">
+    <>
+      <PullToRefresh onRefresh={fetchAll}>
+        <div className="pb-24 min-h-screen bg-black">
 
-        {/* Page header */}
-        <div className="px-4 pt-6 pb-2">
-          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
-            {hasSetup ? `${vehicleInfo.year} ${vehicleInfo.make} ${vehicleInfo.model}` : 'Vehicle'}
-          </h1>
-          <p className="text-[#555] text-sm mt-0.5">
-            {hasSetup ? (vehicleInfo.license_plate || 'No plate set') : 'Set up your vehicle'}
-          </p>
-        </div>
+          {/* Sticky context header row perfectly matching Knox and Investments template */}
+          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+            <div className="flex items-center justify-between px-4 pt-14 pb-3">
+              <div>
+                <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
+                  {hasSetup ? `${vehicleInfo.year} ${vehicleInfo.make}` : 'Vehicle'}
+                </h1>
+                <p className="text-[10px] text-[#555] mt-0.5">
+                  {hasSetup ? (vehicleInfo.license_plate || 'No plate set') : 'Set up vehicle metrics'}
+                </p>
+              </div>
 
-        {/* Tab bar */}
-        <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
-          {TABS.map((tab, i) => (
-            <button key={tab}
-              onClick={() => { setActiveTab(i); window.scrollTo(0, 0); navigator.vibrate && navigator.vibrate(8); }}
-              className={`flex-1 py-3 text-xs font-semibold transition-colors ${activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'}`}>
-              {tab}
-            </button>
-          ))}
-        </div>
+              {/* Context-aware inline amber text trigger button */}
+              <button
+                onClick={() => {
+                  navigator.vibrate && navigator.vibrate(8);
+                  if (activeTab === 0) openSetup();
+                  if (activeTab === 1) openAddFuel();
+                  if (activeTab === 2) openAddMaint();
+                }}
+                className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+              >
+                {activeTab === 0 ? (hasSetup ? 'Edit Info' : 'Set Up') : activeTab === 1 ? 'Log Fuel' : 'Log Service'}
+              </button>
+            </div>
 
-        {/* ─── OVERVIEW TAB ────────────────────────────────────────────── */}
-        {activeTab === 0 && (
-          <div className="px-4 pt-4 space-y-3">
+            {/* Tab switcher bar */}
+            <div className="flex border-t border-[#1a1a1a]">
+              {TABS.map((tab, i) => (
+                <button
+                  key={tab}
+                  onClick={() => { setActiveTab(i); window.scrollTo(0, 0); navigator.vibrate && navigator.vibrate(8); }}
+                  className={`flex-1 py-3 text-xs font-semibold transition-colors ${
+                    activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
 
-            {/* Vehicle card */}
-            <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider mb-1">My Vehicle</p>
-                  {hasSetup ? (
+          {/* ─── OVERVIEW TAB ────────────────────────────────────────────── */}
+          {activeTab === 0 && (
+            <div className="px-4 pt-4 space-y-3">
+
+              {/* Vehicle detailed parameters snapshot */}
+              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                <p className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider mb-2">Specifications</p>
+                {hasSetup ? (
+                  <div className="grid grid-cols-2 gap-y-2 text-sm">
+                    <div>
+                      <p className="text-[#555] text-xs uppercase">Model</p>
+                      <p className="text-white font-medium">{vehicleInfo.model} {vehicleInfo.trim_level && `(${vehicleInfo.trim_level})`}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#555] text-xs uppercase">Color</p>
+                      <p className="text-white font-medium">{vehicleInfo.color || '—'}</p>
+                    </div>
+                    <div className="col-span-2 pt-1 border-t border-[#1a1a1a]/40 mt-1">
+                      <p className="text-[#555] text-xs uppercase">VIN Identifier</p>
+                      <p className="text-white font-mono text-xs mt-0.5 tracking-wider">{vehicleInfo.vin || '—'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[#555] text-sm py-2">Tap Set Up in the top header to configure details</p>
+                )}
+              </div>
+
+              {/* Stats 2×2 Telemetry Block */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Current Odometer</p>
+                  <p className="text-white text-2xl font-mono font-bold">{currentMileage ? currentMileage.toLocaleString() : '—'}</p>
+                  {currentMileage != null && <p className="text-[#555] text-xs mt-0.5">total miles</p>}
+                </div>
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Next Oil Change</p>
+                  {nextOilChangeMiles ? (
                     <>
-                      <p className="text-white font-semibold">{vehicleInfo.year} {vehicleInfo.make} {vehicleInfo.model}</p>
-                      {vehicleInfo.trim_level && <p className="text-[#888] text-sm">{vehicleInfo.trim_level}</p>}
-                      <div className="mt-2 space-y-0.5">
-                        {vehicleInfo.color && <p className="text-[#888] text-xs">Color: {vehicleInfo.color}</p>}
-                        {vehicleInfo.license_plate && <p className="text-[#888] text-xs">Plate: {vehicleInfo.license_plate}</p>}
-                        {vehicleInfo.vin && <p className="text-[#888] text-xs font-mono">VIN: {vehicleInfo.vin}</p>}
+                      <p className="text-white text-xl font-mono font-bold">{nextOilChangeMiles.toLocaleString()}</p>
+                      {milesUntilOil != null && (
+                        <p className="text-xs mt-0.5 font-mono" style={{ color: milesUntilOil < 0 ? '#ef4444' : milesUntilOil < 500 ? '#f0a050' : '#22c55e' }}>
+                          {milesUntilOil > 0 ? `${milesUntilOil.toLocaleString()} mi left` : `${Math.abs(milesUntilOil).toLocaleString()} mi overdue`}
+                        </p>
+                      )}
+                    </>
+                  ) : <p className="text-[#555] text-sm mt-1">No log detected</p>}
+                </div>
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Fuel Efficiency</p>
+                  {lifetimeMPG ? (
+                    <>
+                      <p className="text-white text-2xl font-mono font-bold">{lifetimeMPG.toFixed(1)}</p>
+                      <p className="text-[#555] text-xs mt-0.5">Lifetime MPG</p>
+                    </>
+                  ) : <p className="text-[#555] text-sm mt-1">Requires 2+ logs</p>}
+                </div>
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">{yr} Cost Matrix</p>
+                  {costPerMile ? (
+                    <>
+                      <p className="text-white text-2xl font-mono font-bold">${costPerMile.toFixed(2)}</p>
+                      <p className="text-[#555] text-xs mt-0.5">per driving mile</p>
+                    </>
+                  ) : <p className="text-[#555] text-sm mt-1">No calculations</p>}
+                </div>
+              </div>
+
+              {/* Renewals Expirations alerts panel */}
+              {(vehicleInfo?.registration_expires || vehicleInfo?.inspection_expires) && (
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                  <p className="text-white font-semibold mb-3">Regulatory Renewals</p>
+                  <div className="space-y-2">
+                    {vehicleInfo.registration_expires && (
+                      <div className="flex items-center justify-between">
+                        <p className="text-[#ccc] text-sm">Registration Expiry</p>
+                        <p className="text-sm font-mono" style={{ color: renewalColor(vehicleInfo.registration_expires) }}>{fmtDate(vehicleInfo.registration_expires)}</p>
                       </div>
+                    )}
+                    {vehicleInfo.inspection_expires && (
+                      <div className="flex items-center justify-between">
+                        <p className="text-[#ccc] text-sm">Inspection Stickers</p>
+                        <p className="text-sm font-mono" style={{ color: renewalColor(vehicleInfo.inspection_expires) }}>{fmtDate(vehicleInfo.inspection_expires)}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Services List module view */}
+              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                  <p className="text-white font-semibold">Recent Service Records</p>
+                  {maintEntries.length > 5 && (
+                    <button onClick={() => { setActiveTab(2); window.scrollTo(0, 0); }} className="text-[#f0a050] text-xs">See all</button>
+                  )}
+                </div>
+                <div className="px-4 pb-4">
+                  {maintEntries.length === 0 ? (
+                    <>
+                      <p className="text-[#555] text-sm">No maintenance logged yet</p>
+                      <button
+                        onClick={() => { setActiveTab(2); window.scrollTo(0, 0); setTimeout(openAddMaint, 50); }}
+                        className="text-[#f0a050] text-sm mt-1"
+                      >
+                        Log your first service →
+                      </button>
                     </>
                   ) : (
-                    <p className="text-[#555] text-sm mt-1">Tap Set Up to add your vehicle details</p>
-                  )}
-                </div>
-                <button onClick={openSetup} className="text-[#f0a050] text-sm font-medium ml-3 shrink-0">
-                  {hasSetup ? 'Edit' : 'Set Up'}
-                </button>
-              </div>
-            </div>
-
-            {/* Stats 2×2 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Current Mileage</p>
-                <p className="text-white text-2xl font-mono font-bold">{currentMileage ? currentMileage.toLocaleString() : '—'}</p>
-                {currentMileage != null && <p className="text-[#555] text-xs mt-0.5">miles</p>}
-              </div>
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Next Oil Change</p>
-                {nextOilChangeMiles ? (
-                  <>
-                    <p className="text-white text-xl font-mono font-bold">{nextOilChangeMiles.toLocaleString()}</p>
-                    {milesUntilOil != null && (
-                      <p className="text-xs mt-0.5 font-mono" style={{ color: milesUntilOil < 0 ? '#ef4444' : milesUntilOil < 500 ? '#f0a050' : '#22c55e' }}>
-                        {milesUntilOil > 0 ? `${milesUntilOil.toLocaleString()} mi away` : `${Math.abs(milesUntilOil).toLocaleString()} mi overdue`}
-                      </p>
-                    )}
-                  </>
-                ) : <p className="text-[#555] text-sm mt-1">Log an oil change</p>}
-              </div>
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Avg Fuel Economy</p>
-                {lifetimeMPG ? (
-                  <>
-                    <p className="text-white text-2xl font-mono font-bold">{lifetimeMPG.toFixed(1)}</p>
-                    <p className="text-[#555] text-xs mt-0.5">MPG lifetime</p>
-                  </>
-                ) : <p className="text-[#555] text-sm mt-1">Log 2+ fill-ups</p>}
-              </div>
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">{yr} Cost / Mile</p>
-                {costPerMile ? (
-                  <>
-                    <p className="text-white text-2xl font-mono font-bold">${costPerMile.toFixed(2)}</p>
-                    <p className="text-[#555] text-xs mt-0.5">per mile</p>
-                  </>
-                ) : <p className="text-[#555] text-sm mt-1">No spend logged</p>}
-              </div>
-            </div>
-
-            {/* Renewals */}
-            {(vehicleInfo?.registration_expires || vehicleInfo?.inspection_expires) && (
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-white font-semibold mb-3">Renewals</p>
-                <div className="space-y-2">
-                  {vehicleInfo.registration_expires && (
-                    <div className="flex items-center justify-between">
-                      <p className="text-[#ccc] text-sm">Registration</p>
-                      <p className="text-sm font-mono" style={{ color: renewalColor(vehicleInfo.registration_expires) }}>{fmtDate(vehicleInfo.registration_expires)}</p>
-                    </div>
-                  )}
-                  {vehicleInfo.inspection_expires && (
-                    <div className="flex items-center justify-between">
-                      <p className="text-[#ccc] text-sm">Inspection</p>
-                      <p className="text-sm font-mono" style={{ color: renewalColor(vehicleInfo.inspection_expires) }}>{fmtDate(vehicleInfo.inspection_expires)}</p>
+                    <div className="space-y-2">
+                      {maintEntries.slice(0, 5).map(e => (
+                        <div key={e.id} className="flex items-center justify-between py-1.5 border-b border-[#1a1a1a] last:border-0">
+                          <div>
+                            <p className="text-white text-sm">{e.service_type}</p>
+                            <p className="text-[#555] text-xs">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
+                          </div>
+                          <p className="text-[#ccc] text-sm font-mono">{e.cost ? fmt(e.cost) : '—'}</p>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
-            )}
 
-            {/* Recent Services */}
-            <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
-              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                <p className="text-white font-semibold">Recent Services</p>
-                {maintEntries.length > 5 && (
-                  <button onClick={() => { setActiveTab(2); window.scrollTo(0, 0); }} className="text-[#f0a050] text-xs">See all</button>
-                )}
-              </div>
-              <div className="px-4 pb-4">
-                {maintEntries.length === 0 ? (
-                  <>
-                    <p className="text-[#555] text-sm">No maintenance logged yet</p>
-                    <button
-                      onClick={() => { setActiveTab(2); window.scrollTo(0, 0); setTimeout(openAddMaint, 50); }}
-                      className="text-[#f0a050] text-sm mt-1"
-                    >
-                      Log your first service →
-                    </button>
-                  </>
-                ) : (
+              {/* Annualized Cost calculation summary */}
+              {yrTotal > 0 && (
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                  <p className="text-white font-semibold mb-3">{yr} Running Cost Summary</p>
                   <div className="space-y-2">
-                    {maintEntries.slice(0, 5).map(e => (
-                      <div key={e.id} className="flex items-center justify-between py-1.5 border-b border-[#1a1a1a] last:border-0">
-                        <div>
-                          <p className="text-white text-sm">{e.service_type}</p>
-                          <p className="text-[#555] text-xs">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
-                        </div>
-                        <p className="text-[#ccc] text-sm font-mono">{e.cost ? fmt(e.cost) : '—'}</p>
-                      </div>
-                    ))}
+                    <div className="flex justify-between">
+                      <p className="text-[#ccc] text-sm">Fuel Fleet Spend</p>
+                      <p className="text-[#ccc] text-sm font-mono">{fmt(yrFuelSpend)}</p>
+                    </div>
+                    <div className="flex justify-between">
+                      <p className="text-[#ccc] text-sm">Maintenance Maintenance</p>
+                      <p className="text-[#ccc] text-sm font-mono">{fmt(yrMaintSpend)}</p>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t border-[#1a1a1a]">
+                      <p className="text-white text-sm font-semibold">Aggregate Cost Total</p>
+                      <p className="text-white text-sm font-mono font-semibold">{fmt(yrTotal)}</p>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
+          )}
 
-            {/* Year Cost Summary */}
-            {yrTotal > 0 && (
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-white font-semibold mb-3">{yr} Cost Summary</p>
-                <div className="space-y-2">
+          {/* ─── FUEL TAB ────────────────────────────────────────────────── */}
+          {activeTab === 1 && (
+            <div className="px-4 pt-4 space-y-3">
+
+              {/* Screenshot capture OCR ingestion router trigger */}
+              <button
+                onClick={() => openImport('fuel')}
+                className="w-full py-3 rounded-xl border border-[#2a2a2a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 active:bg-[#111]"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                Import Fill-Up History from Screenshot
+              </button>
+
+              {/* Totals Summary dashboard pill info */}
+              {fuelEntries.length >= 2 && lifetimeMPG && (
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <div className="flex justify-between">
-                    <p className="text-[#ccc] text-sm">Fuel</p>
-                    <p className="text-[#ccc] text-sm font-mono">{fmt(yrFuelSpend)}</p>
-                  </div>
-                  <div className="flex justify-between">
-                    <p className="text-[#ccc] text-sm">Maintenance</p>
-                    <p className="text-[#ccc] text-sm font-mono">{fmt(yrMaintSpend)}</p>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-[#1a1a1a]">
-                    <p className="text-white text-sm font-semibold">Total</p>
-                    <p className="text-white text-sm font-mono font-semibold">{fmt(yrTotal)}</p>
+                    <div>
+                      <p className="text-[#555] text-xs uppercase tracking-wide">Lifetime Avg MPG</p>
+                      <p className="text-white text-2xl font-mono font-bold mt-1">{lifetimeMPG.toFixed(1)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[#555] text-xs uppercase tracking-wide">{yr} Total Fuel Spend</p>
+                      <p className="text-white text-2xl font-mono font-bold mt-1">{fmt(yrFuelSpend)}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
 
-        {/* ─── FUEL TAB ────────────────────────────────────────────────── */}
-        {activeTab === 1 && (
-          <div className="px-4 pt-4 space-y-3">
-
-            {/* Tab header row — button lives here, no FAB */}
-            <div className="flex items-center justify-between">
-              <p className="text-white font-semibold">Fuel Log</p>
-              <button onClick={openAddFuel} className="text-[#f0a050] text-sm font-semibold">+ Fill-Up</button>
-            </div>
-
-            {/* Import button */}
-            <button
-              onClick={() => openImport('fuel')}
-              className="w-full py-3 rounded-xl border border-[#2a2a2a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              Import from Screenshot
-            </button>
-
-            {/* Summary bar */}
-            {fuelEntries.length >= 2 && lifetimeMPG && (
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-[#555] text-xs uppercase tracking-wide">Lifetime Avg MPG</p>
-                    <p className="text-white text-2xl font-mono font-bold mt-1">{lifetimeMPG.toFixed(1)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[#555] text-xs uppercase tracking-wide">{yr} Fuel Cost</p>
-                    <p className="text-white text-2xl font-mono font-bold mt-1">{fmt(yrFuelSpend)}</p>
-                  </div>
+              {/* Fill-up list rows tracking layout items */}
+              {fuelEntriesWithMPG.length === 0 ? (
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
+                  <p className="text-[#555] text-sm">No fill-ups logged yet</p>
+                  <p className="text-[#333] text-xs mt-1">Tap Log Fuel above to record records</p>
                 </div>
-              </div>
-            )}
-
-            {/* Fill-up cards */}
-            {fuelEntriesWithMPG.length === 0 ? (
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
-                <p className="text-[#555] text-sm">No fill-ups logged yet</p>
-                <p className="text-[#333] text-xs mt-1">Tap + to log your first fill-up</p>
-              </div>
-            ) : (
-              fuelEntriesWithMPG.map(e => (
-                <div key={e.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-white font-semibold font-mono">{fmt(e.total_cost)}</p>
-                        {e.mpg && (
-                          <span className="text-[#22c55e] text-xs font-mono bg-[#22c55e]/10 px-1.5 py-0.5 rounded-md">
-                            {e.mpg.toFixed(1)} MPG
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[#555] text-xs mt-0.5">
-                        {e.gallons ? `${Number(e.gallons).toFixed(3)} gal` : ''}
-                        {e.price_per_gallon ? ` @ $${Number(e.price_per_gallon).toFixed(3)}/gal` : ''}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <p className="text-[#555] text-xs">{fmtDate(e.date)}</p>
-                        {e.odometer ? <p className="text-[#555] text-xs">{e.odometer.toLocaleString()} mi</p> : null}
-                      </div>
-                      {e.station ? (
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <p className="text-[#888] text-xs">{e.station}</p>
-                          <button onClick={() => window.open(mapsUrl(e.station), '_blank')} className="text-[#f0a050] shrink-0" aria-label="View on Google Maps">
-                            <MapPin />
-                          </button>
+              ) : (
+                fuelEntriesWithMPG.map(e => (
+                  <div key={e.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white font-semibold font-mono">{fmt(e.total_cost)}</p>
+                          {e.mpg && (
+                            <span className="text-[#22c55e] text-xs font-mono bg-[#22c55e]/10 px-1.5 py-0.5 rounded-md">
+                              {e.mpg.toFixed(1)} MPG
+                            </span>
+                          )}
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-2 ml-2 shrink-0">
-                      <button
-                        onClick={() => {
-                          setEditFuelEntry(e);
-                          setEditFuel({ date: e.date || '', gallons: e.gallons != null ? String(e.gallons) : '', price_per_gallon: e.price_per_gallon != null ? String(e.price_per_gallon) : '', total_cost: e.total_cost != null ? String(e.total_cost) : '', odometer: e.odometer != null ? String(e.odometer) : '', station: e.station || '', notes: e.notes || '' });
-                          setEditFuelAutoCalc(false);
-                        }}
-                        className="text-[#555] active:text-[#f0a050]"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                      <button onClick={() => setDeleteFuelId(e.id)} className="text-[#333] active:text-[#ef4444]">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* ─── MAINTENANCE TAB ──────────────────────────────────────────── */}
-        {activeTab === 2 && (
-          <div className="px-4 pt-4 space-y-3">
-
-            {/* Tab header row — button lives here, no FAB */}
-            <div className="flex items-center justify-between">
-              <p className="text-white font-semibold">Service Records</p>
-              <button onClick={openAddMaint} className="text-[#f0a050] text-sm font-semibold">+ Service</button>
-            </div>
-
-            {/* Import button */}
-            <button
-              onClick={() => openImport('maintenance')}
-              className="w-full py-3 rounded-xl border border-[#2a2a2a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              Import from Screenshot
-            </button>
-
-            {/* Service records */}
-            {maintEntries.length === 0 ? (
-              <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
-                <p className="text-[#555] text-sm">No services logged yet</p>
-                <p className="text-[#333] text-xs mt-1">Tap + to log your first service</p>
-              </div>
-            ) : (
-              maintEntries.map(e => {
-                const expanded = expandedMaint.has(e.id);
-                return (
-                  <div key={e.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
-                    <div
-                      className="p-4 flex items-center justify-between cursor-pointer"
-                      onClick={() => {
-                        const next = new Set(expandedMaint);
-                        expanded ? next.delete(e.id) : next.add(e.id);
-                        setExpandedMaint(next);
-                      }}
-                    >
-                      <div className="flex-1">
-                        <p className="text-white font-semibold">{e.service_type}</p>
-                        <p className="text-[#555] text-xs mt-0.5">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <p className="text-[#ccc] text-sm font-mono">{e.cost ? fmt(e.cost) : '—'}</p>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
-                          style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                          <path d="M6 9l6 6 6-6" />
-                        </svg>
-                      </div>
-                    </div>
-                    {expanded && (
-                      <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] space-y-2">
-                        {e.shop ? (
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-[#888] text-sm">{e.shop}</p>
-                            <button onClick={() => window.open(mapsUrl(e.shop), '_blank')} className="text-[#f0a050]" aria-label="View on Google Maps">
-                              <MapPin />
+                        <p className="text-[#555] text-xs mt-0.5">
+                          {e.gallons ? `${Number(e.gallons).toFixed(3)} gal` : ''}
+                          {e.price_per_gallon ? ` @ $${Number(e.price_per_gallon).toFixed(3)}/gal` : ''}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <p className="text-[#555] text-xs">{fmtDate(e.date)}</p>
+                          {e.odometer ? <p className="text-[#555] text-xs">{e.odometer.toLocaleString()} mi</p> : null}
+                        </div>
+                        {e.station ? (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <p className="text-[#888] text-xs truncate flex-1">{e.station}</p>
+                            <button onClick={() => window.open(mapsUrl(e.station), '_blank')} className="text-[#f0a050] shrink-0" aria-label="View on Google Maps">
+                              <span className="text-xs">📍</span>
                             </button>
                           </div>
                         ) : null}
-                        {e.notes ? <p className="text-[#555] text-sm">{e.notes}</p> : null}
-                        <div className="flex items-center gap-4 pt-1">
-                          <button
-                            onClick={() => {
-                              setEditMaintEntry(e);
-                              setEditMaint({ date: e.date || '', service_type: e.service_type || 'Oil Change', mileage: e.mileage != null ? String(e.mileage) : '', cost: e.cost != null ? String(e.cost) : '', shop: e.shop || '', notes: e.notes || '' });
-                            }}
-                            className="text-[#f0a050] text-sm font-medium"
-                          >
-                            Edit record
-                          </button>
-                          <button onClick={() => setDeleteMaintId(e.id)} className="text-[#ef4444] text-sm font-medium">Delete record</button>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditFuelEntry(e);
+                            setEditFuel({ date: e.date || '', gallons: e.gallons != null ? String(e.gallons) : '', price_per_gallon: e.price_per_gallon != null ? String(e.price_per_gallon) : '', total_cost: e.total_cost != null ? String(e.total_cost) : '', odometer: e.odometer != null ? String(e.odometer) : '', station: e.station || '', notes: e.notes || '' });
+                            setEditFuelAutoCalc(false);
+                          }}
+                          className="text-[#555] active:text-[#f0a050] p-1"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button onClick={() => setDeleteFuelId(e.id)} className="text-[#333] active:text-[#ef4444] p-1">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                            <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ─── MAINTENANCE TAB ──────────────────────────────────────────── */}
+          {activeTab === 2 && (
+            <div className="px-4 pt-4 space-y-3">
+
+              {/* Maintenance screenshot capture system */}
+              <button
+                onClick={() => openImport('maintenance')}
+                className="w-full py-3 rounded-xl border border-[#2a2a2a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 active:bg-[#111]"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                Import Service History from Screenshot
+              </button>
+
+              {/* Service records elements rendering loop */}
+              {maintEntries.length === 0 ? (
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
+                  <p className="text-[#555] text-sm">No service records found</p>
+                  <p className="text-[#333] text-xs mt-1">Tap Log Service above to save</p>
+                </div>
+              ) : (
+                maintEntries.map(e => {
+                  const expanded = expandedMaint.has(e.id);
+                  return (
+                    <div key={e.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                      <div
+                        className="p-4 flex items-center justify-between cursor-pointer active:bg-[#161616]"
+                        onClick={() => {
+                          const next = new Set(expandedMaint);
+                          expanded ? next.delete(e.id) : next.add(e.id);
+                          setExpandedMaint(next);
+                        }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-semibold">{e.service_type}</p>
+                          <p className="text-[#555] text-xs mt-0.5">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-3 ml-2 shrink-0">
+                          <p className="text-[#ccc] text-sm font-mono">{e.cost ? fmt(e.cost) : '—'}</p>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                            style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════════════
-            MODALS
-        ═══════════════════════════════════════════════════════════════ */}
-
-        {/* Vehicle Setup modal */}
-        {showSetup && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
-              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-                <p className="text-white font-semibold text-lg">Vehicle Setup</p>
-                <button onClick={() => setShowSetup(false)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
-              </div>
-              <div className="px-5 pt-4 space-y-3">
-                {[
-                  { label: 'Year', field: 'year', type: 'number', placeholder: String(new Date().getFullYear()) },
-                  { label: 'Make', field: 'make', placeholder: 'Honda' },
-                  { label: 'Model', field: 'model', placeholder: 'Civic' },
-                  { label: 'Trim', field: 'trim_level', placeholder: 'Sport' },
-                  { label: 'Color', field: 'color', placeholder: 'Silver' },
-                  { label: 'License Plate', field: 'license_plate', placeholder: 'ABC 1234' },
-                  { label: 'VIN', field: 'vin', placeholder: '1HGBH41JXMN109186' },
-                ].map(({ label, field, type, placeholder }) => (
-                  <div key={field}>
-                    <label className="text-[#888] text-xs mb-1 block">{label}</label>
-                    <input type={type || 'text'} value={setupForm[field] || ''} onChange={e => setSetupForm((f: any) => ({ ...f, [field]: e.target.value }))}
-                      placeholder={placeholder} className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                  </div>
-                ))}
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Purchase Date</label>
-                  <input type="date" value={setupForm.purchase_date || ''} onChange={e => setSetupForm((f: any) => ({ ...f, purchase_date: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Purchase Price</label>
-                  <input type="number" value={setupForm.purchase_price || ''} onChange={e => setSetupForm((f: any) => ({ ...f, purchase_price: parseFloat(e.target.value) || undefined }))}
-                    placeholder="25000" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Oil Change Interval</label>
-                  <select value={setupForm.oil_change_interval || 5000} onChange={e => setSetupForm((f: any) => ({ ...f, oil_change_interval: parseInt(e.target.value) }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none">
-                    {OIL_INTERVALS.map(n => <option key={n} value={n}>{n.toLocaleString()} miles</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Registration Expires</label>
-                  <input type="date" value={setupForm.registration_expires || ''} onChange={e => setSetupForm((f: any) => ({ ...f, registration_expires: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Inspection Expires</label>
-                  <input type="date" value={setupForm.inspection_expires || ''} onChange={e => setSetupForm((f: any) => ({ ...f, inspection_expires: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setShowSetup(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
-                  <button onClick={saveSetup} disabled={setupSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
-                    {setupSaving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Log Fill-Up modal */}
-        {showAddFuel && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
-              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-                <p className="text-white font-semibold text-lg">Log Fill-Up</p>
-                <button onClick={() => setShowAddFuel(false)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
-              </div>
-              <div className="px-5 pt-4 space-y-3">
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Date</label>
-                  <input type="date" value={addFuel.date} onChange={e => setAddFuel(f => ({ ...f, date: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Gallons</label>
-                  <input type="number" step="0.001" value={addFuel.gallons} onChange={e => handleAddFuelField('gallons', e.target.value)}
-                    placeholder="12.543" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Price per Gallon</label>
-                  <input type="number" step="0.001" value={addFuel.price_per_gallon} onChange={e => handleAddFuelField('price_per_gallon', e.target.value)}
-                    placeholder="3.459" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[#888] text-xs">Total Cost</label>
-                    {!fuelAutoCalc && (
-                      <button onClick={() => {
-                        const g = parseFloat(addFuel.gallons), p = parseFloat(addFuel.price_per_gallon);
-                        if (!isNaN(g) && !isNaN(p)) setAddFuel(f => ({ ...f, total_cost: (g * p).toFixed(2) }));
-                        setFuelAutoCalc(true);
-                      }} className="text-[#f0a050] text-xs">↩ Reset to calculated</button>
-                    )}
-                    {fuelAutoCalc && <span className="text-[#555] text-xs">Auto-calculated</span>}
-                  </div>
-                  <input type="number" step="0.01" value={addFuel.total_cost}
-                    onChange={e => { setAddFuel(f => ({ ...f, total_cost: e.target.value })); setFuelAutoCalc(false); }}
-                    placeholder="43.38" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Odometer (mi)</label>
-                  <input type="number" value={addFuel.odometer} onChange={e => setAddFuel(f => ({ ...f, odometer: e.target.value }))}
-                    placeholder="45231" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Station</label>
-                  <PlacesInput value={addFuel.station} onChange={v => setAddFuel(f => ({ ...f, station: v }))} placeholder="Search gas stations..." />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Notes</label>
-                  <input type="text" value={addFuel.notes} onChange={e => setAddFuel(f => ({ ...f, notes: e.target.value }))}
-                    placeholder="Optional" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setShowAddFuel(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
-                  <button onClick={saveAddFuel} disabled={fuelSaving || !addFuel.date} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
-                    {fuelSaving ? 'Saving...' : 'Log Fill-Up'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Log Service modal */}
-        {showAddMaint && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
-              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-                <p className="text-white font-semibold text-lg">Log Service</p>
-                <button onClick={() => setShowAddMaint(false)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
-              </div>
-              <div className="px-5 pt-4 space-y-3">
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Date</label>
-                  <input type="date" value={addMaint.date} onChange={e => setAddMaint(f => ({ ...f, date: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Service Type</label>
-                  <select value={addMaint.service_type} onChange={e => setAddMaint(f => ({ ...f, service_type: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]">
-                    {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Mileage</label>
-                  <input type="number" value={addMaint.mileage} onChange={e => setAddMaint(f => ({ ...f, mileage: e.target.value }))}
-                    placeholder="45231" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Cost</label>
-                  <input type="number" step="0.01" value={addMaint.cost} onChange={e => setAddMaint(f => ({ ...f, cost: e.target.value }))}
-                    placeholder="89.99" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Shop</label>
-                  <PlacesInput value={addMaint.shop} onChange={v => setAddMaint(f => ({ ...f, shop: v }))} placeholder="Search auto shops..." />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Notes</label>
-                  <input type="text" value={addMaint.notes} onChange={e => setAddMaint(f => ({ ...f, notes: e.target.value }))}
-                    placeholder="Optional" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setShowAddMaint(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
-                  <button onClick={saveAddMaint} disabled={maintSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
-                    {maintSaving ? 'Saving...' : 'Log Service'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Fill-Up modal */}
-        {editFuelEntry && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
-              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-                <p className="text-white font-semibold text-lg">Edit Fill-Up</p>
-                <button onClick={() => setEditFuelEntry(null)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
-              </div>
-              <div className="px-5 pt-4 space-y-3">
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Date</label>
-                  <input type="date" value={editFuel.date} onChange={e => setEditFuel(f => ({ ...f, date: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Gallons</label>
-                  <input type="number" step="0.001" value={editFuel.gallons} onChange={e => handleEditFuelField('gallons', e.target.value)}
-                    placeholder="12.543" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Price per Gallon</label>
-                  <input type="number" step="0.001" value={editFuel.price_per_gallon} onChange={e => handleEditFuelField('price_per_gallon', e.target.value)}
-                    placeholder="3.459" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[#888] text-xs">Total Cost</label>
-                    <button onClick={() => {
-                      const g = parseFloat(editFuel.gallons), p = parseFloat(editFuel.price_per_gallon);
-                      if (!isNaN(g) && !isNaN(p)) setEditFuel(f => ({ ...f, total_cost: (g * p).toFixed(2) }));
-                      setEditFuelAutoCalc(true);
-                    }} className="text-[#f0a050] text-xs">Recalculate from gal × price</button>
-                  </div>
-                  <input type="number" step="0.01" value={editFuel.total_cost}
-                    onChange={e => { setEditFuel(f => ({ ...f, total_cost: e.target.value })); setEditFuelAutoCalc(false); }}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Odometer (mi)</label>
-                  <input type="number" value={editFuel.odometer} onChange={e => setEditFuel(f => ({ ...f, odometer: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Station</label>
-                  <PlacesInput value={editFuel.station} onChange={v => setEditFuel(f => ({ ...f, station: v }))} placeholder="Search gas stations..." />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Notes</label>
-                  <input type="text" value={editFuel.notes} onChange={e => setEditFuel(f => ({ ...f, notes: e.target.value }))}
-                    placeholder="Optional" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setEditFuelEntry(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
-                  <button onClick={saveEditFuel} disabled={editFuelSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
-                    {editFuelSaving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Service modal */}
-        {editMaintEntry && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
-              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-                <p className="text-white font-semibold text-lg">Edit Service Record</p>
-                <button onClick={() => setEditMaintEntry(null)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
-              </div>
-              <div className="px-5 pt-4 space-y-3">
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Date</label>
-                  <input type="date" value={editMaint.date} onChange={e => setEditMaint(f => ({ ...f, date: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Service Type</label>
-                  <select value={editMaint.service_type} onChange={e => setEditMaint(f => ({ ...f, service_type: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]">
-                    {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Mileage</label>
-                  <input type="number" value={editMaint.mileage} onChange={e => setEditMaint(f => ({ ...f, mileage: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Cost</label>
-                  <input type="number" step="0.01" value={editMaint.cost} onChange={e => setEditMaint(f => ({ ...f, cost: e.target.value }))}
-                    className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Shop</label>
-                  <PlacesInput value={editMaint.shop} onChange={v => setEditMaint(f => ({ ...f, shop: v }))} placeholder="Search auto shops..." />
-                </div>
-                <div>
-                  <label className="text-[#888] text-xs mb-1 block">Notes</label>
-                  <input type="text" value={editMaint.notes} onChange={e => setEditMaint(f => ({ ...f, notes: e.target.value }))}
-                    placeholder="Optional" className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050]" />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setEditMaintEntry(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
-                  <button onClick={saveEditMaint} disabled={editMaintSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
-                    {editMaintSaving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Screenshot import modal */}
-        {showImport && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-            <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg">
-              <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-                <p className="text-white font-semibold text-lg">Import {importType === 'fuel' ? 'Fuel Records' : 'Service Records'}</p>
-                <button onClick={() => setShowImport(false)} className="text-[#555] text-2xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
-              </div>
-              <div className="px-5 pt-4 space-y-4">
-                <p className="text-[#888] text-sm leading-relaxed">
-                  {importType === 'fuel'
-                    ? 'Upload a screenshot from GasBuddy, your fuel log app, or any fuel history. AI will read it and extract your fill-up records.'
-                    : 'Upload a screenshot from Carfax, a dealership service history page, or any maintenance app. AI will extract your service records.'}
-                </p>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    setImageType(file.type || 'image/jpeg');
-                    const reader = new FileReader();
-                    reader.onload = ev => {
-                      const result = ev.target?.result as string;
-                      setImagePreview(result);
-                      setImageBase64(result.split(',')[1]);
-                      setImportRecords([]);
-                    };
-                    reader.readAsDataURL(file);
-                  }}
-                />
-                <button onClick={() => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } }}
-                  className="w-full rounded-2xl border-2 border-dashed border-[#333] overflow-hidden">
-                  {imagePreview ? (
-                    <div className="relative">
-                      <img src={imagePreview} alt="Selected screenshot" className="w-full max-h-48 object-contain bg-[#0a0a0a]" />
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 py-1.5 text-center">
-                        <p className="text-[#f0a050] text-xs font-medium">Tap to change image</p>
-                      </div>
+                      {expanded && (
+                        <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] space-y-2 bg-black/20">
+                          {e.shop ? (
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[#888] text-sm flex-1 truncate">{e.shop}</p>
+                              <button onClick={() => window.open(mapsUrl(e.shop), '_blank')} className="text-[#f0a050] px-1" aria-label="View on Google Maps">
+                                <span className="text-xs">📍</span>
+                              </button>
+                            </div>
+                          ) : null}
+                          {e.notes ? <p className="text-[#555] text-sm bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap">{e.notes}</p> : null}
+                          <div className="flex items-center gap-4 pt-1">
+                            <button
+                              onClick={() => {
+                                setEditMaintEntry(e);
+                                setEditMaint({ date: e.date || '', service_type: e.service_type || 'Oil Change', mileage: e.mileage != null ? String(e.mileage) : '', cost: e.cost != null ? String(e.cost) : '', shop: e.shop || '', notes: e.notes || '' });
+                              }}
+                              className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                            >
+                              Edit record
+                            </button>
+                            <button onClick={() => setDeleteMaintId(e.id)} className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider">Delete record</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="py-10 flex flex-col items-center justify-center gap-2">
-                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#444" strokeWidth="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-                      </svg>
-                      <p className="text-[#555] text-sm">Tap to choose screenshot</p>
-                      <p className="text-[#333] text-xs">Camera or photo library</p>
-                    </div>
-                  )}
+                  );
+                })
+              )}
+            </div>
+          )}
+
+        </div>
+      </PullToRefresh>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
+      ═══════════════════════════════════════════════════════════════ */}
+
+      {/* Vehicle Setup modal screen */}
+      {showSetup && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+              <p className="text-white font-semibold text-lg">Vehicle Attributes</p>
+              <button onClick={() => setShowSetup(false)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-3">
+              {[
+                { label: 'Year', field: 'year', type: 'number', placeholder: String(new Date().getFullYear()) },
+                { label: 'Make', field: 'make', placeholder: 'e.g., Chevrolet' },
+                { label: 'Model', field: 'model', placeholder: 'e.g., Silverado' },
+                { label: 'Trim Level', field: 'trim_level', placeholder: 'e.g., LTZ' },
+                { label: 'Color', field: 'color', placeholder: 'e.g., Black' },
+                { label: 'License Plate', field: 'license_plate', placeholder: 'e.g., XXXXXXX' },
+                { label: 'VIN String', field: 'vin', placeholder: '17-digit VIN text string' },
+              ].map(({ label, field, type, placeholder }) => (
+                <div key={field}>
+                  <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">{label}</label>
+                  <input type={type || 'text'} value={setupForm[field] || ''} onChange={e => setSetupForm((f: any) => ({ ...f, [field]: e.target.value }))}
+                    placeholder={placeholder} className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+                </div>
+              ))}
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Purchase Date</label>
+                <input type="date" value={setupForm.purchase_date || ''} onChange={e => setSetupForm((f: any) => ({ ...f, purchase_date: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Purchase Capital Cost</label>
+                <input type="number" value={setupForm.purchase_price || ''} onChange={e => setSetupForm((f: any) => ({ ...f, purchase_price: parseFloat(e.target.value) || undefined }))}
+                  placeholder="e.g., 42000" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Oil Change Interval Tracker</label>
+                <select value={setupForm.oil_change_interval || 5000} onChange={e => setSetupForm((f: any) => ({ ...f, oil_change_interval: parseInt(e.target.value) }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none text-left">
+                  {OIL_INTERVALS.map(n => <option key={n} value={n}>{n.toLocaleString()} miles tracking</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Registration Expiration Date</label>
+                <input type="date" value={setupForm.registration_expires || ''} onChange={e => setSetupForm((f: any) => ({ ...f, registration_expires: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Inspection Expiration Stickers</label>
+                <input type="date" value={setupForm.inspection_expires || ''} onChange={e => setSetupForm((f: any) => ({ ...f, inspection_expires: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button onClick={() => setShowSetup(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={saveSetup} disabled={setupSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
+                  {setupSaving ? 'Saving...' : 'Save Configuration'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-                {imageBase64 && importRecords.length === 0 && (
-                  <button onClick={extractRecords} disabled={extracting}
-                    className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3 disabled:opacity-60 flex items-center justify-center gap-2">
-                    {extracting ? (
-                      <>
-                        <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                        </svg>
-                        Extracting records...
-                      </>
-                    ) : (
-                      <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-                        </svg>
-                        Extract Records with AI
-                      </>
-                    )}
-                  </button>
-                )}
+      {/* Log Fill-Up manual modal mapping */}
+      {showAddFuel && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+              <p className="text-white font-semibold text-lg">Log Fuel Fill-Up</p>
+              <button onClick={() => setShowAddFuel(false)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-3">
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Date</label>
+                <input type="date" value={addFuel.date} onChange={e => setAddFuel(f => ({ ...f, date: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Gallons Quantity</label>
+                <input type="number" step="0.001" value={addFuel.gallons} onChange={e => handleAddFuelField('gallons', e.target.value)}
+                  placeholder="e.g., 24.150" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Price Per Gallon ($)</label>
+                <input type="number" step="0.001" value={addFuel.price_per_gallon} onChange={e => handleAddFuelField('price_per_gallon', e.target.value)}
+                  placeholder="e.g., 3.659" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[#888] text-xs uppercase tracking-wide font-mono">Total Capital Spend</label>
+                  {!fuelAutoCalc && (
+                    <button onClick={() => {
+                      const g = parseFloat(addFuel.gallons), p = parseFloat(addFuel.price_per_gallon);
+                      if (!isNaN(g) && !isNaN(p)) setAddFuel(f => ({ ...f, total_cost: (g * p).toFixed(2) }));
+                      setFuelAutoCalc(true);
+                    }} className="text-[#f0a050] text-xs">Reset to auto-calc</button>
+                  )}
+                  {fuelAutoCalc && <span className="text-[#555] text-xs">Calculated</span>}
+                </div>
+                <input type="number" step="0.01" value={addFuel.total_cost}
+                  onChange={e => { setAddFuel(f => ({ ...f, total_cost: e.target.value })); setFuelAutoCalc(false); }}
+                  placeholder="e.g., 88.36" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Odometer Reading (mi)</label>
+                <input type="number" value={addFuel.odometer} onChange={e => setAddFuel(f => ({ ...f, odometer: e.target.value }))}
+                  placeholder="Current miles value" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Gas Station / Vendor Location</label>
+                <PlacesInput value={addFuel.station} onChange={v => setAddFuel(f => ({ ...f, station: v }))} placeholder="Search stations near origin..." />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Notes / Reminders</label>
+                <input type="text" value={addFuel.notes} onChange={e => setAddFuel(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Optional notations" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button onClick={() => setShowAddFuel(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={saveAddFuel} disabled={fuelSaving || !addFuel.date} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
+                  {fuelSaving ? 'Saving...' : 'Log Fill-Up'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-                {importRecords.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-white font-semibold text-sm">{importRecords.filter(r => r._keep).length} of {importRecords.length} records selected</p>
-                      <button onClick={() => { setImportRecords([]); setImagePreview(null); setImageBase64(null); }} className="text-[#555] text-xs">Try again</button>
+      {/* Log Service maintenance modal mapping */}
+      {showAddMaint && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+              <p className="text-white font-semibold text-lg">Log Maintenance Service</p>
+              <button onClick={() => setShowAddMaint(false)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-3">
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Date</label>
+                <input type="date" value={addMaint.date} onChange={e => setAddMaint(f => ({ ...f, date: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Service Classification Category</label>
+                <select value={addMaint.service_type} onChange={e => setAddMaint(f => ({ ...f, service_type: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]">
+                  {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Mileage Odometer Value</label>
+                <input type="number" value={addMaint.mileage} onChange={e => setAddMaint(f => ({ ...f, mileage: e.target.value }))}
+                  placeholder="Odometer level at service" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Invoice Cost ($)</label>
+                <input type="number" step="0.01" value={addMaint.cost} onChange={e => setAddMaint(f => ({ ...f, cost: e.target.value }))}
+                  placeholder="Invoice grand total" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Service Facility / Shop Name</label>
+                <PlacesInput value={addMaint.shop} onChange={v => setAddMaint(f => ({ ...f, shop: v }))} placeholder="Search repair shops..." />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Work Order Notes / Specific Details</label>
+                <input type="text" value={addMaint.notes} onChange={e => setAddMaint(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Parts numbers, structural items notes" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button onClick={() => setShowAddMaint(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={saveAddMaint} disabled={maintSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
+                  {maintSaving ? 'Saving...' : 'Log Service Record'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Fill-Up screen modal */}
+      {editFuelEntry && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+              <p className="text-white font-semibold text-lg">Modify Fuel Log Entry</p>
+              <button onClick={() => setEditFuelEntry(null)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-3">
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Date</label>
+                <input type="date" value={editFuel.date} onChange={e => setEditFuel(f => ({ ...f, date: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Gallons</label>
+                <input type="number" step="0.001" value={editFuel.gallons} onChange={e => handleEditFuelField('gallons', e.target.value)}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Price per Gallon</label>
+                <input type="number" step="0.001" value={editFuel.price_per_gallon} onChange={e => handleEditFuelField('price_per_gallon', e.target.value)}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[#888] text-xs uppercase tracking-wide font-mono">Total Cost ($)</label>
+                  <button onClick={() => {
+                    const g = parseFloat(editFuel.gallons), p = parseFloat(editFuel.price_per_gallon);
+                    if (!isNaN(g) && !isNaN(p)) setEditFuel(f => ({ ...f, total_cost: (g * p).toFixed(2) }));
+                    setEditFuelAutoCalc(true);
+                  }} className="text-[#f0a050] text-xs">Recalculate total</button>
+                </div>
+                <input type="number" step="0.01" value={editFuel.total_cost}
+                  onChange={e => { setEditFuel(f => ({ ...f, total_cost: e.target.value })); setEditFuelAutoCalc(false); }}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Odometer Log</label>
+                <input type="number" value={editFuel.odometer} onChange={e => setEditFuel(f => ({ ...f, odometer: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Station</label>
+                <PlacesInput value={editFuel.station} onChange={v => setEditFuel(f => ({ ...f, station: v }))} placeholder="Search stations..." />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Notes</label>
+                <input type="text" value={editFuel.notes} onChange={e => setEditFuel(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button onClick={() => setEditFuelEntry(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={saveEditFuel} disabled={editFuelSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
+                  {editFuelSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Service record screen modal wrapper */}
+      {editMaintEntry && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+              <p className="text-white font-semibold text-lg">Modify Service Record</p>
+              <button onClick={() => setEditMaintEntry(null)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-3">
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Date</label>
+                <input type="date" value={editMaint.date} onChange={e => setEditMaint(f => ({ ...f, date: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Service Classification</label>
+                <select value={editMaint.service_type} onChange={e => setEditMaint(f => ({ ...f, service_type: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]">
+                  {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Odometer Mileage</label>
+                <input type="number" value={editMaint.mileage} onChange={e => setEditMaint(f => ({ ...f, mileage: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Grand Cost Total ($)</label>
+                <input type="number" step="0.01" value={editMaint.cost} onChange={e => setEditMaint(f => ({ ...f, cost: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Facility Shop</label>
+                <PlacesInput value={editMaint.shop} onChange={v => setEditMaint(f => ({ ...f, shop: v }))} placeholder="Search shops..." />
+              </div>
+              <div>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Service Order Notes</label>
+                <input type="text" value={editMaint.notes} onChange={e => setEditMaint(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button onClick={() => setEditMaintEntry(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={saveEditMaint} disabled={editMaintSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
+                  {editMaintSaving ? 'Saving...' : 'Save Modifications'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Screenshot OCR import prompt modal wrapper */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+            <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
+              <p className="text-white font-semibold text-lg">Import {importType === 'fuel' ? 'Fuel Receipts' : 'Maintenance Slips'}</p>
+              <button onClick={() => setShowImport(false)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-4">
+              <p className="text-[#888] text-sm leading-relaxed">
+                {importType === 'fuel'
+                  ? 'Upload a phone history screenshot from GasBuddy, your digital receipts, or credit records. Personal OS AI will parse it out natively.'
+                  : 'Upload an invoice screenshot from Carfax, ACME shop slips, or commercial mechanics logs to parse items cleanly.'}
+              </p>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setImageType(file.type || 'image/jpeg');
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    const result = ev.target?.result as string;
+                    setImagePreview(result);
+                    setImageBase64(result.split(',')[1]);
+                    setImportRecords([]);
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+              <button onClick={() => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } }}
+                className="w-full rounded-2xl border-2 border-dashed border-[#333] overflow-hidden bg-black/30 active:bg-black/50">
+                {imagePreview ? (
+                  <div className="relative">
+                    <img src={imagePreview} alt="Target file viewport preview" className="w-full max-h-48 object-contain bg-[#0a0a0a]" />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-2 text-center">
+                      <p className="text-[#f0a050] text-xs font-medium">Tap to swap uploaded asset file</p>
                     </div>
+                  </div>
+                ) : (
+                  <div className="py-12 flex flex-col items-center justify-center gap-2">
+                    <span className="text-3xl text-[#555]">📷</span>
+                    <p className="text-[#555] text-sm font-medium">Select photo image asset file</p>
+                    <p className="text-[#333] text-xs">Camera capture roll or storage media</p>
+                  </div>
+                )}
+              </button>
+
+              {imageBase64 && importRecords.length === 0 && (
+                <button onClick={extractRecords} disabled={extracting}
+                  className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-60 flex items-center justify-center gap-2">
+                  {extracting ? 'Processing Extraction Framework AI...' : 'Parse Screenshot Records with AI'}
+                </button>
+              )}
+
+              {importRecords.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-white font-semibold text-sm">{importRecords.filter(r => r._keep).length} selected</p>
+                    <button onClick={() => { setImportRecords([]); setImagePreview(null); setImageBase64(null); }} className="text-[#555] text-xs">Clear file</button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                     {importRecords.map(rec => (
-                      <div key={rec._idx} className={`rounded-xl p-3 border transition-opacity ${rec._keep ? 'bg-[#1a1a1a] border-[#333]' : 'bg-[#111] border-[#1a1a1a] opacity-40'}`}>
+                      <div key={rec._idx} className={`rounded-xl p-3 border transition-opacity ${rec._keep ? 'bg-[#1a1a1a] border-[#333]' : 'bg-[#111] border-[#1a1a1a] opacity-30'}`}>
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 text-xs">
                             {importType === 'fuel' ? (
                               <>
-                                <p className="text-white text-sm font-semibold">{rec.total_cost != null ? fmt(rec.total_cost) : '—'}</p>
-                                <p className="text-[#ccc] text-xs mt-0.5">{rec.gallons != null ? `${rec.gallons} gal` : ''}{rec.price_per_gallon != null ? ` @ $${rec.price_per_gallon}/gal` : ''}</p>
-                                <p className="text-[#555] text-xs mt-0.5">{rec.date || ''}{rec.odometer != null ? ` · ${rec.odometer.toLocaleString()} mi` : ''}</p>
-                                {rec.station && <p className="text-[#555] text-xs mt-0.5 truncate">{rec.station}</p>}
+                                <p className="text-white text-sm font-semibold font-mono">{rec.total_cost != null ? fmt(rec.total_cost) : '—'}</p>
+                                <p className="text-[#ccc] mt-0.5">{rec.gallons != null ? `${rec.gallons} gal` : ''}{rec.price_per_gallon != null ? ` @ $${rec.price_per_gallon}/gal` : ''}</p>
+                                <p className="text-[#555] mt-0.5">{rec.date || ''}{rec.odometer != null ? ` · ${rec.odometer.toLocaleString()} mi` : ''}</p>
                               </>
                             ) : (
                               <>
                                 <p className="text-white text-sm font-semibold">{rec.service_type}</p>
-                                <p className="text-[#ccc] text-xs mt-0.5">{rec.date || ''}{rec.mileage != null ? ` · ${rec.mileage.toLocaleString()} mi` : ''}{rec.cost != null ? ` · ${fmt(rec.cost)}` : ''}</p>
-                                {rec.shop && <p className="text-[#555] text-xs mt-0.5 truncate">{rec.shop}</p>}
-                                {rec.notes && <p className="text-[#555] text-xs mt-0.5 truncate">{rec.notes}</p>}
+                                <p className="text-[#ccc] mt-0.5">{rec.date || ''}{rec.mileage != null ? ` · ${rec.mileage.toLocaleString()} mi` : ''}{rec.cost != null ? ` · ${fmt(rec.cost)}` : ''}</p>
                               </>
                             )}
                           </div>
                           <button
                             onClick={() => setImportRecords(recs => recs.map(r => r._idx === rec._idx ? { ...r, _keep: !r._keep } : r))}
-                            className={`text-xs font-semibold shrink-0 px-2 py-1 rounded-lg ${rec._keep ? 'text-[#ef4444] bg-[#ef4444]/10' : 'text-[#22c55e] bg-[#22c55e]/10'}`}
+                            className={`text-[10px] font-bold tracking-wider uppercase shrink-0 px-2 py-1 rounded-md ${rec._keep ? 'text-[#ef4444] bg-[#ef4444]/10' : 'text-[#22c55e] bg-[#22c55e]/10'}`}
                           >
-                            {rec._keep ? 'Remove' : 'Add'}
+                            {rec._keep ? 'Skip' : 'Include'}
                           </button>
                         </div>
                       </div>
                     ))}
-                    <button onClick={saveImported} disabled={importSaving || importRecords.filter(r => r._keep).length === 0}
-                      className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3 disabled:opacity-50">
-                      {importSaving ? 'Saving...' : `Save ${importRecords.filter(r => r._keep).length} Record${importRecords.filter(r => r._keep).length !== 1 ? 's' : ''}`}
-                    </button>
                   </div>
-                )}
-              </div>
+                  <button onClick={saveImported} disabled={importSaving || importRecords.filter(r => r._keep).length === 0}
+                    className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-50">
+                    {importSaving ? 'Committing records up...' : `Ingest ${importRecords.filter(r => r._keep).length} Parsed Records`}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Delete fuel confirm */}
-        {deleteFuelId && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5">
-              <p className="text-white font-semibold text-center mb-1">Delete Fill-Up?</p>
-              <p className="text-[#888] text-sm text-center mb-4">This cannot be undone</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteFuelId(null)} className="flex-1 py-3 rounded-xl bg-[#222] text-white text-sm font-medium">Cancel</button>
-                <button onClick={() => deleteFuel(deleteFuelId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium">Delete</button>
-              </div>
+      {/* Delete fuel confirmation bottom sheet sheet */}
+      {deleteFuelId && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
+            <p className="text-white font-semibold text-center mb-1">Delete Fuel Log Entry?</p>
+            <p className="text-[#888] text-xs text-center mb-4">This action resets the historical calculations basis</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteFuelId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-medium">Keep</button>
+              <button onClick={() => deleteFuel(deleteFuelId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium">Delete record</button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Delete maintenance confirm */}
-        {deleteMaintId && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5">
-              <p className="text-white font-semibold text-center mb-1">Delete Service Record?</p>
-              <p className="text-[#888] text-sm text-center mb-4">This cannot be undone</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteMaintId(null)} className="flex-1 py-3 rounded-xl bg-[#222] text-white text-sm font-medium">Cancel</button>
-                <button onClick={() => deleteMaint(deleteMaintId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium">Delete</button>
-              </div>
+      {/* Delete maintenance confirmation layout item sheet */}
+      {deleteMaintId && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
+            <p className="text-white font-semibold text-center mb-1">Delete Service Record?</p>
+            <p className="text-[#888] text-xs text-center mb-4">This permanent change resets your vehicle service timeline</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteMaintId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-medium">Keep</button>
+              <button onClick={() => deleteMaint(deleteMaintId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium">Delete record</button>
             </div>
           </div>
-        )}
-
-      </div>
-    </PullToRefresh>
+        </div>
+      )}
+    </>
   );
 }
