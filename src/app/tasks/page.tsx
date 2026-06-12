@@ -5,8 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import EditTaskModal from '@/components/EditTaskModal';
 import {
-  ArrowLeft, Plus, Check, ChevronDown,
-  X, Clock, Eye, EyeOff, List, CheckSquare,
+  ArrowLeft, Check, ChevronDown,
+  X, Clock, Eye, EyeOff, List, CheckSquare, Plus
 } from 'lucide-react';
 
 interface GoogleTask {
@@ -147,24 +147,30 @@ export default function TasksPage() {
               </button>
               <button
                 onClick={() => setShowListPicker(!showListPicker)}
-                className="flex items-center gap-1.5 flex-1 min-w-0"
+                className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
               >
                 <h1 className="text-xl font-semibold truncate">
                   {loadingLists ? 'Tasks' : (activeList?.title || 'Tasks')}
                 </h1>
                 <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${showListPicker ? 'rotate-180' : ''}`} />
               </button>
+              
               <button
                 onClick={() => setShowCompleted(!showCompleted)}
                 className={`p-2 rounded-full transition-colors ${showCompleted ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground'}`}
               >
                 {showCompleted ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </button>
+
+              {/* Refactored inline amber header link button */}
               <button
-                onClick={() => setShowAddTask(true)}
-                className="bg-primary text-primary-foreground rounded-full p-2"
+                onClick={() => {
+                  navigator.vibrate && navigator.vibrate(8);
+                  setShowAddTask(true);
+                }}
+                className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
               >
-                <Plus className="w-5 h-5" />
+                Add Task
               </button>
             </div>
             {!loadingLists && activeList && (
@@ -239,7 +245,7 @@ export default function TasksPage() {
                 <p className="text-muted-foreground">
                   {showCompleted ? 'No tasks' : 'Nothing pending'}
                 </p>
-                <p className="text-xs text-muted-foreground/60 mt-1">Tap + to add a task</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Tap Add Task to add a task</p>
               </div>
             ) : (
               displayedTasks.map(task => {
@@ -355,31 +361,32 @@ export default function TasksPage() {
             )}
           </div>
 
-          {/* Add Task Sheet */}
-          {showAddTask && activeListId && (
-            <AddTaskSheet
-              listId={activeListId}
-              onClose={() => setShowAddTask(false)}
-              onSave={() => { setShowAddTask(false); fetchTasks(); }}
-            />
-          )}
-
-          {/* Edit Task Modal */}
-          {editingTask && activeListId && (
-            <EditTaskModal
-              task={editingTask}
-              taskListId={activeListId}
-              onClose={() => setEditingTask(null)}
-              onSaved={(updated) => {
-                setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
-                setEditingTask(null);
-                fetchTasks();
-              }}
-            />
-          )}
-
         </div>
       </PullToRefresh>
+
+      {/* Viewport-fixed elements mounted cleanly outside PullToRefresh layout bounds */}
+      {/* Add Task Sheet */}
+      {showAddTask && activeListId && (
+        <AddTaskSheet
+          listId={activeListId}
+          onClose={() => setShowAddTask(false)}
+          onSave={() => { setShowAddTask(false); fetchTasks(); }}
+        />
+      )}
+
+      {/* Edit Task Modal */}
+      {editingTask && activeListId && (
+        <EditTaskModal
+          task={editingTask}
+          taskListId={activeListId}
+          onClose={() => setEditingTask(null)}
+          onSaved={(updated) => {
+            setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+            setEditingTask(null);
+            fetchTasks();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -437,9 +444,9 @@ function AddTaskSheet({ listId, onClose, onSave }: {
         <div className="w-10 h-1 bg-muted-foreground/20 rounded-full mx-auto mt-3" />
         <div className="px-4 pt-4 pb-8">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-semibold">New Task</h2>
+            <h2 className="text-lg font-semibold text-white">New Task</h2>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-muted">
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5 text-white" />
             </button>
           </div>
           <div className="space-y-4">
@@ -448,7 +455,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="Task title"
-              className="w-full bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+              className="w-full bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary text-white"
               autoFocus
             />
             <div>
@@ -458,7 +465,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Add details..."
                 rows={3}
-                className="w-full mt-1.5 bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary resize-none"
+                className="w-full mt-1.5 bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary resize-none text-white"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -468,7 +475,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
                   type="date"
                   value={dueDate}
                   onChange={e => setDueDate(e.target.value)}
-                  className="w-full mt-1.5 bg-muted rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full mt-1.5 bg-muted rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary text-white"
                 />
               </div>
               <div>
@@ -477,7 +484,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
                   type="time"
                   value={dueTime}
                   onChange={e => setDueTime(e.target.value)}
-                  className="w-full mt-1.5 bg-muted rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full mt-1.5 bg-muted rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary text-white"
                 />
               </div>
             </div>
@@ -492,7 +499,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
                       value={s}
                       onChange={e => updateSubtask(i, e.target.value)}
                       placeholder={`Subtask ${i + 1}`}
-                      className="flex-1 bg-muted rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+                      className="flex-1 bg-muted rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary text-white"
                     />
                     <button onClick={() => removeSubtask(i)} className="p-1 text-muted-foreground hover:text-destructive">
                       <X className="w-4 h-4" />
@@ -511,7 +518,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
             <button
               onClick={handleSave}
               disabled={!title.trim() || saving}
-              className="w-full bg-primary text-primary-foreground rounded-xl py-3.5 text-sm font-semibold disabled:opacity-50"
+              className="w-full bg-[#f0a050] text-black rounded-xl py-3.5 text-sm font-semibold disabled:opacity-50"
             >
               {saving ? 'Adding…' : 'Add Task'}
             </button>
