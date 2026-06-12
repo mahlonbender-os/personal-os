@@ -403,7 +403,7 @@ export default function GoalsPage() {
       <PullToRefresh onRefresh={refreshAll}>
         <div className="pb-24">
 
-          {/* ── Sticky header with + button for both tabs ── */}
+          {/* ── Sticky header with premium inline header action button ── */}
           <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
@@ -415,15 +415,16 @@ export default function GoalsPage() {
                   <p className="text-[10px] text-[#555] mt-0.5">{habitsCompletedToday}/{habits.length} done today</p>
                 )}
               </div>
-              {/* Context-aware + button — Goals tab opens Goals modal, Habits tab opens Habits modal */}
+              
+              {/* Aligned with Knox and Investments headers */}
               <button
                 onClick={() => {
                   navigator.vibrate && navigator.vibrate(8);
                   activeTab === 0 ? setShowAddGoal(true) : setShowAddHabit(true);
                 }}
-                className="w-9 h-9 rounded-full bg-[#f0a050] text-black flex items-center justify-center text-xl font-light"
+                className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
               >
-                +
+                {activeTab === 0 ? 'Add Goal' : 'Add Habit'}
               </button>
             </div>
 
@@ -465,7 +466,7 @@ export default function GoalsPage() {
                 <div className="text-center py-16">
                   <div className="text-4xl mb-3">🎯</div>
                   <p className="text-[#555] text-sm">No goals yet</p>
-                  <p className="text-[#333] text-xs mt-1">Tap + to set a goal</p>
+                  <p className="text-[#333] text-xs mt-1">Tap Add Goal to set a goal</p>
                 </div>
               ) : (
                 goals.map(goal => {
@@ -516,7 +517,7 @@ export default function GoalsPage() {
                 <div className="text-center py-16">
                   <div className="text-4xl mb-3">🔥</div>
                   <p className="text-[#555] text-sm">No habits yet</p>
-                  <p className="text-[#333] text-xs mt-1">Tap + to add a habit</p>
+                  <p className="text-[#333] text-xs mt-1">Tap Add Habit to add a habit</p>
                 </div>
               ) : (
                 habits.map(habit => (
@@ -554,8 +555,6 @@ export default function GoalsPage() {
 
         </div>
       </PullToRefresh>
-
-      {/* ── No FAB for Habits — button is in the sticky header above ── */}
 
       <BottomNav active="goals" />
 
