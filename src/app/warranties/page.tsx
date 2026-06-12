@@ -162,53 +162,59 @@ export default function WarrantiesPage() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden select-none">
-      
-      {/* HEADER SECTION - Static Top Lock */}
-      <div className="flex-shrink-0 bg-black pt-14 z-30">
-        <div className="px-4 pb-2 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight font-display text-white">Warranties</h1>
-            <p className="text-xs text-[#555] mt-0.5">Asset structural parameters & coverage profiles</p>
+    <>
+      <PullToRefresh onRefresh={handleRefresh}>
+        <div className="min-h-screen bg-black text-white pb-24">
+          
+          {/* Sticky context header row perfectly matching Knox and Investments template */}
+          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+            <div className="flex items-center justify-between px-4 pt-14 pb-3">
+              <div>
+                <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
+                  Warranties
+                </h1>
+                <p className="text-[10px] text-[#555] mt-0.5">
+                  Asset Structural Parameters & Coverage Profiles
+                </p>
+              </div>
+
+              {/* Standardised inline amber header text button layout */}
+              <button
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8);
+                  openAddModal();
+                }}
+                className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+              >
+                Add Asset
+              </button>
+            </div>
+
+            {/* Sticky Sub-tab Bar switcher row */}
+            <div className="flex border-t border-[#1a1a1a]">
+              {TABS.map((tab, i) => (
+                <button
+                  key={tab}
+                  onClick={() => {
+                    setActiveTab(i);
+                    if (navigator.vibrate) navigator.vibrate(8);
+                  }}
+                  className={`flex-1 py-3 text-xs font-semibold transition-colors ${
+                    activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
           </div>
-          <button
-            onClick={openAddModal}
-            className="text-[#f0a050] p-2 hover:opacity-80 active:scale-95 transition-transform"
-            aria-label="Add Coverage Item"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        </div>
 
-        {/* Sticky Sub-tab Row */}
-        <div className="flex border-b border-[#1a1a1a] bg-black">
-          {TABS.map((tab, i) => (
-            <button
-              key={tab}
-              onClick={() => {
-                setActiveTab(i);
-                if (navigator.vibrate) navigator.vibrate(8);
-              }}
-              className={`flex-1 py-4 text-xs font-semibold transition-colors ${
-                activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* INDEPENDENT INNER SCROLL VIEWPORT CONTAINER */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-28 scrollbar-hide">
-        <PullToRefresh onRefresh={handleRefresh}>
-          <div className="space-y-3">
+          {/* Warranty coverage loops */}
+          <div className="px-4 pt-4 space-y-3">
             {loading && warranties.length === 0 ? (
-              <div className="text-center py-12 text-[#555] text-sm font-medium">Loading warranty indexes...</div>
+              <div className="text-center py-12 text-[#555] text-sm font-mono">Loading warranty indexes...</div>
             ) : filteredWarranties.length === 0 ? (
-              <div className="text-center py-12 text-[#555] text-sm">No recorded coverage instances found.</div>
+              <div className="text-center py-12 text-[#555] text-sm font-mono">No recorded coverage instances found.</div>
             ) : (
               filteredWarranties.map((w) => {
                 const status = getExpirationStatus(w.expiration_date);
@@ -246,8 +252,15 @@ export default function WarrantiesPage() {
               })
             )}
           </div>
-        </PullToRefresh>
-      </div>
+
+        </div>
+      </PullToRefresh>
+
+      <BottomNav active="more" />
+
+      {/* ═══════════════════════════════════════════════════════════════
+          VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
+      ═══════════════════════════════════════════════════════════════ */}
 
       {/* Modal Configuration Sheet */}
       {isModalOpen && (
@@ -287,7 +300,7 @@ export default function WarrantiesPage() {
                     onChange={(e) => setVendor(e.target.value)}
                     placeholder="e.g. Best Buy"
                     className="w-full bg-[#2c2c2e] border border-[#3a3a3c] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
-                />
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#ccc] uppercase tracking-wider mb-1">Purchase Cost</label>
@@ -403,9 +416,6 @@ export default function WarrantiesPage() {
           </div>
         </div>
       )}
-
-      {/* FIXED BOTTOM NAVIGATION */}
-      <BottomNav active="more" />
-    </div>
+    </>
   );
 }
