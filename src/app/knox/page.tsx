@@ -41,21 +41,28 @@ function dateColor(d: string) {
 
 export default function KnoxPage() {
   const [activeTab, setActiveTab] = useState(0);
+  
+  // Universal Interactive Expansion States
+  const [expandedWeight, setExpandedWeight] = useState<Set<string>>(new Set());
+  const [expandedVet, setExpandedVet] = useState<Set<string>>(new Set());
+  const [expandedMed, setExpandedMed] = useState<Set<string>>(new Set());
 
-  // Weight
+  // Weight Log Parameters
   const [weights, setWeights] = useState<any[]>([]);
   const [weightLoading, setWeightLoading] = useState(true);
   const [showAddWeight, setShowAddWeight] = useState(false);
+  const [editWeightEntry, setEditWeightEntry] = useState<any | null>(null);
   const [wDate, setWDate] = useState('');
   const [wLbs, setWLbs] = useState('');
   const [wNotes, setWNotes] = useState('');
   const [weightSaving, setWeightSaving] = useState(false);
   const [deleteWeightId, setDeleteWeightId] = useState<string | null>(null);
 
-  // Vet
+  // Veterinary Appointment Parameters
   const [vetVisits, setVetVisits] = useState<any[]>([]);
   const [vetLoading, setVetLoading] = useState(true);
   const [showAddVet, setShowAddVet] = useState(false);
+  const [editVetEntry, setEditVetEntry] = useState<any | null>(null);
   const [vDate, setVDate] = useState('');
   const [vType, setVType] = useState('');
   const [vVet, setVVet] = useState('VCA Sinking Spring');
@@ -66,7 +73,7 @@ export default function KnoxPage() {
   const [vetSaving, setVetSaving] = useState(false);
   const [deleteVetId, setDeleteVetId] = useState<string | null>(null);
 
-  // Meds
+  // Medications Logistics
   const [meds, setMeds] = useState<any[]>([]);
   const [medsLoading, setMedsLoading] = useState(true);
   const [showAddMed, setShowAddMed] = useState(false);
@@ -149,53 +156,83 @@ export default function KnoxPage() {
     if (!wDate || !wLbs) return;
     setWeightSaving(true);
     try {
-      const res = await fetch('/api/knox/weight', {
-        method: 'POST',
+      const body = { log_date: wDate, weight_lbs: parseFloat(wLbs), notes: wNotes.trim() || null };
+      const url = editWeightEntry ? `/api/knox/weight/${editWeightEntry.id}` : '/api/knox/weight';
+      const res = await fetch(url, {
+        method: editWeightEntry ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ log_date: wDate, weight_lbs: parseFloat(wLbs), notes: wNotes }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         setShowAddWeight(false);
+        setEditWeightEntry(null);
         setWDate(''); setWLbs(''); setWNotes('');
-        fetchWeights();
+        await fetchWeights();
+      } else {
+        const txt = await res.text();
+        alert(`Failed to save weight telemetry: ${txt || res.statusText}`);
       }
+    } catch (err: any) {
+      alert(`Network error saving weight data: ${err.message}`);
     } finally { setWeightSaving(false); }
   }
 
   async function deleteWeight(id: string) {
-    await fetch(`/api/knox/weight/${id}`, { method: 'DELETE' });
-    setDeleteWeightId(null);
-    fetchWeights();
+    try {
+      const res = await fetch(`/api/knox/weight/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteWeightId(null);
+        const next = new Set(expandedWeight);
+        next.delete(id);
+        setExpandedWeight(next);
+        await fetchWeights();
+      }
+    } catch {}
   }
 
   async function saveVet() {
     if (!vDate || !vType) return;
     setVetSaving(true);
     try {
-      const res = await fetch('/api/knox/vet-visits', {
-        method: 'POST',
+      const body = {
+        date: vDate, visit_type: vType.trim(), vet_name: vVet.trim() || 'VCA Sinking Spring',
+        cost: vCost ? parseFloat(vCost) : null,
+        notes: vNotes.trim() || null,
+        next_visit_date: vNextDate || null,
+        next_visit_time: vNextTime || null,
+      };
+      const url = editVetEntry ? `/api/knox/vet-visits/${editVetEntry.id}` : '/api/knox/vet-visits';
+      const res = await fetch(url, {
+        method: editVetEntry ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: vDate, visit_type: vType, vet_name: vVet,
-          cost: vCost ? parseFloat(vCost) : null,
-          notes: vNotes,
-          next_visit_date: vNextDate || null,
-          next_visit_time: vNextTime || null,
-        }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         setShowAddVet(false);
+        setEditVetEntry(null);
         setVDate(''); setVType(''); setVVet('VCA Sinking Spring');
         setVCost(''); setVNotes(''); setVNextDate(''); setVNextTime('');
-        fetchVets();
+        await fetchVets();
+      } else {
+        const txt = await res.text();
+        alert(`Failed to save vet visit data: ${txt || res.statusText}`);
       }
+    } catch (err: any) {
+      alert(`Network error saving clinic metrics: ${err.message}`);
     } finally { setVetSaving(false); }
   }
 
   async function deleteVet(id: string) {
-    await fetch(`/api/knox/vet-visits/${id}`, { method: 'DELETE' });
-    setDeleteVetId(null);
-    fetchVets();
+    try {
+      const res = await fetch(`/api/knox/vet-visits/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteVetId(null);
+        const next = new Set(expandedVet);
+        next.delete(id);
+        setExpandedVet(next);
+        await fetchVets();
+      }
+    } catch {}
   }
 
   function openEditMed(med: any) {
@@ -220,15 +257,15 @@ export default function KnoxPage() {
   }
 
   async function saveMed() {
-    if (!mName) return;
+    if (!mName.trim()) return;
     setMedSaving(true);
     try {
       const body = {
-        medication_name: mName, medication_type: mType || null,
-        dosage: mDosage || null, frequency: mFreq || null,
+        medication_name: mName.trim(), medication_type: mType || null,
+        dosage: mDosage.trim() || null, frequency: mFreq || null,
         cost_per_dose: mCost ? parseFloat(mCost) : null,
         next_due_date: mNextDue || null, last_given_date: mLastGiven || null,
-        is_active: mActive, notes: mNotes || null,
+        is_active: mActive, notes: mNotes.trim() || null,
       };
       const url = editMed ? `/api/knox/medications/${editMed.id}` : '/api/knox/medications';
       const res = await fetch(url, {
@@ -236,14 +273,36 @@ export default function KnoxPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (res.ok) { setShowAddMed(false); setEditMed(null); fetchMeds(); }
+      if (res.ok) { 
+        setShowAddMed(false); 
+        setEditMed(null); 
+        // Remove from expansion maps just in case
+        if (editMed) {
+          const next = new Set(expandedMed);
+          next.delete(editMed.id);
+          setExpandedMed(next);
+        }
+        await fetchMeds(); 
+      } else {
+        const txt = await res.text();
+        alert(`Failed to commit medication parameters: ${txt || res.statusText}`);
+      }
+    } catch (err: any) {
+      alert(`Network connection failed: ${err.message}`);
     } finally { setMedSaving(false); }
   }
 
   async function deleteMed(id: string) {
-    await fetch(`/api/knox/medications/${id}`, { method: 'DELETE' });
-    setDeleteMedId(null);
-    fetchMeds();
+    try {
+      const res = await fetch(`/api/knox/medications/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteMedId(null);
+        const next = new Set(expandedMed);
+        next.delete(id);
+        setExpandedMed(next);
+        await fetchMeds();
+      }
+    } catch {}
   }
 
   return (
@@ -261,7 +320,7 @@ export default function KnoxPage() {
           </div>
         </div>
 
-        {/* Tab bar */}
+        {/* Tab bar bar container */}
         <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
           {TABS.map((tab, i) => (
             <button
@@ -274,11 +333,11 @@ export default function KnoxPage() {
           ))}
         </div>
 
-        {/* ─── OVERVIEW TAB ─── */}
+        {/* ─── OVERVIEW TAB (WEIGHTS ACCORDION GRID) ─── */}
         {activeTab === 0 && (
           <div className="px-4 pt-4 space-y-3">
 
-            {/* Stats row */}
+            {/* Telemetry quick overview parameters metrics row */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                 <p className="text-[#555] text-xs mb-1">Current Weight</p>
@@ -295,11 +354,11 @@ export default function KnoxPage() {
                 <p className="text-[#555] text-xs mb-1">Next Vet</p>
                 {nextVet?.next_visit_date ? (
                   <>
-                    <p className="text-white text-sm font-semibold">{fmtDate(nextVet.next_visit_date)}</p>
+                    <p className="text-white text-sm font-semibold truncate">{fmtDate(nextVet.next_visit_date)}</p>
                     {nextVet.next_visit_time && (
                       <p className="text-[#f0a050] text-xs mt-0.5">{fmtTime(nextVet.next_visit_time)}</p>
                     )}
-                    <p className="text-xs mt-1" style={{ color: dateColor(nextVet.next_visit_date) }}>
+                    <p className="text-xs mt-1 font-mono" style={{ color: dateColor(nextVet.next_visit_date) }}>
                       {(() => {
                         const d = daysUntil(nextVet.next_visit_date);
                         return d < 0 ? `${Math.abs(d)}d overdue` : d === 0 ? 'Today' : `${d}d away`;
@@ -310,23 +369,23 @@ export default function KnoxPage() {
               </div>
             </div>
 
-            {/* Upcoming meds */}
+            {/* Active scheduled meds preview element block */}
             {upcomingMeds.length > 0 && (
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-[#555] text-xs mb-3">Upcoming Medications</p>
-                <div className="space-y-2">
+                <p className="text-[#555] text-xs mb-3 font-mono uppercase tracking-wider">Upcoming Medications</p>
+                <div className="space-y-2.5">
                   {upcomingMeds.slice(0, 3).map(med => {
                     const color = dateColor(med.next_due_date);
                     const days = daysUntil(med.next_due_date);
                     return (
-                      <div key={med.id} className="flex items-center justify-between">
+                      <div key={med.id} className="flex items-center justify-between py-0.5 last:border-0">
                         <div>
                           <p className="text-white text-sm font-medium">{med.medication_name}</p>
-                          {med.medication_type && <p className="text-[#555] text-xs">{med.medication_type}</p>}
+                          {med.medication_type && <p className="text-[#555] text-xs mt-0.5">{med.medication_type}</p>}
                         </div>
                         <div className="text-right">
-                          <p className="text-xs font-mono" style={{ color }}>{fmtDate(med.next_due_date)}</p>
-                          <p className="text-xs" style={{ color }}>{days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}</p>
+                          <p className="text-xs font-mono font-semibold" style={{ color }}>{fmtDate(med.next_due_date)}</p>
+                          <p className="text-[10px] uppercase font-bold" style={{ color }}>{days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}</p>
                         </div>
                       </div>
                     );
@@ -335,172 +394,376 @@ export default function KnoxPage() {
               </div>
             )}
 
-            {/* Weight log card — button lives in the card header */}
+            {/* Premium Expandable Weight Log Cards Container layout wrapper */}
             <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-white text-sm font-semibold">Weight Log</p>
+                <p className="text-white text-sm font-semibold">Weight Log History</p>
                 <button
-                  onClick={() => { setShowAddWeight(true); setWDate(new Date().toISOString().split('T')[0]); }}
-                  className="text-[#f0a050] text-xs font-semibold"
+                  onClick={() => {
+                    setEditWeightEntry(null);
+                    setWDate(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }));
+                    setWLbs('');
+                    setWNotes('');
+                    setShowAddWeight(true);
+                  }}
+                  className="text-[#f0a050] text-xs font-semibold px-1.5 py-0.5"
                 >
-                  + Log
+                  + Log Weight
                 </button>
               </div>
               {weightLoading && weights.length === 0 ? (
-                <p className="text-[#555] text-sm">Loading...</p>
+                <p className="text-[#555] text-sm font-mono">Loading data lines...</p>
               ) : weights.length === 0 ? (
-                <p className="text-[#555] text-sm">No entries yet</p>
+                <p className="text-[#555] text-sm italic">No entries logged yet.</p>
               ) : (
-                <div className="space-y-3">
-                  {weights.map((w, i) => (
-                    <div key={w.id} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-white text-sm font-mono font-semibold">{w.weight_lbs} lbs</p>
-                        {w.notes && <p className="text-[#555] text-xs">{w.notes}</p>}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <p className="text-[#888] text-xs">{fmtDate(w.log_date)}</p>
-                        {i < weights.length - 1 && (
-                          <p className="text-xs font-mono" style={{ color: w.weight_lbs > weights[i + 1]?.weight_lbs ? '#22c55e' : '#f0a050' }}>
-                            +{(w.weight_lbs - weights[i + 1]?.weight_lbs).toFixed(1)}
-                          </p>
+                <div className="space-y-2">
+                  {weights.map((w, i) => {
+                    const expanded = expandedWeight.has(w.id);
+                    return (
+                      <div key={w.id} className="bg-black/30 border border-[#1a1a1a]/40 rounded-xl overflow-hidden">
+                        <div 
+                          onClick={() => {
+                            const next = new Set(expandedWeight);
+                            expanded ? next.delete(w.id) : next.add(w.id);
+                            setExpandedWeight(next);
+                          }}
+                          className="p-3 flex items-center justify-between cursor-pointer active:bg-black/10"
+                        >
+                          <div>
+                            <p className="text-white text-sm font-mono font-semibold">{w.weight_lbs} lbs</p>
+                            <p className="text-[#555] text-[11px] mt-0.5 font-mono">{fmtDate(w.log_date)}</p>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-2">
+                            {i < weights.length - 1 && (
+                              <p className="text-xs font-mono font-bold" style={{ color: w.weight_lbs > weights[i + 1]?.weight_lbs ? '#22c55e' : '#f0a050' }}>
+                                {w.weight_lbs > weights[i + 1]?.weight_lbs ? '+' : ''}{(w.weight_lbs - weights[i + 1]?.weight_lbs).toFixed(1)} lbs
+                              </p>
+                            )}
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                              style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                              <path d="M6 9l6 6 6-6" />
+                            </svg>
+                          </div>
+                        </div>
+                        {expanded && (
+                          <div className="px-3 pb-3 pt-2 border-t border-[#1a1a1a]/60 bg-black/20 space-y-2">
+                            {w.notes ? (
+                              <p className="text-[#ccc] text-xs bg-black/40 p-2 rounded-lg whitespace-pre-wrap font-sans">{w.notes}</p>
+                            ) : (
+                              <p className="text-[#444] text-[11px] italic font-sans px-1">No notes logged for this snapshot entry.</p>
+                            )}
+                            <div className="flex items-center gap-4 pt-1">
+                              <button
+                                onClick={() => {
+                                  setEditWeightEntry(w);
+                                  setWDate(w.log_date || '');
+                                  setWLbs(String(w.weight_lbs));
+                                  setWNotes(w.notes || '');
+                                  setShowAddWeight(true);
+                                }}
+                                className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                              >
+                                Edit entry
+                              </button>
+                              <button 
+                                onClick={() => setDeleteWeightId(w.id)}
+                                className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
+                              >
+                                Delete entry
+                              </button>
+                            </div>
+                          </div>
                         )}
-                        <button onClick={() => setDeleteWeightId(w.id)} className="text-[#333] text-xs p-1">✕</button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* ─── VET VISITS TAB ─── */}
+        {/* ─── VET VISITS TAB (ACCORDION REFACTOR) ─── */}
         {activeTab === 1 && (
           <div className="px-4 pt-4 space-y-3">
-            {/* Tab header row with button */}
-            <div className="flex items-center justify-between">
-              <p className="text-white font-semibold">Vet Visits</p>
+            {/* Header section link controls */}
+            <div className="flex items-center justify-between pb-1">
+              <p className="text-white font-semibold">Clinical Records</p>
               <button
-                onClick={() => { setShowAddVet(true); setVDate(new Date().toISOString().split('T')[0]); }}
-                className="text-[#f0a050] text-sm font-semibold"
+                onClick={() => {
+                  setEditVetEntry(null);
+                  setVDate(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }));
+                  setVType('');
+                  setVVet('VCA Sinking Spring');
+                  setVCost('');
+                  setVNotes('');
+                  setVNextDate('');
+                  setVNextTime('');
+                  setShowAddVet(true);
+                }}
+                className="text-sm font-semibold text-[#f0a050] px-1 py-0.5"
               >
-                + Visit
+                + Log Visit
               </button>
             </div>
+
             {vetLoading && vetVisits.length === 0 ? (
-              <p className="text-[#555] text-sm px-1">Loading...</p>
+              <p className="text-[#555] text-sm font-mono px-1">Loading clinical maps...</p>
             ) : vetVisits.length === 0 ? (
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
-                <p className="text-[#555] text-sm">No vet visits yet</p>
+                <p className="text-[#555] text-sm">No vet visits logged yet</p>
               </div>
             ) : (
-              vetVisits.map(v => (
-                <div key={v.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <div className="flex items-start justify-between mb-1">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-semibold">{v.visit_type}</p>
-                      <p className="text-[#888] text-xs">{v.vet_name} · {fmtDate(v.date)}</p>
+              vetVisits.map(v => {
+                const expanded = expandedVet.has(v.id);
+                return (
+                  <div key={v.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                    {/* Expandable row header logic container */}
+                    <div
+                      onClick={() => {
+                        const next = new Set(expandedVet);
+                        expanded ? next.delete(v.id) : next.add(v.id);
+                        setExpandedVet(next);
+                      }}
+                      className="p-4 flex items-center justify-between cursor-pointer active:bg-[#161616]"
+                    >
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className="text-white text-sm font-semibold truncate">{v.visit_type}</p>
+                        <p className="text-[#555] text-xs mt-0.5 font-mono">{fmtDate(v.date)} · {v.vet_name}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 ml-2">
+                        {v.cost != null && (
+                          <p className="text-[#f0a050] text-xs font-mono font-semibold">${parseFloat(v.cost).toFixed(2)}</p>
+                        )}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                          style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 ml-3">
-                      {v.cost != null && (
-                        <p className="text-[#f0a050] text-xs font-mono">${parseFloat(v.cost).toFixed(2)}</p>
-                      )}
-                      <button onClick={() => setDeleteVetId(v.id)} className="text-[#333] text-xs p-1">✕</button>
-                    </div>
+
+                    {/* Expandable detailed inner dashboard telemetry content */}
+                    {expanded && (
+                      <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] bg-black/20 space-y-3">
+                        {v.notes && (
+                          <div>
+                            <span className="text-[#555] block uppercase font-mono text-[9px] tracking-wider mb-0.5">Clinical Diagnoses & Notes</span>
+                            <p className="text-[#ccc] text-xs bg-black/40 p-2.5 rounded-xl whitespace-pre-line font-sans leading-relaxed">{v.notes}</p>
+                          </div>
+                        )}
+                        
+                        {v.next_visit_date && (
+                          <div className="pt-1 font-mono text-xs">
+                            <span className="text-[#555] block uppercase text-[9px] tracking-wider mb-0.5">Next Planned Appointment</span>
+                            <p style={{ color: dateColor(v.next_visit_date) }} className="font-bold">
+                              {fmtDate(v.next_visit_date)}
+                              {v.next_visit_time ? ` at ${fmtTime(v.next_visit_time)}` : ''} · {(() => {
+                                const d = daysUntil(v.next_visit_date);
+                                return d < 0 ? `${Math.abs(d)}d overdue` : d === 0 ? 'Today' : `${d}d away`;
+                              })()}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-4 pt-1">
+                          <button
+                            onClick={() => {
+                              setEditVetEntry(v);
+                              setVDate(v.date || '');
+                              setVType(v.visit_type || '');
+                              setVVet(v.vet_name || 'VCA Sinking Spring');
+                              setVCost(v.cost ? String(v.cost) : '');
+                              setVNotes(v.notes || '');
+                              setVNextDate(v.next_visit_date || '');
+                              setVNextTime(v.next_visit_time || '');
+                              setShowAddVet(true);
+                            }}
+                            className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                          >
+                            Edit visit
+                          </button>
+                          <button
+                            onClick={() => setDeleteVetId(v.id)}
+                            className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
+                          >
+                            Delete visit
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {v.notes && <p className="text-[#555] text-xs mt-2 whitespace-pre-line">{v.notes}</p>}
-                  {v.next_visit_date && (
-                    <div className="mt-2 pt-2 border-t border-[#1a1a1a]">
-                      <p className="text-xs" style={{ color: dateColor(v.next_visit_date) }}>
-                        Next: {fmtDate(v.next_visit_date)}
-                        {v.next_visit_time ? ` at ${fmtTime(v.next_visit_time)}` : ''} · {(() => {
-                          const d = daysUntil(v.next_visit_date);
-                          return d < 0 ? `${Math.abs(d)}d overdue` : d === 0 ? 'Today' : `${d}d away`;
-                        })()}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
 
-        {/* ─── MEDICATIONS TAB ─── */}
+        {/* ─── MEDICATIONS TAB (REFRACTORED LOOPS) ─── */}
         {activeTab === 2 && (
-          <div className="px-4 pt-4 space-y-3">
-            {/* Tab header row with button */}
+          <div className="px-4 pt-4 space-y-4">
+            {/* Header segment actions block */}
             <div className="flex items-center justify-between">
-              <p className="text-white font-semibold">Medications</p>
-              <button onClick={openAddMed} className="text-[#f0a050] text-sm font-semibold">+ Add</button>
+              <p className="text-white font-semibold">Prophylaxis & Treatments</p>
+              <button onClick={openAddMed} className="text-[#f0a050] text-sm font-semibold px-1 py-0.5">+ Add Med</button>
             </div>
+
             {medsLoading && meds.length === 0 ? (
-              <p className="text-[#555] text-sm px-1">Loading...</p>
+              <p className="text-[#555] text-sm font-mono px-1">Loading medical logs...</p>
             ) : meds.length === 0 ? (
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
-                <p className="text-[#555] text-sm">No medications added yet</p>
-                <p className="text-[#333] text-xs mt-1">Tap + to add heartworm, flea prevention, etc.</p>
+                <p className="text-[#555] text-sm">No medical records generated yet</p>
+                <p className="text-[#333] text-xs mt-1">Tap + Add Med to record flea treatments or supplements.</p>
               </div>
             ) : (
               <>
+                {/* Active medications loop tracking cards */}
                 {meds.filter(m => m.is_active).length > 0 && (
                   <div>
-                    <p className="text-[#555] text-xs font-semibold uppercase tracking-wider px-1 mb-2">Active</p>
+                    <p className="text-[#555] text-[10px] font-bold uppercase tracking-wider px-1 mb-2 font-mono">Active Protections</p>
                     <div className="space-y-2">
                       {meds.filter(m => m.is_active).map(med => {
+                        const expanded = expandedMed.has(med.id);
                         const color = med.next_due_date ? dateColor(med.next_due_date) : '#888';
                         const days = med.next_due_date ? daysUntil(med.next_due_date) : null;
                         return (
-                          <div key={med.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-white text-sm font-semibold">{med.medication_name}</p>
-                                <div className="flex flex-wrap gap-x-3 mt-1">
-                                  {med.medication_type && <p className="text-[#888] text-xs">{med.medication_type}</p>}
-                                  {med.dosage && <p className="text-[#888] text-xs">{med.dosage}</p>}
-                                  {med.frequency && <p className="text-[#888] text-xs">{med.frequency}</p>}
+                          <div key={med.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                            <div
+                              onClick={() => {
+                                const next = new Set(expandedMed);
+                                expanded ? next.delete(med.id) : next.add(med.id);
+                                setExpandedMed(next);
+                              }}
+                              className="p-4 flex items-center justify-between cursor-pointer active:bg-[#161616]"
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-white text-sm font-semibold truncate">{med.medication_name}</p>
+                                  {med.medication_type && (
+                                    <span className="text-[9px] bg-[#1c1c1e] text-[#f0a050] border border-[#1a1a1a]/60 px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider shrink-0">
+                                      {med.medication_type}
+                                    </span>
+                                  )}
                                 </div>
-                                {med.next_due_date && (
-                                  <p className="text-xs mt-2" style={{ color }}>
-                                    Next due: {fmtDate(med.next_due_date)}
-                                    {days !== null && ` · ${days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}`}
-                                  </p>
-                                )}
-                                {med.last_given_date && (
-                                  <p className="text-[#555] text-xs mt-0.5">Last given: {fmtDate(med.last_given_date)}</p>
-                                )}
-                                {med.notes && <p className="text-[#555] text-xs mt-1">{med.notes}</p>}
+                                <p className="text-[#555] text-xs mt-1 font-medium truncate">
+                                  {med.dosage ? med.dosage : 'No dosage specified'}{med.frequency ? ` · ${med.frequency}` : ''}
+                                </p>
                               </div>
-                              <div className="flex gap-2 ml-2">
-                                <button onClick={() => openEditMed(med)} className="text-[#f0a050] text-xs p-1">✏️</button>
-                                <button onClick={() => setDeleteMedId(med.id)} className="text-[#333] text-xs p-1">✕</button>
+                              <div className="flex items-center gap-3 shrink-0 ml-2">
+                                {med.next_due_date && (
+                                  <span style={{ color }} className="text-xs font-mono font-bold">
+                                    {days !== null && (days < 0 ? 'Overdue' : days === 0 ? 'Today' : `${days}d`)}
+                                  </span>
+                                )}
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                                  style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
                               </div>
                             </div>
+
+                            {/* Accordion dropdown contents context layout structure */}
+                            {expanded && (
+                              <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] bg-black/20 space-y-3">
+                                <div className="grid grid-cols-2 gap-2 text-xs font-mono text-[#555]">
+                                  {med.last_given_date && (
+                                    <div>
+                                      <span className="text-[9px] tracking-wider uppercase block text-[#444]">Last Administered</span>
+                                      <span className="text-[#ccc] font-bold">{fmtDate(med.last_given_date)}</span>
+                                    </div>
+                                  )}
+                                  {med.next_due_date && (
+                                    <div>
+                                      <span className="text-[9px] tracking-wider uppercase block text-[#444]">Next Operational Due</span>
+                                      <span style={{ color }} className="font-bold">{fmtDate(med.next_due_date)}</span>
+                                    </div>
+                                  )}
+                                  {med.cost_per_dose != null && (
+                                    <div className="col-span-2 pt-1 border-t border-[#1a1a1a]/30 mt-1">
+                                      <span className="text-[9px] tracking-wider uppercase block text-[#444]">Cost Assessment</span>
+                                      <span className="text-white font-bold">${parseFloat(med.cost_per_dose).toFixed(2)} / unit dose</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {med.notes && (
+                                  <div>
+                                    <span className="text-[#444] block uppercase font-mono text-[9px] tracking-wider mb-0.5">Administration Notes</span>
+                                    <p className="text-[#ccc] text-xs bg-black/40 p-2.5 rounded-xl font-sans leading-relaxed">{med.notes}</p>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-4 pt-1">
+                                  <button
+                                    onClick={() => openEditMed(med)}
+                                    className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    Edit medication
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteMedId(med.id)}
+                                    className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    Delete medication
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   </div>
                 )}
+
+                {/* Inactive medical items logs rendering panel */}
                 {meds.filter(m => !m.is_active).length > 0 && (
                   <div>
-                    <p className="text-[#555] text-xs font-semibold uppercase tracking-wider px-1 mb-2 mt-4">Inactive</p>
-                    <div className="space-y-2 opacity-50">
-                      {meds.filter(m => !m.is_active).map(med => (
-                        <div key={med.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-white text-sm">{med.medication_name}</p>
-                              {med.medication_type && <p className="text-[#555] text-xs">{med.medication_type}</p>}
+                    <p className="text-[#555] text-[10px] font-bold uppercase tracking-wider px-1 mb-2 font-mono mt-2">Dormant Logs</p>
+                    <div className="space-y-2 opacity-40">
+                      {meds.filter(m => !m.is_active).map(med => {
+                        const expanded = expandedMed.has(med.id);
+                        return (
+                          <div key={med.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                            <div
+                              onClick={() => {
+                                const next = new Set(expandedMed);
+                                expanded ? next.delete(med.id) : next.add(med.id);
+                                setExpandedMed(next);
+                              }}
+                              className="p-4 flex items-center justify-between cursor-pointer active:bg-[#161616]"
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <p className="text-white text-sm font-semibold truncate">{med.medication_name}</p>
+                                {med.medication_type && <p className="text-[#555] text-xs font-mono mt-0.5">{med.medication_type}</p>}
+                              </div>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                                style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                                <path d="M6 9l6 6 6-6" />
+                              </svg>
                             </div>
-                            <div className="flex gap-2">
-                              <button onClick={() => openEditMed(med)} className="text-[#f0a050] text-xs p-1">✏️</button>
-                              <button onClick={() => setDeleteMedId(med.id)} className="text-[#333] text-xs p-1">✕</button>
-                            </div>
+
+                            {expanded && (
+                              <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] bg-black/20 space-y-3">
+                                <p className="text-[#888] text-xs italic font-sans px-0.5">This medication sequence has been marked as inactive or completed.</p>
+                                <div className="flex items-center gap-4 pt-1">
+                                  <button
+                                    onClick={() => openEditMed(med)}
+                                    className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    Edit medication
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteMedId(med.id)}
+                                    className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    Delete medication
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -510,42 +773,38 @@ export default function KnoxPage() {
         )}
 
         {/* ═══════════════════════════════════════
-            MODALS
+            MODALS & VIEWPORT OVERLAYS SIBLINGS
         ═══════════════════════════════════════ */}
 
-        {/* Log Weight modal */}
+        {/* Log/Edit Weight popup configuration modal */}
         {showAddWeight && (
-          <div
-            className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4"
-            onClick={() => setShowAddWeight(false)}
-          >
-            <div
-              className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-5 border-b border-[#2a2a2a]">
-                <h2 className="text-white text-lg font-bold">Log Weight</h2>
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
+              <div className="p-5 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
+                <h2 className="text-white text-lg font-bold font-mono uppercase tracking-wide">
+                  {editWeightEntry ? 'Modify Weight Log' : 'Log Weight Parameter'}
+                </h2>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Date</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Date Entry *</label>
                   <input type="date" value={wDate} onChange={e => setWDate(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Weight (lbs)</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Weight Metrics (lbs) *</label>
                   <input type="number" step="0.1" value={wLbs} onChange={e => setWLbs(e.target.value)}
-                    placeholder="33.4" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    placeholder="33.4" className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Notes (optional)</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Log Annotations</label>
                   <input type="text" value={wNotes} onChange={e => setWNotes(e.target.value)}
-                    placeholder="e.g. 20 weeks" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    placeholder="e.g. Measured at morning exam" className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm focus:border-[#f0a050] outline-none" />
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button
-                    onClick={() => setShowAddWeight(false)}
-                    className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold"
+                    onClick={() => { setShowAddWeight(false); setEditWeightEntry(null); }}
+                    className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-[#555] text-sm font-semibold"
                   >
                     Cancel
                   </button>
@@ -554,7 +813,7 @@ export default function KnoxPage() {
                     disabled={weightSaving || !wDate || !wLbs}
                     className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-40"
                   >
-                    {weightSaving ? 'Saving...' : 'Save'}
+                    {weightSaving ? 'Saving...' : 'Save Log'}
                   </button>
                 </div>
               </div>
@@ -562,66 +821,62 @@ export default function KnoxPage() {
           </div>
         )}
 
-        {/* Log Vet Visit modal */}
+        {/* Log/Edit Vet Visit framework modal view */}
         {showAddVet && (
-          <div
-            className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4"
-            onClick={() => setShowAddVet(false)}
-          >
-            <div
-              className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-5 border-b border-[#2a2a2a]">
-                <h2 className="text-white text-lg font-bold">Log Vet Visit</h2>
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
+              <div className="p-5 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
+                <h2 className="text-white text-lg font-bold font-mono uppercase tracking-wide">
+                  {editVetEntry ? 'Modify Vet Session' : 'Log Vet Appointment'}
+                </h2>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Visit Date</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Visit Date *</label>
                   <input type="date" value={vDate} onChange={e => setVDate(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Visit Type</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Visit Classification / Reason *</label>
                   <input type="text" value={vType} onChange={e => setVType(e.target.value)}
-                    placeholder="e.g. Wellness Exam, Vaccines"
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    placeholder="e.g. Booster Vaccines Exam"
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Vet / Clinic</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Vet Clinic Location</label>
                   <input type="text" value={vVet} onChange={e => setVVet(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Cost</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Invoice Cost ($)</label>
                   <input type="number" step="0.01" value={vCost} onChange={e => setVCost(e.target.value)}
-                    placeholder="0.00" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    placeholder="0.00" className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Notes</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Clinical Observations Notes</label>
                   <textarea value={vNotes} onChange={e => setVNotes(e.target.value)} rows={3}
-                    placeholder="Vaccines given, observations..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm resize-none" />
+                    placeholder="Medications provided, weight recorded, timeline details..."
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm resize-none focus:border-[#f0a050] outline-none" />
                 </div>
-                <div className="border-t border-[#2a2a2a] pt-3">
-                  <p className="text-[#f0a050] text-xs font-semibold mb-3">Next Appointment</p>
+                <div className="border-t border-[#1a1a1a] pt-3">
+                  <p className="text-[#f0a050] text-xs font-semibold mb-3 uppercase font-mono tracking-wider">Next Target Appointment</p>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-[#888] text-xs block mb-1">Date</label>
+                      <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Date</label>
                       <input type="date" value={vNextDate} onChange={e => setVNextDate(e.target.value)}
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                        className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                     </div>
                     <div>
-                      <label className="text-[#888] text-xs block mb-1">Time (optional)</label>
+                      <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Time Allocation</label>
                       <input type="time" value={vNextTime} onChange={e => setVNextTime(e.target.value)}
-                        className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                        className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button
-                    onClick={() => setShowAddVet(false)}
-                    className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold"
+                    onClick={() => { setShowAddVet(false); setEditVetEntry(null); }}
+                    className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-[#555] text-sm font-semibold"
                   >
                     Cancel
                   </button>
@@ -638,82 +893,78 @@ export default function KnoxPage() {
           </div>
         )}
 
-        {/* Add / Edit Medication modal */}
+        {/* Add / Edit Medication template modal */}
         {showAddMed && (
-          <div
-            className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4"
-            onClick={() => setShowAddMed(false)}
-          >
-            <div
-              className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-5 border-b border-[#2a2a2a]">
-                <h2 className="text-white text-lg font-bold">{editMed ? 'Edit Medication' : 'Add Medication'}</h2>
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
+              <div className="p-5 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
+                <h2 className="text-white text-lg font-bold font-mono uppercase tracking-wide">
+                  {editMed ? 'Modify Treatment' : 'Add Medication Log'}
+                </h2>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Medication Name</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Medication Name *</label>
                   <input type="text" value={mName} onChange={e => setMName(e.target.value)}
                     placeholder="e.g. Heartgard, NexGard"
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Type</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Classification Type</label>
                   <select value={mType} onChange={e => setMType(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm">
-                    <option value="">Select type...</option>
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm focus:border-[#f0a050] outline-none text-left">
+                    <option value="">Select type options...</option>
                     {MED_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Dosage</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Dosage Volume</label>
                   <input type="text" value={mDosage} onChange={e => setMDosage(e.target.value)}
-                    placeholder="e.g. 25-50kg, 1 chew"
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    placeholder="e.g. 1 chew, 16mg"
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Frequency</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Frequency Cadence</label>
                   <select value={mFreq} onChange={e => setMFreq(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm">
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm focus:border-[#f0a050] outline-none text-left">
                     <option value="">Select frequency...</option>
                     {MED_FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Cost per dose</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Cost Per Individual Dose ($)</label>
                   <input type="number" step="0.01" value={mCost} onChange={e => setMCost(e.target.value)}
-                    placeholder="0.00" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    placeholder="0.00" className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Next Due Date</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Next Target Due Date</label>
                   <input type="date" value={mNextDue} onChange={e => setMNextDue(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Last Given Date</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Last Given Date</label>
                   <input type="date" value={mLastGiven} onChange={e => setMLastGiven(e.target.value)}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm font-mono focus:border-[#f0a050] outline-none" />
                 </div>
                 <div>
-                  <label className="text-[#888] text-xs block mb-1">Notes</label>
+                  <label className="text-[#555] text-xs block mb-1 font-mono uppercase tracking-wide">Administration Notes</label>
                   <input type="text" value={mNotes} onChange={e => setMNotes(e.target.value)}
-                    placeholder="Any notes..."
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl p-3 text-white text-sm" />
+                    placeholder="Give with meal, chew completely"
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-white text-sm focus:border-[#f0a050] outline-none" />
                 </div>
-                <div className="flex items-center justify-between">
-                  <label className="text-[#888] text-xs">Active</label>
+                <div className="flex items-center justify-between pt-1">
+                  <label className="text-[#555] text-xs font-mono uppercase tracking-wide">Operational Tracker State</label>
                   <button
                     onClick={() => setMActive(!mActive)}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${mActive ? 'bg-[#f0a050]' : 'bg-[#333]'}`}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${mActive ? 'bg-[#f0a050]' : 'bg-[#222] border border-[#333]'}`}
                   >
                     <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${mActive ? 'left-6' : 'left-0.5'}`} />
                   </button>
                 </div>
-                <div className="flex gap-3 pt-2">
+                <div className="flex gap-3 pt-3">
                   <button
-                    onClick={() => setShowAddMed(false)}
-                    className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold"
+                    onClick={() => { setShowAddMed(false); setEditMed(null); }}
+                    className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-[#555] text-sm font-semibold"
                   >
                     Cancel
                   </button>
@@ -722,7 +973,7 @@ export default function KnoxPage() {
                     disabled={medSaving || !mName}
                     className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-40"
                   >
-                    {medSaving ? 'Saving...' : editMed ? 'Update' : 'Add'}
+                    {medSaving ? 'Saving...' : editMed ? 'Save Modifications' : 'Add Medication'}
                   </button>
                 </div>
               </div>
@@ -730,35 +981,50 @@ export default function KnoxPage() {
           </div>
         )}
 
-        {/* Delete Weight confirm */}
+        {/* Delete Weight confirmation overlay sheet bottom slice */}
         {deleteWeightId && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm p-5 space-y-3">
-              <p className="text-white text-center font-semibold">Delete this weight entry?</p>
-              <button onClick={() => deleteWeight(deleteWeightId)} className="w-full bg-[#ef4444] text-white rounded-xl p-3 font-semibold">Delete</button>
-              <button onClick={() => setDeleteWeightId(null)} className="w-full bg-[#1a1a1a] text-[#888] rounded-xl p-3">Cancel</button>
+            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm p-5 border border-[#1a1a1a] space-y-4">
+              <div className="text-center space-y-1">
+                <p className="text-white font-semibold">Permanently delete weight snapshot?</p>
+                <p className="text-xs text-[#555]">This modification shifts immediate historical metric logs.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteWeightId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-medium">Keep</button>
+                <button onClick={() => deleteWeight(deleteWeightId)} className="flex-1 bg-[#ef4444] text-white rounded-xl py-3 text-sm font-bold">Delete Entry</button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Delete Vet confirm */}
+        {/* Delete Vet confirmation sheet bottom frame slice */}
         {deleteVetId && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm p-5 space-y-3">
-              <p className="text-white text-center font-semibold">Delete this vet visit?</p>
-              <button onClick={() => deleteVet(deleteVetId)} className="w-full bg-[#ef4444] text-white rounded-xl p-3 font-semibold">Delete</button>
-              <button onClick={() => setDeleteVetId(null)} className="w-full bg-[#1a1a1a] text-[#888] rounded-xl p-3">Cancel</button>
+            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm p-5 border border-[#1a1a1a] space-y-4">
+              <div className="text-center space-y-1">
+                <p className="text-white font-semibold">Drop selected veterinary log?</p>
+                <p className="text-xs text-[#555]">This action permanently clears the associated clinical cost ledger.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteVetId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-medium">Keep</button>
+                <button onClick={() => deleteVet(deleteVetId)} className="flex-1 bg-[#ef4444] text-white rounded-xl py-3 text-sm font-bold">Delete Visit</button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Delete Med confirm */}
+        {/* Delete Medication confirmation framework bottom sheet overlay slice */}
         {deleteMedId && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm p-5 space-y-3">
-              <p className="text-white text-center font-semibold">Delete this medication?</p>
-              <button onClick={() => deleteMed(deleteMedId)} className="w-full bg-[#ef4444] text-white rounded-xl p-3 font-semibold">Delete</button>
-              <button onClick={() => setDeleteMedId(null)} className="w-full bg-[#1a1a1a] text-[#888] rounded-xl p-3">Cancel</button>
+            <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm p-5 border border-[#1a1a1a] space-y-4">
+              <div className="text-center space-y-1">
+                <p className="text-white font-semibold">Remove medication profile?</p>
+                <p className="text-xs text-[#555]"> Knox schedule compliance trends for this item will be disconnected.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteMedId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-medium">Keep</button>
+                <button onClick={() => deleteMed(deleteMedId)} className="flex-1 bg-[#ef4444] text-white rounded-xl py-3 text-sm font-bold">Delete Treatment</button>
+              </div>
             </div>
           </div>
         )}
