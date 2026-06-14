@@ -448,8 +448,8 @@ function AddTaskSheet({ listId, onClose, onSave }: {
         }),
       });
       onSave();
-    } bg-black {
-      // Intentionally left blank
+    } catch (e) {
+      console.error(e);
     } finally {
       setSaving(false);
     }
