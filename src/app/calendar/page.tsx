@@ -92,7 +92,7 @@ function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) 
     >
       {!value && <option value="">Select</option>}
       {options.map((opt) => (
-        <option key={opt} value={opt} className="bg-[#2c2c2e] text-white">{toDisplay(opt)}</option>
+        <option key={opt} value={opt} className="bg-[#1c1c1e] text-white">{toDisplay(opt)}</option>
       ))}
     </select>
   );
@@ -106,8 +106,11 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDays, setSelectedDays] = useState(14);
+  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+  
+  // Overlay Sheet Action View States
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [deleteConfirmEntry, setDeleteConfirmEntry] = useState<CalendarEvent | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newEvent, setNewEvent] = useState({
@@ -144,7 +147,7 @@ export default function CalendarPage() {
       setCalendars(data.calendars || []);
     } catch (e: any) {
       setError(e.message);
-    } finally {
+    } finaly {
       setLoading(false);
     }
   }
@@ -179,27 +182,32 @@ export default function CalendarPage() {
       if (!res.ok) throw new Error("Failed to create event");
       setShowAddModal(false);
       setNewEvent({ title: "", description: "", location: "", date: "", startTime: "", endTime: "", allDay: false, calendarId: "primary" });
-      fetchEvents();
+      await fetchEvents();
     } catch (e: any) {
       alert("Error: " + e.message);
-    } finally {
+    } finaly {
       setSaving(false);
     }
   }
 
-  async function handleDeleteEvent(ev: CalendarEvent) {
+  async function handleDeleteEvent() {
+    if (!deleteConfirmEntry) return;
     setDeleting(true);
     try {
       const res = await fetch(
-        "/api/calendar/events/delete?eventId=" + ev.id + "&calendarId=" + ev.calendarId,
+        "/api/calendar/events/delete?eventId=" + deleteConfirmEntry.id + "&calendarId=" + deleteConfirmEntry.calendarId,
         { method: "DELETE" }
       );
-      if (!res.ok) throw new Error("Failed to delete");
-      setSelectedEvent(null);
-      fetchEvents();
+      if (!res.ok) throw new Error("Failed to delete remote event line");
+      
+      const next = new Set(expandedEvents);
+      next.delete(deleteConfirmEntry.id);
+      setExpandedEvents(next);
+      setDeleteConfirmEntry(null);
+      await fetchEvents();
     } catch (e: any) {
       alert("Error: " + e.message);
-    } finally {
+    } finaly {
       setDeleting(false);
     }
   }
@@ -217,7 +225,7 @@ export default function CalendarPage() {
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="text-[#555] text-sm font-mono">Loading...</div>
+        <div className="text-[#555] text-sm font-mono">Loading data routes...</div>
       </div>
     );
   }
@@ -232,7 +240,7 @@ export default function CalendarPage() {
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>Calendar</h1>
-                <p className="text-[10px] text-[#555] mt-0.5">{events.length} upcoming events</p>
+                <p className="text-[10px] text-[#555] mt-0.5">{events.length} Operational Events Active</p>
               </div>
               
               {/* Premium inline header action link trigger */}
@@ -257,7 +265,7 @@ export default function CalendarPage() {
                 <button
                   key={d}
                   onClick={() => setSelectedDays(d)}
-                  className={"px-3 py-1.5 rounded-full text-xs font-medium font-mono transition-colors " + (selectedDays === d ? "bg-[#f0a050] text-black" : "bg-[#111] text-[#555] border border-[#1a1a1a]")}
+                  className={"px-3 py-1.5 rounded-full text-xs font-medium font-mono uppercase tracking-wider transition-colors " + (selectedDays === d ? "bg-[#f0a050] text-black font-bold" : "bg-[#111] text-[#555] border border-[#1a1a1a]")}
                 >
                   {d} days
                 </button>
@@ -265,7 +273,7 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* Agenda Grid layout */}
+          {/* Agenda Grid layout loops */}
           <div className="px-4 pt-4">
             {loading ? (
               <div className="flex flex-col gap-3">
@@ -274,25 +282,25 @@ export default function CalendarPage() {
                 ))}
               </div>
             ) : error ? (
-              <div className="text-center py-12">
-                <p className="text-[#ef4444] text-sm mb-2 font-mono">Error loading calendar</p>
+              <div className="text-center py-12 bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                <p className="text-[#ef4444] text-sm mb-2 font-mono">Error syncing cloud calendar</p>
                 <p className="text-[#555] text-xs mb-4 font-mono">{error}</p>
-                <button onClick={fetchEvents} className="text-[#f0a050] text-sm underline">Try again</button>
+                <button onClick={fetchEvents} className="text-[#f0a050] text-sm underline font-mono uppercase">Retry Handshake</button>
               </div>
             ) : events.length === 0 ? (
-              <div className="text-center py-16">
+              <div className="text-center py-16 bg-[#111] border border-[#1a1a1a] rounded-2xl">
                 <div className="text-4xl mb-3">📅</div>
-                <p className="text-white font-medium">No upcoming events</p>
-                <p className="text-[#555] text-sm mt-1">Your next {selectedDays} days are clear</p>
+                <p className="text-white font-medium">No upcoming events found</p>
+                <p className="text-[#555] text-sm mt-1 font-mono">Your next {selectedDays} days are clear</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-5">
                 {dateKeys.map((dateKey) => {
                   const dayEvents = grouped[dateKey];
                   const dateObj = new Date(dayEvents[0].start);
                   return (
-                    <div key={dateKey}>
-                      <div className="flex items-center gap-3 mb-2">
+                    <div key={dateKey} className="space-y-2">
+                      <div className="flex items-center gap-3">
                         <div className={"w-10 h-10 rounded-full flex flex-col items-center justify-center shrink-0 font-mono " + (sameDay(dateObj, today) ? "bg-[#f0a050] text-black font-bold" : "bg-[#111] border border-[#1a1a1a] text-[#ccc]")}>
                           <span className="text-[9px] leading-none uppercase">{dateObj.toLocaleDateString("en-US", { weekday: "short" })}</span>
                           <span className="text-base leading-tight font-bold">{dateObj.getDate()}</span>
@@ -300,23 +308,97 @@ export default function CalendarPage() {
                         <span className="text-sm font-semibold text-[#ccc]">{formatDateHeader(dayEvents[0].start)}</span>
                       </div>
                       
+                      {/* Premium Accordion Rows Stack */}
                       <div className="flex flex-col gap-2 pl-12">
-                        {dayEvents.map((ev) => (
-                          <button key={ev.id} onClick={() => setSelectedEvent(ev)} className="w-full text-left bg-[#111] border border-[#1a1a1a] rounded-xl p-3 active:scale-[0.99] transition-transform">
-                            <div className="flex items-start gap-3">
-                              <div className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: ev.calendarColor || "#f0a050" }} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-white truncate">{ev.title}</p>
-                                <p className="text-xs text-[#555] mt-0.5">
-                                  {formatTime(ev.start, ev.allDay)}
-                                  {!ev.allDay && ev.end ? " - " + formatTime(ev.end, false) : ""}
-                                  {ev.location ? "  📍 " + ev.location : ""}
-                                </p>
-                                {ev.calendarName ? <p className="text-[10px] text-[#333] mt-0.5">{ev.calendarName}</p> : null}
+                        {dayEvents.map((ev) => {
+                          const expanded = expandedEvents.has(ev.id);
+                          return (
+                            <div 
+                              key={ev.id} 
+                              className="w-full bg-[#111] border border-[#1a1a1a] rounded-xl overflow-hidden transition-all"
+                            >
+                              {/* Tappable Expand Element Container */}
+                              <div
+                                onClick={() => {
+                                  const next = new Set(expandedEvents);
+                                  expanded ? next.delete(ev.id) : next.add(ev.id);
+                                  setExpandedEvents(next);
+                                }}
+                                className="p-3.5 flex items-center justify-between cursor-pointer active:bg-[#161616]"
+                              >
+                                <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
+                                  <div className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: ev.calendarColor || "#f0a050" }} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-white truncate">{ev.title}</p>
+                                    <p className="text-xs text-[#555] font-mono mt-0.5">
+                                      {formatTime(ev.start, ev.allDay)}
+                                      {!ev.allDay && ev.end ? " - " + formatTime(ev.end, false) : ""}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                                  style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
                               </div>
+
+                              {/* Accordion Content Panel Box */}
+                              {expanded && (
+                                <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] bg-black/20 space-y-3">
+                                  <div className="text-xs font-mono text-[#555] space-y-1.5">
+                                    <div>
+                                      <span className="text-[9px] uppercase tracking-wider block text-[#444]">Timeline Frame</span>
+                                      <p className="text-[#ccc] font-semibold font-sans mt-0.5">
+                                        {new Date(ev.start).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                                        {ev.allDay ? ' (All Day Event)' : ` @ ${formatTime(ev.start, false)} – ${formatTime(ev.end, false)}`}
+                                      </p>
+                                    </div>
+
+                                    {ev.calendarName && (
+                                      <div className="pt-1">
+                                        <span className="text-[9px] uppercase tracking-wider block text-[#444]">Target Calendar Ledger</span>
+                                        <p className="text-[#888] font-sans mt-0.5">{ev.calendarName}</p>
+                                      </div>
+                                    )}
+
+                                    {ev.location && (
+                                      <div className="pt-1">
+                                        <span className="text-[9px] uppercase tracking-wider block text-[#444]">Location Node</span>
+                                        <p className="text-white font-sans mt-0.5">📍 {ev.location}</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {ev.description && (
+                                    <div>
+                                      <span className="text-[9px] font-mono uppercase tracking-wider block text-[#444] mb-1">Agenda Notes</span>
+                                      <p className="text-[#ccc] text-xs bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap font-sans leading-relaxed">{ev.description}</p>
+                                    </div>
+                                  )}
+
+                                  {/* Actions Triggers Section */}
+                                  <div className="flex items-center gap-4 pt-1.5 border-t border-[#1a1a1a]/40">
+                                    {ev.htmlLink && (
+                                      <button 
+                                        onClick={() => window.open(ev.htmlLink, '_blank')}
+                                        className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                                      >
+                                        Open in Google
+                                      </button>
+                                    )}
+                                    <button 
+                                      onClick={() => setDeleteConfirmEntry(ev)}
+                                      className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
+                                    >
+                                      Delete Event
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </button>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -327,149 +409,133 @@ export default function CalendarPage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav active="more" />
+      <BottomNav activeTab="more" />
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
       ═══════════════════════════════════════════════════════════════ */}
 
-      {/* Event Details View Overlay */}
-      {selectedEvent && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4" onClick={() => setSelectedEvent(null)}>
-          <div className="w-full bg-[#1c1c1e] border border-[#1a1a1a] rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-1 rounded-full mx-auto mb-6" style={{ backgroundColor: selectedEvent.calendarColor || '#818cf8' }} />
-            <h2 className="text-xl font-semibold text-white mb-1">{selectedEvent.title}</h2>
-            <p className="text-sm text-[#555] mb-4 font-mono">{selectedEvent.calendarName}</p>
-            
-            <div className="flex flex-col gap-3">
-              <div className="flex items-start gap-3">
-                <span className="text-base">🗓️</span>
-                <div>
-                  <p className="text-sm text-white">
-                    {new Date(selectedEvent.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                  </p>
-                  {selectedEvent.allDay ? (
-                    <p className="text-xs text-[#555] font-mono">All day</p>
-                  ) : (
-                    <p className="text-xs text-[#555] font-mono">{formatTime(selectedEvent.start, false)} – {formatTime(selectedEvent.end, false)}</p>
-                  )}
-                </div>
-              </div>
-              {selectedEvent.location && (
-                <div className="flex items-start gap-3">
-                  <span className="text-base">📍</span>
-                  <p className="text-sm text-white">{selectedEvent.location}</p>
-                </div>
-              )}
-              {selectedEvent.description && (
-                <div className="flex items-start gap-3">
-                  <span className="text-base">📝</span>
-                  <p className="text-sm text-white whitespace-pre-wrap">{selectedEvent.description}</p>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex gap-3 mt-6">
-              {selectedEvent.htmlLink && (
-                <div onClick={() => window.open(selectedEvent.htmlLink, '_blank')}
-                  className="flex-1 text-center py-3 rounded-xl border border-[#2a2a2a] text-sm font-semibold text-white cursor-pointer active:bg-[#2c2c2e]">
-                  Open in Google
-                </div>
-              )}
-              <button onClick={() => handleDeleteEvent(selectedEvent)} disabled={deleting}
-                className="flex-1 py-3 rounded-xl bg-red-500/10 text-red-500 text-sm font-semibold disabled:opacity-50">
-                {deleting ? 'Deleting…' : 'Delete Event'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Add New Event Popup Card Overlay */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddModal(false)}>
-          <div className="bg-[#1c1c1e] border border-[#1a1a1a] w-full max-w-md rounded-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
-              <button onClick={() => setShowAddModal(false)} className="text-[#f0a050] text-sm font-medium">Cancel</button>
-              <h2 className="text-base font-semibold text-white">New Event</h2>
+          <div className="bg-[#1c1c1e] border border-[#1a1a1a] w-full max-w-md rounded-2xl max-h-[85vh] overflow-y-auto pb-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
+              <button onClick={() => setShowAddModal(false)} className="text-[#555] text-sm font-semibold">Cancel</button>
+              <h2 className="text-base font-bold font-mono text-white uppercase tracking-wide">New Event</h2>
               <button onClick={handleAddEvent} disabled={saving || !newEvent.title || !newEvent.date}
-                className="text-[#f0a050] text-sm font-semibold disabled:opacity-30">
+                className="text-[#f0a050] text-sm font-bold uppercase tracking-wider disabled:opacity-30">
                 {saving ? 'Saving…' : 'Add'}
               </button>
             </div>
             
-            <div className="px-4 py-4 space-y-3 pb-12">
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="px-5 py-4 space-y-4 pb-8">
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Event Title Statement *</label>
                 <input type="text" value={newEvent.title}
                   onChange={(e) => setNewEvent(p => ({ ...p, title: e.target.value }))}
-                  placeholder="Title"
-                  className="w-full px-4 py-3.5 bg-transparent text-white text-base placeholder-[#555] outline-none"
+                  placeholder="What is scheduled?"
+                  className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-sm text-white focus:outline-none focus:border-[#f0a050]"
                   autoFocus
                 />
               </div>
               
-              <div className="rounded-xl bg-[#2c2c2e]">
-                <LocationAutocomplete
-                  value={newEvent.location}
-                  onChange={(val) => setNewEvent(p => ({ ...p, location: val }))}
-                  placeholder="Location"
-                />
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Geographic Location</label>
+                <div className="rounded-xl bg-black overflow-hidden border border-[#1a1a1a]">
+                  <LocationAutocomplete
+                    value={newEvent.location}
+                    onChange={(val) => setNewEvent(p => ({ ...p, location: val }))}
+                    placeholder="Search destination nodes..."
+                  />
+                </div>
               </div>
               
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
-                  <span className="text-sm text-white">All-day</span>
+              <div className="rounded-xl bg-black border border-[#1a1a1a] overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#1a1a1a]/60">
+                  <span className="text-sm text-white font-mono uppercase tracking-wide text-xs">All-day Event</span>
                   <button onClick={() => setNewEvent(p => ({ ...p, allDay: !p.allDay }))}
-                    className={`w-12 h-7 rounded-full transition-colors relative ${newEvent.allDay ? 'bg-[#f0a050]' : 'bg-[#3a3a3c]'}`}>
-                    <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${newEvent.allDay ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    className={`w-12 h-6 rounded-full transition-colors relative ${newEvent.allDay ? 'bg-[#f0a050]' : 'bg-[#222] border border-[#333]'}`}>
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${newEvent.allDay ? 'left-6' : 'left-0.5'}`} />
                   </button>
                 </div>
                 
-                <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
-                  <span className="text-sm text-white">Date</span>
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#1a1a1a]/60">
+                  <span className="text-sm text-white font-mono uppercase tracking-wide text-xs">Date Input</span>
                   <input type="date" value={newEvent.date}
                     onChange={(e) => setNewEvent(p => ({ ...p, date: e.target.value }))}
-                    className="text-sm text-[#f0a050] bg-transparent outline-none text-right"
+                    className="text-sm text-[#f0a050] bg-transparent outline-none text-right font-mono"
                   />
                 </div>
                 
                 {!newEvent.allDay && (
                   <>
-                    <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
-                      <span className="text-sm text-white">Start</span>
+                    <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#1a1a1a]/60">
+                      <span className="text-sm text-white font-mono uppercase tracking-wide text-xs">Start Time</span>
                       <TimeSelect value={newEvent.startTime} onChange={(v) => setNewEvent(p => ({ ...p, startTime: v }))} />
                     </div>
                     <div className="flex items-center justify-between px-4 py-3.5">
-                      <span className="text-sm text-white">End</span>
+                      <span className="text-sm text-white font-mono uppercase tracking-wide text-xs">End Time</span>
                       <TimeSelect value={newEvent.endTime} onChange={(v) => setNewEvent(p => ({ ...p, endTime: v }))} />
                     </div>
                   </>
                 )}
               </div>
               
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+              <div>
+                <label className="block text-xs uppercase text-[#555] font-mono mb-1">Agenda Notes / Details</label>
                 <textarea value={newEvent.description}
                   onChange={(e) => setNewEvent(p => ({ ...p, description: e.target.value }))}
-                  placeholder="Add notes" rows={3}
-                  className="w-full px-4 py-3.5 bg-transparent text-white text-sm placeholder-[#555] outline-none resize-none"
+                  placeholder="Optional details..." rows={3}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-xl p-3 text-sm text-white focus:outline-none focus:border-[#f0a050] resize-none"
                 />
               </div>
               
               {calendars.length > 0 && (
-                <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3.5">
-                    <span className="text-sm text-white">Calendar</span>
-                    <select value={newEvent.calendarId}
-                      onChange={(e) => setNewEvent(p => ({ ...p, calendarId: e.target.value }))}
-                      className="text-sm text-[#f0a050] bg-transparent outline-none text-right max-w-[55%] truncate">
-                      <option value="primary" className="bg-[#2c2c2e] text-white">Primary</option>
-                      {calendars.map((cal: any) => (
-                        <option key={cal.id} value={cal.id} className="bg-[#2c2c2e] text-white">{cal.summary}</option>
-                      ))}
-                    </select>
+                <div>
+                  <label className="block text-xs uppercase text-[#555] font-mono mb-1">Select Target Ledger</label>
+                  <div className="rounded-xl bg-black border border-[#1a1a1a] overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3.5">
+                      <span className="text-xs font-mono text-white uppercase tracking-wider">Calendar</span>
+                      <select value={newEvent.calendarId}
+                        onChange={(e) => setNewEvent(p => ({ ...p, calendarId: e.target.value }))}
+                        className="text-sm text-[#f0a050] bg-transparent outline-none text-right max-w-[55%] truncate font-medium">
+                        <option value="primary" className="bg-[#1c1c1e] text-white">Primary</option>
+                        {calendars.map((cal: any) => (
+                          <option key={cal.id} value={cal.id} className="bg-[#1c1c1e] text-white">{cal.summary}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Viewport Fixed Delete Confirmation Sheet */}
+      {deleteConfirmEntry && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#1a1a1a] space-y-4 shadow-2xl">
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-bold text-white font-mono uppercase tracking-wide">Drop Calendar Event?</h3>
+              <p className="text-xs text-[#555]">This action will permanently erase this schedule entry from Google servers.</p>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDeleteConfirmEntry(null)} 
+                disabled={deleting}
+                className="flex-1 bg-black border border-[#1a1a1a] text-white py-3 rounded-xl text-sm font-medium transition-opacity disabled:opacity-40"
+              >
+                Keep
+              </button>
+              <button 
+                onClick={handleDeleteEvent} 
+                disabled={deleting}
+                className="flex-1 bg-[#ef4444] text-white py-3 rounded-xl text-sm font-bold transition-opacity disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete Event'}
+              </button>
             </div>
           </div>
         </div>
