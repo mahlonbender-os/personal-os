@@ -112,13 +112,14 @@ export default function VehiclePage() {
   const [fuelAutoCalc, setFuelAutoCalc] = useState(true);
   const [fuelSaving, setFuelSaving] = useState(false);
   const [deleteFuelId, setDeleteFuelId] = useState<string | null>(null);
+  const [expandedFuel, setExpandedFuel] = useState<Set<string>>(new Set());
 
   // Add maintenance modal
   const [showAddMaint, setShowAddMaint] = useState(false);
   const [addMaint, setAddMaint] = useState({ date: '', service_type: 'Oil Change', mileage: '', cost: '', shop: '', notes: '' });
   const [maintSaving, setMaintSaving] = useState(false);
   const [deleteMaintId, setDeleteMaintId] = useState<string | null>(null);
-  const [expandedMaint, setExpandedMaint] = useState(new Set<string>());
+  const [expandedMaint, setExpandedMaint] = useState<Set<string>>(new Set());
 
   // Edit fuel modal
   const [editFuelEntry, setEditFuelEntry] = useState<any | null>(null);
@@ -637,65 +638,93 @@ export default function VehiclePage() {
                 </div>
               )}
 
-              {/* Fill-up list rows tracking layout items */}
+              {/* Universal Expandable Fuel List Accordion */}
               {fuelEntriesWithMPG.length === 0 ? (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
                   <p className="text-[#555] text-sm">No fill-ups logged yet</p>
                   <p className="text-[#333] text-xs mt-1">Tap Log Fuel above to record records</p>
                 </div>
               ) : (
-                fuelEntriesWithMPG.map(e => (
-                  <div key={e.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-white font-semibold font-mono">{fmt(e.total_cost)}</p>
-                          {e.mpg && (
-                            <span className="text-[#22c55e] text-xs font-mono bg-[#22c55e]/10 px-1.5 py-0.5 rounded-md">
-                              {e.mpg.toFixed(1)} MPG
-                            </span>
-                          )}
+                fuelEntriesWithMPG.map(e => {
+                  const expanded = expandedFuel.has(e.id);
+                  return (
+                    <div key={e.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                      <div
+                        className="p-4 flex items-center justify-between cursor-pointer active:bg-[#161616]"
+                        onClick={() => {
+                          const next = new Set(expandedFuel);
+                          expanded ? next.delete(e.id) : next.add(e.id);
+                          setExpandedFuel(next);
+                        }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-white font-semibold font-mono">{fmt(e.total_cost)}</p>
+                            {e.mpg && (
+                              <span className="text-[#22c55e] text-xs font-mono bg-[#22c55e]/10 px-1.5 py-0.5 rounded-md">
+                                {e.mpg.toFixed(1)} MPG
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[#555] text-xs mt-0.5">
+                            {fmtDate(e.date)}{e.odometer ? ` · ${e.odometer.toLocaleString()} mi` : ''}
+                          </p>
                         </div>
-                        <p className="text-[#555] text-xs mt-0.5">
-                          {e.gallons ? `${Number(e.gallons).toFixed(3)} gal` : ''}
-                          {e.price_per_gallon ? ` @ $${Number(e.price_per_gallon).toFixed(3)}/gal` : ''}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <p className="text-[#555] text-xs">{fmtDate(e.date)}</p>
-                          {e.odometer ? <p className="text-[#555] text-xs">{e.odometer.toLocaleString()} mi</p> : null}
+                        <div className="flex items-center gap-3 ml-2 shrink-0">
+                          <p className="text-[#ccc] text-sm font-mono">
+                            {e.gallons ? `${Number(e.gallons).toFixed(2)} gal` : '—'}
+                          </p>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                            style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
                         </div>
-                        {e.station ? (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <p className="text-[#888] text-xs truncate flex-1">{e.station}</p>
-                            <div onClick={() => window.open(mapsUrl(e.station), '_blank')} className="text-[#f0a050] shrink-0 cursor-pointer" aria-label="View on Google Maps">
-                              <span className="text-xs">📍</span>
+                      </div>
+
+                      {expanded && (
+                        <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] space-y-2 bg-black/20">
+                          <div className="grid grid-cols-2 gap-2 text-xs text-[#888] font-mono">
+                            <div>
+                              <p className="text-[#555] uppercase tracking-wide">Unit Pricing</p>
+                              <p className="text-white text-sm mt-0.5">{e.price_per_gallon ? `$${Number(e.price_per_gallon).toFixed(3)}/gal` : '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[#555] uppercase tracking-wide">Exact Fuel Volume</p>
+                              <p className="text-white text-sm mt-0.5">{e.gallons ? `${Number(e.gallons).toFixed(3)} gallons` : '—'}</p>
                             </div>
                           </div>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-2 ml-2 shrink-0">
-                        <button
-                          onClick={() => {
-                            setEditFuelEntry(e);
-                            setEditFuel({ date: e.date || '', gallons: e.gallons != null ? String(e.gallons) : '', price_per_gallon: e.price_per_gallon != null ? String(e.price_per_gallon) : '', total_cost: e.total_cost != null ? String(e.total_cost) : '', odometer: e.odometer != null ? String(e.odometer) : '', station: e.station || '', notes: e.notes || '' });
-                            setEditFuelAutoCalc(false);
-                          }}
-                          className="text-[#555] active:text-[#f0a050] p-1"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
-                        <button onClick={() => setDeleteFuelId(e.id)} className="text-[#333] active:text-[#ef4444] p-1">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                            <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-                          </svg>
-                        </button>
-                      </div>
+
+                          {e.station && (
+                            <div className="flex items-center gap-1.5 pt-1">
+                              <p className="text-[#888] text-sm flex-1 truncate">{e.station}</p>
+                              <div onClick={(ev) => { ev.stopPropagation(); window.open(mapsUrl(e.station), '_blank'); }} className="text-[#f0a050] px-1 cursor-pointer" aria-label="View on Google Maps">
+                                <span className="text-xs">📍</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {e.notes && <p className="text-[#555] text-sm bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap">{e.notes}</p>}
+
+                          <div className="flex items-center gap-4 pt-1">
+                            <button
+                              onClick={() => {
+                                setEditFuelEntry(e);
+                                setEditFuel({ date: e.date || '', gallons: e.gallons != null ? String(e.gallons) : '', price_per_gallon: e.price_per_gallon != null ? String(e.price_per_gallon) : '', total_cost: e.total_cost != null ? String(e.total_cost) : '', odometer: e.odometer != null ? String(e.odometer) : '', station: e.station || '', notes: e.notes || '' });
+                                setEditFuelAutoCalc(false);
+                              }}
+                              className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                            >
+                              Edit record
+                            </button>
+                            <button onClick={() => setDeleteFuelId(e.id)} className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider">
+                              Delete record
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -751,7 +780,7 @@ export default function VehiclePage() {
                           {e.shop ? (
                             <div className="flex items-center gap-1.5">
                               <p className="text-[#888] text-sm flex-1 truncate">{e.shop}</p>
-                              <div onClick={() => window.open(mapsUrl(e.shop), '_blank')} className="text-[#f0a050] px-1 cursor-pointer" aria-label="View on Google Maps">
+                              <div onClick={(ev) => { ev.stopPropagation(); window.open(mapsUrl(e.shop), '_blank'); }} className="text-[#f0a050] px-1 cursor-pointer" aria-label="View on Google Maps">
                                 <span className="text-xs">📍</span>
                               </div>
                             </div>
@@ -847,7 +876,7 @@ export default function VehiclePage() {
         </div>
       )}
 
-      {/* Log Fill-Up manual modal mapping */}
+      {/* Log Fuel manual modal mapping */}
       {showAddFuel && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
@@ -894,7 +923,7 @@ export default function VehiclePage() {
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Gas Station / Vendor Location</label>
-                <PlacesInput value={addFuel.station} onChange={v => setAddFuel(f => ({ ...f, station: v }))} placeholder="Search stations near origin..." />
+                <PlacesInput value={addFuel.station} onChange={v => setAddFuel(f => ({ ...f, station: v }))} placeholder="Search gas stations..." />
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Notes / Reminders</label>
@@ -1035,7 +1064,7 @@ export default function VehiclePage() {
             </div>
             <div className="px-5 pt-4 space-y-3">
               <div>
-                <label className="text-[#888] text-date mb-1 block uppercase tracking-wide font-mono">Date</label>
+                <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Date</label>
                 <input type="date" value={editMaint.date} onChange={e => setEditMaint(f => ({ ...f, date: e.target.value }))}
                   className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
               </div>
