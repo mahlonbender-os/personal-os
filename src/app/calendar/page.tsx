@@ -147,7 +147,7 @@ export default function CalendarPage() {
       setCalendars(data.calendars || []);
     } catch (e: any) {
       setError(e.message);
-    } finaly {
+    } finally {
       setLoading(false);
     }
   }
@@ -185,7 +185,7 @@ export default function CalendarPage() {
       await fetchEvents();
     } catch (e: any) {
       alert("Error: " + e.message);
-    } finaly {
+    } finally {
       setSaving(false);
     }
   }
@@ -207,7 +207,7 @@ export default function CalendarPage() {
       await fetchEvents();
     } catch (e: any) {
       alert("Error: " + e.message);
-    } finaly {
+    } finally {
       setDeleting(false);
     }
   }
