@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import BottomNav from '@/components/BottomNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -242,6 +243,7 @@ export default function InvestmentsPage() {
   const [showDaily, setShowDaily] = useState(true);
   const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
   const [historyRange, setHistoryRange] = useState('1Y');
+  const [expandedTrades, setExpandedTrades] = useState<Set<string>>(new Set());
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -373,6 +375,10 @@ export default function InvestmentsPage() {
     try {
       const res = await fetch(`/api/finance/investments?id=${deleteId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
+      
+      const next = new Set(expandedTrades);
+      next.delete(deleteId);
+      setExpandedTrades(next);
       setDeleteId(null);
       await fetchData();
     } catch (e) {
@@ -454,7 +460,7 @@ export default function InvestmentsPage() {
                     {data?.totalDailyGainLoss !== undefined && data.totalDailyGainLoss !== 0 && (
                       <div className="flex items-center justify-center gap-1 mt-1">
                         <span className="font-mono text-xs" style={{ color: gainColor(data.totalDailyGainLoss) }}>
-                          {data.totalDailyGainLoss >= 0 ? '+' : ''}{fmt(Math.abs(data.totalDailyGainLoss))} today
+                          {data.totalDailyGainLoss >= 0 ? '+' : ''}{fmt(data.totalDailyGainLoss)} today
                         </span>
                       </div>
                     )}
@@ -601,7 +607,7 @@ export default function InvestmentsPage() {
                 </>
               )}
 
-              {/* ── TRADE LOG TAB ─────────────────────────────────────────── */}
+              {/* ── TRADE LOG TAB (UNIVERSAL ACCORDION REFACTOR) ──────────────── */}
               {activeTab === 1 && (
                 <>
                   <div className="px-1 pb-1">
@@ -616,49 +622,80 @@ export default function InvestmentsPage() {
                     <div className="space-y-2">
                       {data.trades.map((t) => {
                         const ac = actionColor(t.action);
+                        const expanded = expandedTrades.has(t.id);
                         return (
-                          <div key={t.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
+                          <div key={t.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden transition-all">
+                            {/* Expandable row layout head track */}
+                            <div 
+                              onClick={() => {
+                                const next = new Set(expandedTrades);
+                                expanded ? next.delete(t.id) : next.add(t.id);
+                                setExpandedTrades(next);
+                              }}
+                              className="p-4 flex items-center justify-between cursor-pointer active:bg-[#161616]"
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                   <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${ac.bg} ${ac.text}`}>
                                     {t.action}
                                   </span>
                                   <span className="text-[#f0a050] text-xs font-mono font-bold">{t.security}</span>
-                                  <span className="text-[#555] text-[10px]">{t.account}</span>
+                                  <span className="text-[#555] text-[10px] font-mono truncate max-w-[80px]">{t.account}</span>
                                 </div>
                                 <div className="text-white font-mono font-bold text-sm">{fmt(t.amount)}</div>
-                                <div className="text-[#555] text-[10px] font-mono">
-                                  {fmtShares(parseFloat(String(t.shares)))} shares
-                                </div>
-                                <div className="text-[#444] text-[10px] font-mono mt-1">
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0 ml-2">
+                                <span className="text-[#555] text-[10px] font-mono">
                                   {new Date(t.date + 'T12:00:00').toLocaleDateString('en-US', {
-                                    month: 'short', day: 'numeric', year: 'numeric',
+                                    month: 'short', day: 'numeric'
                                   })}
+                                </span>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
+                                  style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
+                              </div>
+                            </div>
+
+                            {/* Dropdown context body scope expanded telemetry */}
+                            {expanded && (
+                              <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] bg-black/20 space-y-3">
+                                <div className="grid grid-cols-2 gap-2 text-xs font-mono text-[#555]">
+                                  <div>
+                                    <span className="text-[9px] uppercase tracking-wider block text-[#444]">Shares Explayed</span>
+                                    <span className="text-white font-bold">{fmtShares(parseFloat(String(t.shares)))} units</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[9px] uppercase tracking-wider block text-[#444]">Operational Date</span>
+                                    <span className="text-white font-bold">{t.date}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-4 pt-1.5 border-t border-[#1a1a1a]/40">
+                                  <button
+                                    onClick={() => setDeleteId(t.id)}
+                                    className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    Delete trade
+                                  </button>
                                 </div>
                               </div>
-                              <button
-                                onClick={() => setDeleteId(t.id)}
-                                className="text-[#333] hover:text-[#ef4444] transition-colors p-1 ml-2 flex-shrink-0"
-                              >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
-      </div>
-    </PullToRefresh>
+        </div>
+      </PullToRefresh>
+
+      <BottomNav activeTab="more" />
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
@@ -667,25 +704,25 @@ export default function InvestmentsPage() {
       {/* Log Trade Modal sheet */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#2a2a2a]">
-            <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-              <span className="font-bold text-base text-white">Log Trade Position</span>
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
+            <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
+              <span className="font-bold text-base text-white font-mono uppercase tracking-wide">Log Trade Position</span>
               <button onClick={() => setShowModal(false)} className="text-[#555] text-lg p-1">✕</button>
             </div>
             <div className="px-5 pt-4 space-y-4">
 
               <div>
-                <div className="text-[#888] text-xs mb-1.5 uppercase font-mono">Date</div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Date</div>
                 <input
                   type="date"
                   value={formDate}
                   onChange={e => setFormDate(e.target.value)}
-                  className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
                 />
               </div>
 
               <div>
-                <div className="text-[#888] text-xs mb-1.5 uppercase font-mono">Account</div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Account</div>
                 <div className="flex gap-2">
                   {['Roth IRA', 'HSA'].map(a => (
                     <button
@@ -694,7 +731,7 @@ export default function InvestmentsPage() {
                       className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
                         formAccount === a
                           ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]'
-                          : 'bg-black border-[#2a2a2a] text-[#555]'
+                          : 'bg-black border-[#1a1a1a] text-[#555]'
                       }`}
                     >
                       {a}
@@ -704,7 +741,7 @@ export default function InvestmentsPage() {
               </div>
 
               <div>
-                <div className="text-[#888] text-xs mb-1.5 uppercase font-mono">Security</div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Security</div>
                 <div className="flex gap-2">
                   {['VOO', 'TSLA'].map(s => (
                     <button
@@ -713,7 +750,7 @@ export default function InvestmentsPage() {
                       className={`flex-1 py-2.5 rounded-xl text-xs font-mono font-semibold border transition-colors ${
                         formSecurity === s
                           ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]'
-                          : 'bg-black border-[#2a2a2a] text-[#555]'
+                          : 'bg-black border-[#1a1a1a] text-[#555]'
                       }`}
                     >
                       {s}
@@ -723,7 +760,7 @@ export default function InvestmentsPage() {
               </div>
 
               <div>
-                <div className="text-[#888] text-xs mb-1.5 uppercase font-mono">Action</div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Action</div>
                 <div className="flex gap-2">
                   {['BUY', 'SELL', 'REINVEST'].map(a => (
                     <button
@@ -738,38 +775,38 @@ export default function InvestmentsPage() {
               </div>
 
               <div>
-                <div className="text-[#888] text-xs mb-1.5 uppercase font-mono">Shares Volume</div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Shares Volume</div>
                 <input
                   type="number"
                   inputMode="decimal"
                   placeholder="0.000"
                   value={formShares}
                   onChange={e => setFormShares(e.target.value)}
-                  className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
                 />
               </div>
 
               <div>
-                <div className="text-[#888] text-xs mb-1.5 uppercase font-mono">Price Per Share ($)</div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Price Per Share ($)</div>
                 <input
                   type="number"
                   inputMode="decimal"
                   placeholder="0.00"
                   value={formPrice}
                   onChange={e => setFormPrice(e.target.value)}
-                  className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
                 />
               </div>
 
               <div>
-                <div className="text-[#888] text-xs mb-1.5 uppercase font-mono">Total Amount Capitalized (auto-calc)</div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Total Amount Capitalized (auto-calc)</div>
                 <input
                   type="number"
                   inputMode="decimal"
                   placeholder="0.00"
                   value={formAmount}
                   onChange={e => setFormAmount(e.target.value)}
-                  className="w-full bg-black border border-[#2a2a2a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
                 />
               </div>
             </div>
@@ -777,16 +814,16 @@ export default function InvestmentsPage() {
             <div className="flex gap-3 px-5 pt-5">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 py-3 bg-[#2a2a2a] rounded-xl text-sm font-semibold text-white"
+                className="flex-1 py-3 bg-black border border-[#1a1a1a] text-[#555] rounded-xl text-sm font-semibold transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveTrade}
                 disabled={saving}
-                className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-semibold text-black disabled:opacity-50"
+                className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-bold uppercase font-mono tracking-wide text-black disabled:opacity-50"
               >
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? 'Saving...' : 'Save Trade'}
               </button>
             </div>
           </div>
@@ -796,10 +833,10 @@ export default function InvestmentsPage() {
       {/* Delete confirmation layer dialog */}
       {deleteId && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#1a1a1a]">
             <div className="text-center mb-5">
-              <div className="text-base font-bold mb-1 text-white">Delete Trade Entry?</div>
-              <div className="text-[#888] text-xs">
+              <div className="text-base font-bold mb-1 text-white font-mono uppercase tracking-wide">Delete Trade Entry?</div>
+              <div className="text-[#555] text-xs leading-relaxed">
                 This permanent deletion forces a total portfolio baseline replay position rebuild.
               </div>
             </div>
@@ -813,7 +850,7 @@ export default function InvestmentsPage() {
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex-1 py-3 bg-[#ef4444] rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                className="flex-1 bg-[#ef4444] rounded-xl text-sm font-bold text-white font-mono uppercase tracking-wide disabled:opacity-50"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>
