@@ -18,7 +18,7 @@ export async function GET() {
 
     const spreadsheetId = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
     
-    // Scan rows 5 to 35 on your Accounts tab to ensure all cells match smoothly
+    // Scans a broad range on the Accounts sheet to pick up your rows cleanly
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'Accounts!B5:E35',
@@ -32,11 +32,11 @@ export async function GET() {
 
     rows.forEach((row) => {
       const name = row[0]?.toLowerCase().trim() || '';
-      // Column E balance is index 3 relative to column B
+      // Column B is row[0], so Column E maps directly to index 3 (row[3])
       const balanceStr = row[3] ? String(row[3]).replace(/[^0-9.-]/g, '') : '0';
       const balance = Math.abs(parseFloat(balanceStr) || 0);
 
-      // Explicit string detection matching your exact sheet rows text labels
+      // Target your text labels explicitly
       if (name.includes('home') || name.includes('zestimate')) {
         if (balance > 0) homeValue = balance;
       } else if (name.includes('heloc') || name.includes('members 1st')) {
@@ -53,7 +53,7 @@ export async function GET() {
       lastUpdated: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
     });
   } catch (error: any) {
-    console.error('Real estate tracking engine error:', error);
-    return NextResponse.json({ error: error.message || 'Internal processing error' }, { status: 500 });
+    console.error('Real estate data bridge failure:', error);
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }
