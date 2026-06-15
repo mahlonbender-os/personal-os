@@ -18,10 +18,10 @@ export async function GET() {
 
     const spreadsheetId = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
     
-    // Read the Accounts sheet layout to pull specific target cells
+    // Scan rows 5 to 35 on your Accounts tab to ensure all cells match smoothly
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Accounts!B9:E26',
+      range: 'Accounts!B5:E35',
     });
 
     const rows = response.data.values || [];
@@ -30,27 +30,21 @@ export async function GET() {
     let helocBalance = 0;
     let primaryMortgage = 0;
 
-    // Iterate through sheet rows to capture relevant tokens cleanly
     rows.forEach((row) => {
       const name = row[0]?.toLowerCase().trim() || '';
       // Column E balance is index 3 relative to column B
       const balanceStr = row[3] ? String(row[3]).replace(/[^0-9.-]/g, '') : '0';
       const balance = Math.abs(parseFloat(balanceStr) || 0);
 
+      // Explicit string detection matching your exact sheet rows text labels
       if (name.includes('home') || name.includes('zestimate')) {
-        homeValue = balance;
-      } else if (name.includes('heloc') || name.includes('members 1st heloc')) {
-        helocBalance = balance;
-      } else if (name.includes('1stfinancial') || name.includes('mortgage')) {
-        // Fallback or explicit check for your primary home loan structure
-        primaryMortgage = balance;
+        if (balance > 0) homeValue = balance;
+      } else if (name.includes('heloc') || name.includes('members 1st')) {
+        if (balance > 0) helocBalance = balance;
+      } else if (name.includes('wells fargo') || name.includes('mortgage')) {
+        if (balance > 0) primaryMortgage = balance;
       }
     });
-
-    // Hardcode baseline configuration if primary loan row naming is highly unique
-    if (primaryMortgage === 0) {
-      primaryMortgage = 185000.00; // Safe localized placeholder or structural estimate
-    }
 
     return NextResponse.json({
       homeValue,
@@ -59,7 +53,7 @@ export async function GET() {
       lastUpdated: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
     });
   } catch (error: any) {
-    console.error('Real estate optimization API failure:', error);
+    console.error('Real estate tracking engine error:', error);
     return NextResponse.json({ error: error.message || 'Internal processing error' }, { status: 500 });
   }
 }
