@@ -258,7 +258,8 @@ export default function InvestmentsPage() {
 
   // Delete confirm state
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+  const [editTrade, setEditTrade] = useState<Trade | null>(null);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -334,12 +335,15 @@ export default function InvestmentsPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  function openModal() {
-    setFormDate(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }));
-    setFormShares('');
-    setFormPrice('');
-    setFormAmount('');
-    setFormAction('BUY');
+  function openModal(trade?: Trade) {
+    setEditTrade(trade || null);
+    setFormDate(trade?.date || new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }));
+    setFormAccount(trade?.account || 'Roth IRA');
+    setFormSecurity(trade?.security || 'VOO');
+    setFormAction(trade?.action || 'BUY');
+    setFormShares(trade ? String(trade.shares) : '');
+    setFormPrice(trade ? (parseFloat(String(trade.amount)) / parseFloat(String(trade.shares))).toFixed(2) : '');
+    setFormAmount(trade ? String(trade.amount) : '');
     setShowModal(true);
   }
 
@@ -347,6 +351,9 @@ export default function InvestmentsPage() {
     if (!formDate || !formAmount || !formShares || !formPrice) return;
     setSaving(true);
     try {
+      if (editTrade) {
+        await fetch(`/api/finance/investments?id=${editTrade.id}`, { method: 'DELETE' });
+      }
       const res = await fetch('/api/finance/investments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -361,6 +368,7 @@ export default function InvestmentsPage() {
       });
       if (!res.ok) throw new Error('Save failed');
       setShowModal(false);
+      setEditTrade(null);
       await fetchData();
     } catch (e) {
       console.error('Save trade error:', e);
@@ -674,10 +682,16 @@ export default function InvestmentsPage() {
 
                                 <div className="flex items-center gap-4 pt-1.5 border-t border-[#1a1a1a]/40">
                                   <button
+                                    onClick={() => { setExpandedTrades(new Set()); openModal(t); }}
+                                    className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
                                     onClick={() => setDeleteId(t.id)}
                                     className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
                                   >
-                                    Delete trade
+                                    Delete
                                   </button>
                                 </div>
                               </div>
@@ -706,8 +720,8 @@ export default function InvestmentsPage() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
             <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
-              <span className="font-bold text-base text-white font-mono uppercase tracking-wide">Log Trade Position</span>
-              <button onClick={() => setShowModal(false)} className="text-[#555] text-lg p-1">✕</button>
+              <span className="font-bold text-base text-white font-mono uppercase tracking-wide">{editTrade ? 'Edit Trade' : 'Log Trade'}</span>
+              <button onClick={() => { setShowModal(false); setEditTrade(null); }} className="text-[#555] text-lg p-1">✕</button>
             </div>
             <div className="px-5 pt-4 space-y-4">
 
