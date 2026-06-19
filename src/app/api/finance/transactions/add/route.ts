@@ -5,19 +5,31 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
+const SHEET_ID = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
-// Categories that represent investment account contributions
 const INVESTMENT_CONTRIBUTION_CATEGORIES: Record<string, string> = {
   'Roth IRA': 'Roth IRA',
   'HSA': 'HSA',
 };
+
+// Converts YYYY-MM-DD → M/D/YYYY for Google Sheets
+function isoToSheetDate(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${parseInt(m)}/${parseInt(d)}/${y}`;
+}
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const accessToken = (session as any).accessToken;
+    if (!accessToken) {
+      return NextResponse.json({ error: 'No access token — please sign out and back in' }, { status: 401 });
     }
 
     const supabase = createClient(
@@ -29,8 +41,10 @@ export async function POST(req: Request) {
     const { merchant, date, account, amount, category } = body;
 
     const id = `manual-${Date.now()}`;
-    const month = date.substring(0, 7); // YYYY-MM from YYYY-MM-DD
+    const month = date.substring(0, 7);
     const numericAmount = parseFloat(String(amount));
+
+    // ── 1. Insert to Supabase ───────────────────────────────────────────────
 
     const { data, error } = await supabase
       .from('transactions')
@@ -53,7 +67,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Auto-update investment_cash when a Roth IRA or HSA contribution is logged
+    // ── 2. Append row to Google Sheets Transactions tab ─────────────────────
+
+    try {
+      const sheetDate = isoToSheetDate(date);
+      const appendRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Transactions!A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            values: [[id, sheetDate, merchant, account, numericAmount, category, month]],
+          }),
+        }
+      );
+
+      if (!appendRes.ok) {
+        const errBody = await appendRes.text();
+        console.error(`[transactions/add] sheets_append_failed status=${appendRes.status} body=${errBody}`);
+      } else {
+        console.error(`[transactions/add] sheets_append_ok id=${id} merchant=${merchant}`);
+      }
+    } catch (sheetsErr: any) {
+      // Don't fail the request — Supabase insert succeeded
+      console.error(`[transactions/add] sheets_exception=${sheetsErr.message}`);
+    }
+
+    // ── 3. Auto-update investment_cash for Roth IRA / HSA contributions ─────
+
     const investmentAccount = INVESTMENT_CONTRIBUTION_CATEGORIES[category];
     if (investmentAccount && numericAmount > 0) {
       try {
@@ -75,13 +119,12 @@ export async function POST(req: Request) {
             .eq('account', investmentAccount);
 
           if (updateErr) {
-            console.error(`[transactions/add] cash_update_error=${updateErr.message} account=${investmentAccount}`);
+            console.error(`[transactions/add] cash_update_error=${updateErr.message}`);
           } else {
             console.error(`[transactions/add] cash_updated account=${investmentAccount} delta=+${numericAmount} new=${newBalance}`);
           }
         }
       } catch (cashErr: any) {
-        // Don't fail the request — transaction was saved successfully
         console.error(`[transactions/add] cash_exception=${cashErr.message}`);
       }
     }
