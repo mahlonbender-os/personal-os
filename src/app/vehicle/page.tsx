@@ -18,6 +18,7 @@ function PlacesInput({ value, onChange, placeholder = 'Search location...' }: {
 }) {
   const [predictions, setPredictions] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
+  const [locating, setLocating] = useState(false);
   const timer = useRef<any>(null);
 
   async function onInput(val: string) {
@@ -38,17 +39,81 @@ function PlacesInput({ value, onChange, placeholder = 'Search location...' }: {
     }, 350);
   }
 
+  // Native PWA Browser Geolocation & Reverse Geocoding Autofill
+  function triggerGPS() {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your mobile PWA envelope wrapper.');
+      return;
+    }
+    if (navigator.vibrate) navigator.vibrate(12);
+    setLocating(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          // Pings OpenStreetMap free boundary translation layer
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const addr = data.address;
+            
+            // Extract the descriptive business point of interest or standard road mapping parameters
+            const poi = data.name || addr.amenity || addr.shop || addr.fuel || addr.industrial || '';
+            const road = addr.road || '';
+            const town = addr.city || addr.town || addr.village || addr.suburb || 'Reading';
+            const state = addr.state_code || addr.state || 'PA';
+            
+            let scaffoldedText = '';
+            if (poi) {
+              scaffoldedText = `${poi}, ${town}, ${state}`;
+            } else if (road) {
+              scaffoldedText = `${road}, ${town}, ${state}`;
+            } else {
+              scaffoldedText = `${town}, ${state}`;
+            }
+            
+            onChange(scaffoldedText);
+          }
+        } catch (err) {
+          console.error('Reverse geocoding pipeline drop:', err);
+        } finally {
+          setLocating(false);
+        }
+      },
+      (error) => {
+        setLocating(false);
+        alert(`GPS hardware timed out: ${error.message}`);
+      },
+      { enableHighAccuracy: true, timeout: 7000 }
+    );
+  }
+
   return (
-    <div className="relative">
-      <input
-        type="text"
-        value={value}
-        onChange={e => onInput(e.target.value)}
-        onFocus={() => predictions.length > 0 && setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 200)}
-        placeholder={placeholder}
-        className="w-full bg-[#222] text-white rounded-xl px-3 py-2.5 text-sm border border-[#333] outline-none focus:border-[#f0a050] placeholder-[#555]"
-      />
+    <div className="relative space-y-2">
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <input
+            type="text"
+            value={value}
+            onChange={e => onInput(e.target.value)}
+            onFocus={() => predictions.length > 0 && setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 200)}
+            placeholder={placeholder}
+            className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050] placeholder-[#444]"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={triggerGPS}
+          disabled={locating}
+          className="bg-[#111] border border-[#1a1a1a] text-[#f0a050] text-xs font-mono rounded-xl px-3 font-semibold shrink-0 active:bg-black disabled:opacity-40"
+        >
+          {locating ? 'Searching...' : '⚡ Auto-Locate'}
+        </button>
+      </div>
       {open && (
         <div className="absolute top-full left-0 right-0 bg-[#1c1c1e] border border-[#333] rounded-xl mt-1 z-[60] max-h-44 overflow-y-auto shadow-2xl">
           {predictions.map((p, i) => (
@@ -85,7 +150,7 @@ function renewalColor(d: string) {
 }
 
 function mapsUrl(q: string) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  return `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -419,19 +484,18 @@ export default function VehiclePage() {
       <PullToRefresh onRefresh={fetchAll}>
         <div className="pb-24 min-h-screen bg-black text-white">
 
-          {/* Sticky context header row perfectly matching Knox and Investments template */}
+          {/* Sticky Tab Header Row Wrapper */}
           <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
                   {hasSetup ? `${vehicleInfo.year} ${vehicleInfo.make}` : 'Vehicle'}
                 </h1>
-                <p className="text-[10px] text-[#555] mt-0.5">
+                <p className="text-[10px] text-[#555] mt-0.5 font-mono">
                   {hasSetup ? (vehicleInfo.license_plate || 'No plate set') : 'Set up vehicle metrics'}
                 </p>
               </div>
 
-              {/* Context-aware inline amber text trigger button */}
               <button
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(8);
@@ -445,7 +509,7 @@ export default function VehiclePage() {
               </button>
             </div>
 
-            {/* Tab switcher bar */}
+            {/* Tab switch mechanism layout wrapper */}
             <div className="flex border-t border-[#1a1a1a]">
               {TABS.map((tab, i) => (
                 <button
@@ -461,25 +525,24 @@ export default function VehiclePage() {
             </div>
           </div>
 
-          {/* ─── OVERVIEW TAB ────────────────────────────────────────────── */}
+          {/* ─── OVERVIEW TAB ─── */}
           {activeTab === 0 && (
             <div className="px-4 pt-4 space-y-3">
 
-              {/* Vehicle detailed parameters snapshot */}
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider mb-2">Specifications</p>
+                <p className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider mb-2 font-mono">Specifications</p>
                 {hasSetup ? (
                   <div className="grid grid-cols-2 gap-y-2 text-sm">
                     <div>
-                      <p className="text-[#555] text-xs uppercase">Model</p>
+                      <p className="text-[#555] text-xs uppercase font-mono">Model</p>
                       <p className="text-white font-medium">{vehicleInfo.model} {vehicleInfo.trim_level && `(${vehicleInfo.trim_level})`}</p>
                     </div>
                     <div>
-                      <p className="text-[#555] text-xs uppercase">Color</p>
+                      <p className="text-[#555] text-xs uppercase font-mono">Color</p>
                       <p className="text-white font-medium">{vehicleInfo.color || '—'}</p>
                     </div>
                     <div className="col-span-2 pt-1 border-t border-[#1a1a1a]/40 mt-1">
-                      <p className="text-[#555] text-xs uppercase">VIN Identifier</p>
+                      <p className="text-[#555] text-xs uppercase font-mono">VIN Identifier</p>
                       <p className="text-white font-mono text-xs mt-0.5 tracking-wider">{vehicleInfo.vin || '—'}</p>
                     </div>
                   </div>
@@ -488,20 +551,20 @@ export default function VehiclePage() {
                 )}
               </div>
 
-              {/* Stats 2×2 Telemetry Block */}
+              {/* Telemetry Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Current Odometer</p>
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5 font-mono">Current Odometer</p>
                   <p className="text-white text-2xl font-mono font-bold">{currentMileage ? currentMileage.toLocaleString() : '—'}</p>
                   {currentMileage != null && <p className="text-[#555] text-xs mt-0.5">total miles</p>}
                 </div>
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Next Oil Change</p>
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5 font-mono">Next Oil Change</p>
                   {nextOilChangeMiles ? (
                     <>
                       <p className="text-white text-xl font-mono font-bold">{nextOilChangeMiles.toLocaleString()}</p>
                       {milesUntilOil != null && (
-                        <p className="text-xs mt-0.5 font-mono" style={{ color: milesUntilOil < 0 ? '#ef4444' : milesUntilOil < 500 ? '#f0a050' : '#22c55e' }}>
+                        <p className="text-xs mt-0.5 font-mono font-bold" style={{ color: milesUntilOil < 0 ? '#ef4444' : milesUntilOil < 500 ? '#f0a050' : '#22c55e' }}>
                           {milesUntilOil > 0 ? `${milesUntilOil.toLocaleString()} mi left` : `${Math.abs(milesUntilOil).toLocaleString()} mi overdue`}
                         </p>
                       )}
@@ -509,7 +572,7 @@ export default function VehiclePage() {
                   ) : <p className="text-[#555] text-sm mt-1">No log detected</p>}
                 </div>
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">Fuel Efficiency</p>
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5 font-mono">Fuel Efficiency</p>
                   {lifetimeMPG ? (
                     <>
                       <p className="text-white text-2xl font-mono font-bold">{lifetimeMPG.toFixed(1)}</p>
@@ -518,7 +581,7 @@ export default function VehiclePage() {
                   ) : <p className="text-[#555] text-sm mt-1">Requires 2+ logs</p>}
                 </div>
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5">{yr} Cost Matrix</p>
+                  <p className="text-[#555] text-xs uppercase tracking-wide mb-1.5 font-mono">{yr} Cost Matrix</p>
                   {costPerMile ? (
                     <>
                       <p className="text-white text-2xl font-mono font-bold">${costPerMile.toFixed(2)}</p>
@@ -528,7 +591,7 @@ export default function VehiclePage() {
                 </div>
               </div>
 
-              {/* Renewals Expirations alerts panel */}
+              {/* Expirations alert container panel */}
               {(vehicleInfo?.registration_expires || vehicleInfo?.inspection_expires) && (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <p className="text-white font-semibold mb-3">Regulatory Renewals</p>
@@ -536,34 +599,34 @@ export default function VehiclePage() {
                     {vehicleInfo.registration_expires && (
                       <div className="flex items-center justify-between">
                         <p className="text-[#ccc] text-sm">Registration Expiry</p>
-                        <p className="text-sm font-mono" style={{ color: renewalColor(vehicleInfo.registration_expires) }}>{fmtDate(vehicleInfo.registration_expires)}</p>
+                        <p className="text-sm font-mono font-bold" style={{ color: renewalColor(vehicleInfo.registration_expires) }}>{fmtDate(vehicleInfo.registration_expires)}</p>
                       </div>
                     )}
                     {vehicleInfo.inspection_expires && (
                       <div className="flex items-center justify-between">
                         <p className="text-[#ccc] text-sm">Inspection Stickers</p>
-                        <p className="text-sm font-mono" style={{ color: renewalColor(vehicleInfo.inspection_expires) }}>{fmtDate(vehicleInfo.inspection_expires)}</p>
+                        <p className="text-sm font-mono font-bold" style={{ color: renewalColor(vehicleInfo.inspection_expires) }}>{fmtDate(vehicleInfo.inspection_expires)}</p>
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* Recent Services List module view */}
+              {/* Service lists display log summary layout panel wrapper */}
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
                 <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                   <p className="text-white font-semibold">Recent Service Records</p>
                   {maintEntries.length > 5 && (
-                    <button onClick={() => { setActiveTab(2); window.scrollTo(0, 0); }} className="text-[#f0a050] text-xs">See all</button>
+                    <button onClick={() => { setActiveTab(2); window.scrollTo(0, 0); }} className="text-[#f0a050] text-xs font-semibold font-mono">See all</button>
                   )}
                 </div>
                 <div className="px-4 pb-4">
                   {maintEntries.length === 0 ? (
                     <>
-                      <p className="text-[#555] text-sm">No maintenance logged yet</p>
+                      <p className="text-[#555] text-sm italic">No maintenance logged yet</p>
                       <button
                         onClick={() => { setActiveTab(2); window.scrollTo(0, 0); setTimeout(openAddMaint, 50); }}
-                        className="text-[#f0a050] text-sm mt-1"
+                        className="text-[#f0a050] text-sm mt-1 font-semibold"
                       >
                         Log your first service →
                       </button>
@@ -573,10 +636,10 @@ export default function VehiclePage() {
                       {maintEntries.slice(0, 5).map(e => (
                         <div key={e.id} className="flex items-center justify-between py-1.5 border-b border-[#1a1a1a] last:border-0">
                           <div>
-                            <p className="text-white text-sm">{e.service_type}</p>
-                            <p className="text-[#555] text-xs">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
+                            <p className="text-white text-sm font-medium">{e.service_type}</p>
+                            <p className="text-[#555] text-xs font-mono mt-0.5">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
                           </div>
-                          <p className="text-[#ccc] text-sm font-mono">{e.cost ? fmt(e.cost) : '—'}</p>
+                          <p className="text-[#ccc] text-sm font-mono font-semibold">{e.cost ? fmt(e.cost) : '—'}</p>
                         </div>
                       ))}
                     </div>
@@ -584,7 +647,6 @@ export default function VehiclePage() {
                 </div>
               </div>
 
-              {/* Annualized Cost calculation summary */}
               {yrTotal > 0 && (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <p className="text-white font-semibold mb-3">{yr} Running Cost Summary</p>
@@ -599,7 +661,7 @@ export default function VehiclePage() {
                     </div>
                     <div className="flex justify-between pt-2 border-t border-[#1a1a1a]">
                       <p className="text-white text-sm font-semibold">Aggregate Cost Total</p>
-                      <p className="text-white text-sm font-mono font-semibold">{fmt(yrTotal)}</p>
+                      <p className="text-white text-sm font-mono font-bold">{fmt(yrTotal)}</p>
                     </div>
                   </div>
                 </div>
@@ -607,14 +669,13 @@ export default function VehiclePage() {
             </div>
           )}
 
-          {/* ─── FUEL TAB ────────────────────────────────────────────────── */}
+          {/* ─── FUEL TAB ─── */}
           {activeTab === 1 && (
             <div className="px-4 pt-4 space-y-3">
 
-              {/* Screenshot capture OCR ingestion router trigger */}
               <button
                 onClick={() => openImport('fuel')}
-                className="w-full py-3 rounded-xl border border-[#2a2a2a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 active:bg-[#111]"
+                className="w-full py-3 rounded-xl border border-[#1a1a1a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 bg-[#111] active:bg-[#161616]"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
@@ -622,27 +683,25 @@ export default function VehiclePage() {
                 Import Fill-Up History from Screenshot
               </button>
 
-              {/* Totals Summary dashboard pill info */}
               {fuelEntries.length >= 2 && lifetimeMPG && (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <div className="flex justify-between">
                     <div>
-                      <p className="text-[#555] text-xs uppercase tracking-wide">Lifetime Avg MPG</p>
+                      <p className="text-[#555] text-xs uppercase tracking-wide font-mono">Lifetime Avg MPG</p>
                       <p className="text-white text-2xl font-mono font-bold mt-1">{lifetimeMPG.toFixed(1)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[#555] text-xs uppercase tracking-wide">{yr} Total Fuel Spend</p>
+                      <p className="text-[#555] text-xs uppercase tracking-wide font-mono">{yr} Total Fuel Spend</p>
                       <p className="text-white text-2xl font-mono font-bold mt-1">{fmt(yrFuelSpend)}</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Universal Expandable Fuel List Accordion */}
+              {/* Fuel accordion logs items display framework loop mapping */}
               {fuelEntriesWithMPG.length === 0 ? (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
                   <p className="text-[#555] text-sm">No fill-ups logged yet</p>
-                  <p className="text-[#333] text-xs mt-1">Tap Log Fuel above to record records</p>
                 </div>
               ) : (
                 fuelEntriesWithMPG.map(e => {
@@ -659,19 +718,19 @@ export default function VehiclePage() {
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="text-white font-semibold font-mono">{fmt(e.total_cost)}</p>
+                            <p className="text-white font-bold font-mono">{fmt(e.total_cost)}</p>
                             {e.mpg && (
-                              <span className="text-[#22c55e] text-xs font-mono bg-[#22c55e]/10 px-1.5 py-0.5 rounded-md">
+                              <span className="text-[#22c55e] text-xs font-mono bg-[#22c55e]/10 px-1.5 py-0.5 rounded-md font-bold">
                                 {e.mpg.toFixed(1)} MPG
                               </span>
                             )}
                           </div>
-                          <p className="text-[#555] text-xs mt-0.5">
+                          <p className="text-[#555] text-xs mt-0.5 font-mono">
                             {fmtDate(e.date)}{e.odometer ? ` · ${e.odometer.toLocaleString()} mi` : ''}
                           </p>
                         </div>
                         <div className="flex items-center gap-3 ml-2 shrink-0">
-                          <p className="text-[#ccc] text-sm font-mono">
+                          <p className="text-[#ccc] text-sm font-mono font-medium">
                             {e.gallons ? `${Number(e.gallons).toFixed(2)} gal` : '—'}
                           </p>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
@@ -686,24 +745,24 @@ export default function VehiclePage() {
                           <div className="grid grid-cols-2 gap-2 text-xs text-[#888] font-mono">
                             <div>
                               <p className="text-[#555] uppercase tracking-wide">Unit Pricing</p>
-                              <p className="text-white text-sm mt-0.5">{e.price_per_gallon ? `$${Number(e.price_per_gallon).toFixed(3)}/gal` : '—'}</p>
+                              <p className="text-white text-sm mt-0.5 font-bold">{e.price_per_gallon ? `$${Number(e.price_per_gallon).toFixed(3)}/gal` : '—'}</p>
                             </div>
                             <div>
                               <p className="text-[#555] uppercase tracking-wide">Exact Fuel Volume</p>
-                              <p className="text-white text-sm mt-0.5">{e.gallons ? `${Number(e.gallons).toFixed(3)} gallons` : '—'}</p>
+                              <p className="text-white text-sm mt-0.5 font-bold">{e.gallons ? `${Number(e.gallons).toFixed(3)} gal` : '—'}</p>
                             </div>
                           </div>
 
                           {e.station && (
-                            <div className="flex items-center gap-1.5 pt-1">
-                              <p className="text-[#888] text-sm flex-1 truncate">{e.station}</p>
-                              <div onClick={(ev) => { ev.stopPropagation(); window.open(mapsUrl(e.station), '_blank'); }} className="text-[#f0a050] px-1 cursor-pointer" aria-label="View on Google Maps">
-                                <span className="text-xs">📍</span>
+                            <div className="flex items-center justify-between pt-1 border-t border-[#1a1a1a]/40 mt-1">
+                              <p className="text-[#ccc] text-xs font-mono truncate max-w-[85%]">{e.station}</p>
+                              <div onClick={(ev) => { ev.stopPropagation(); window.open(mapsUrl(e.station), '_blank'); }} className="text-[#f0a050] px-2 py-0.5 active:opacity-40 cursor-pointer" aria-label="View on Google Maps">
+                                <span className="text-sm">📍</span>
                               </div>
                             </div>
                           )}
 
-                          {e.notes && <p className="text-[#555] text-sm bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap">{e.notes}</p>}
+                          {e.notes && <p className="text-[#ccc] text-xs bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap leading-relaxed">{e.notes}</p>}
 
                           <div className="flex items-center gap-4 pt-1">
                             <button
@@ -712,11 +771,11 @@ export default function VehiclePage() {
                                 setEditFuel({ date: e.date || '', gallons: e.gallons != null ? String(e.gallons) : '', price_per_gallon: e.price_per_gallon != null ? String(e.price_per_gallon) : '', total_cost: e.total_cost != null ? String(e.total_cost) : '', odometer: e.odometer != null ? String(e.odometer) : '', station: e.station || '', notes: e.notes || '' });
                                 setEditFuelAutoCalc(false);
                               }}
-                              className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                              className="text-[#f0a050] text-xs font-bold uppercase tracking-wider font-mono"
                             >
                               Edit record
                             </button>
-                            <button onClick={() => setDeleteFuelId(e.id)} className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider">
+                            <button onClick={() => setDeleteFuelId(e.id)} className="text-[#ef4444] text-xs font-bold uppercase tracking-wider font-mono">
                               Delete record
                             </button>
                           </div>
@@ -729,14 +788,13 @@ export default function VehiclePage() {
             </div>
           )}
 
-          {/* ─── MAINTENANCE TAB ──────────────────────────────────────────── */}
+          {/* ─── MAINTENANCE TAB ─── */}
           {activeTab === 2 && (
             <div className="px-4 pt-4 space-y-3">
 
-              {/* Maintenance screenshot capture system */}
               <button
                 onClick={() => openImport('maintenance')}
-                className="w-full py-3 rounded-xl border border-[#2a2a2a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 active:bg-[#111]"
+                className="w-full py-3 rounded-xl border border-[#1a1a1a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 bg-[#111] active:bg-[#161616]"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
@@ -744,11 +802,9 @@ export default function VehiclePage() {
                 Import Service History from Screenshot
               </button>
 
-              {/* Service records elements rendering loop */}
               {maintEntries.length === 0 ? (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
                   <p className="text-[#555] text-sm">No service records found</p>
-                  <p className="text-[#333] text-xs mt-1">Tap Log Service above to save</p>
                 </div>
               ) : (
                 maintEntries.map(e => {
@@ -764,11 +820,11 @@ export default function VehiclePage() {
                         }}
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-white font-semibold">{e.service_type}</p>
-                          <p className="text-[#555] text-xs mt-0.5">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
+                          <p className="text-white font-semibold text-sm">{e.service_type}</p>
+                          <p className="text-[#555] text-xs font-mono mt-0.5">{fmtDate(e.date)}{e.mileage ? ` · ${e.mileage.toLocaleString()} mi` : ''}</p>
                         </div>
                         <div className="flex items-center gap-3 ml-2 shrink-0">
-                          <p className="text-[#ccc] text-sm font-mono">{e.cost ? fmt(e.cost) : '—'}</p>
+                          <p className="text-[#ccc] text-sm font-mono font-semibold">{e.cost ? fmt(e.cost) : '—'}</p>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
                             style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
                             <path d="M6 9l6 6 6-6" />
@@ -778,25 +834,25 @@ export default function VehiclePage() {
                       {expanded && (
                         <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] space-y-2 bg-black/20">
                           {e.shop ? (
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-[#888] text-sm flex-1 truncate">{e.shop}</p>
-                              <div onClick={(ev) => { ev.stopPropagation(); window.open(mapsUrl(e.shop), '_blank'); }} className="text-[#f0a050] px-1 cursor-pointer" aria-label="View on Google Maps">
-                                <span className="text-xs">📍</span>
+                            <div className="flex items-center justify-between border-b border-[#1a1a1a]/40 pb-1 mb-1">
+                              <p className="text-[#ccc] text-xs font-mono truncate max-w-[85%]">{e.shop}</p>
+                              <div onClick={(ev) => { ev.stopPropagation(); window.open(mapsUrl(e.shop), '_blank'); }} className="text-[#f0a050] px-2 py-0.5 active:opacity-40 cursor-pointer" aria-label="View on Google Maps">
+                                <span className="text-sm">📍</span>
                               </div>
                             </div>
                           ) : null}
-                          {e.notes ? <p className="text-[#555] text-sm bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap">{e.notes}</p> : null}
+                          {e.notes ? <p className="text-[#ccc] text-xs bg-black/40 p-2.5 rounded-xl whitespace-pre-wrap leading-relaxed">{e.notes}</p> : null}
                           <div className="flex items-center gap-4 pt-1">
                             <button
                               onClick={() => {
                                 setEditMaintEntry(e);
                                 setEditMaint({ date: e.date || '', service_type: e.service_type || 'Oil Change', mileage: e.mileage != null ? String(e.mileage) : '', cost: e.cost != null ? String(e.cost) : '', shop: e.shop || '', notes: e.notes || '' });
                               }}
-                              className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
+                              className="text-[#f0a050] text-xs font-bold uppercase tracking-wider font-mono"
                             >
                               Edit record
                             </button>
-                            <button onClick={() => setDeleteMaintId(e.id)} className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider">Delete record</button>
+                            <button onClick={() => setDeleteMaintId(e.id)} className="text-[#ef4444] text-xs font-bold uppercase tracking-wider font-mono">Delete record</button>
                           </div>
                         </div>
                       )}
@@ -814,7 +870,7 @@ export default function VehiclePage() {
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
       ═══════════════════════════════════════════════════════════════ */}
 
-      {/* Vehicle Setup modal screen */}
+      {/* Setup Attributes Modal */}
       {showSetup && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
@@ -851,7 +907,7 @@ export default function VehiclePage() {
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Oil Change Interval Tracker</label>
                 <select value={setupForm.oil_change_interval || 5000} onChange={e => setSetupForm((f: any) => ({ ...f, oil_change_interval: parseInt(e.target.value) }))}
-                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none text-left">
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none text-left bg-no-repeat">
                   {OIL_INTERVALS.map(n => <option key={n} value={n}>{n.toLocaleString()} miles tracking</option>)}
                 </select>
               </div>
@@ -866,7 +922,7 @@ export default function VehiclePage() {
                   className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
               </div>
               <div className="flex gap-3 pt-4">
-                <button onClick={() => setShowSetup(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={() => setShowSetup(false)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-semibold">Cancel</button>
                 <button onClick={saveSetup} disabled={setupSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
                   {setupSaving ? 'Saving...' : 'Save Configuration'}
                 </button>
@@ -876,7 +932,7 @@ export default function VehiclePage() {
         </div>
       )}
 
-      {/* Log Fuel manual modal mapping */}
+      {/* Log Fuel Modal */}
       {showAddFuel && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
@@ -908,9 +964,9 @@ export default function VehiclePage() {
                       const g = parseFloat(addFuel.gallons), p = parseFloat(addFuel.price_per_gallon);
                       if (!isNaN(g) && !isNaN(p)) setAddFuel(f => ({ ...f, total_cost: (g * p).toFixed(2) }));
                       setFuelAutoCalc(true);
-                    }} className="text-[#f0a050] text-xs">Reset to auto-calc</button>
+                    }} className="text-[#f0a050] text-xs font-semibold font-mono">Reset auto-calc</button>
                   )}
-                  {fuelAutoCalc && <span className="text-[#555] text-xs">Calculated</span>}
+                  {fuelAutoCalc && <span className="text-[#555] text-xs font-mono">Calculated</span>}
                 </div>
                 <input type="number" step="0.01" value={addFuel.total_cost}
                   onChange={e => { setAddFuel(f => ({ ...f, total_cost: e.target.value })); setFuelAutoCalc(false); }}
@@ -923,7 +979,7 @@ export default function VehiclePage() {
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Gas Station / Vendor Location</label>
-                <PlacesInput value={addFuel.station} onChange={v => setAddFuel(f => ({ ...f, station: v }))} placeholder="Search gas stations..." />
+                <PlacesInput value={addFuel.station} onChange={v => setAddFuel(f => ({ ...f, station: v }))} placeholder="Search gas stations near pump..." />
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Notes / Reminders</label>
@@ -931,7 +987,7 @@ export default function VehiclePage() {
                   placeholder="Optional notations" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
               </div>
               <div className="flex gap-3 pt-4">
-                <button onClick={() => setShowAddFuel(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={() => setShowAddFuel(false)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-semibold">Cancel</button>
                 <button onClick={saveAddFuel} disabled={fuelSaving || !addFuel.date} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
                   {fuelSaving ? 'Saving...' : 'Log Fill-Up'}
                 </button>
@@ -941,7 +997,7 @@ export default function VehiclePage() {
         </div>
       )}
 
-      {/* Log Service maintenance modal mapping */}
+      {/* Log Maintenance Modal */}
       {showAddMaint && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
@@ -958,7 +1014,7 @@ export default function VehiclePage() {
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Service Classification Category</label>
                 <select value={addMaint.service_type} onChange={e => setAddMaint(f => ({ ...f, service_type: e.target.value }))}
-                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]">
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050] bg-no-repeat text-left">
                   {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
@@ -974,15 +1030,15 @@ export default function VehiclePage() {
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Service Facility / Shop Name</label>
-                <PlacesInput value={addMaint.shop} onChange={v => setAddMaint(f => ({ ...f, shop: v }))} placeholder="Search repair shops..." />
+                <PlacesInput value={addMaint.shop} onChange={v => setAddMaint(f => ({ ...f, shop: v }))} placeholder="Search service facilities..." />
               </div>
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Work Order Notes / Specific Details</label>
                 <input type="text" value={addMaint.notes} onChange={e => setAddMaint(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="Parts numbers, structural items notes" className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
+                  placeholder="Parts numbers, mechanical descriptions..." className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
               </div>
               <div className="flex gap-3 pt-4">
-                <button onClick={() => setShowAddMaint(false)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={() => setShowAddMaint(false)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-semibold">Cancel</button>
                 <button onClick={saveAddMaint} disabled={maintSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
                   {maintSaving ? 'Saving...' : 'Log Service Record'}
                 </button>
@@ -992,7 +1048,7 @@ export default function VehiclePage() {
         </div>
       )}
 
-      {/* Edit Fill-Up screen modal */}
+      {/* Edit Fuel Modal */}
       {editFuelEntry && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
@@ -1023,7 +1079,7 @@ export default function VehiclePage() {
                     const g = parseFloat(editFuel.gallons), p = parseFloat(editFuel.price_per_gallon);
                     if (!isNaN(g) && !isNaN(p)) setEditFuel(f => ({ ...f, total_cost: (g * p).toFixed(2) }));
                     setEditFuelAutoCalc(true);
-                  }} className="text-[#f0a050] text-xs">Recalculate total</button>
+                  }} className="text-[#f0a050] text-xs font-semibold font-mono">Recalculate total</button>
                 </div>
                 <input type="number" step="0.01" value={editFuel.total_cost}
                   onChange={e => { setEditFuel(f => ({ ...f, total_cost: e.target.value })); setEditFuelAutoCalc(false); }}
@@ -1044,7 +1100,7 @@ export default function VehiclePage() {
                   className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
               </div>
               <div className="flex gap-3 pt-4">
-                <button onClick={() => setEditFuelEntry(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={() => setEditFuelEntry(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-semibold">Cancel</button>
                 <button onClick={saveEditFuel} disabled={editFuelSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
                   {editFuelSaving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -1054,7 +1110,7 @@ export default function VehiclePage() {
         </div>
       )}
 
-      {/* Edit Service record screen modal wrapper */}
+      {/* Edit Maintenance Modal */}
       {editMaintEntry && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
@@ -1071,7 +1127,7 @@ export default function VehiclePage() {
               <div>
                 <label className="text-[#888] text-xs mb-1 block uppercase tracking-wide font-mono">Service Classification</label>
                 <select value={editMaint.service_type} onChange={e => setEditMaint(f => ({ ...f, service_type: e.target.value }))}
-                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]">
+                  className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050] text-left bg-no-repeat">
                   {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
@@ -1095,7 +1151,7 @@ export default function VehiclePage() {
                   className="w-full bg-black text-white rounded-xl px-3 py-2.5 text-sm border border-[#1a1a1a] outline-none focus:border-[#f0a050]" />
               </div>
               <div className="flex gap-3 pt-4">
-                <button onClick={() => setEditMaintEntry(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+                <button onClick={() => setEditMaintEntry(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-semibold">Cancel</button>
                 <button onClick={saveEditMaint} disabled={editMaintSaving} className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-50">
                   {editMaintSaving ? 'Saving...' : 'Save Modifications'}
                 </button>
@@ -1105,7 +1161,7 @@ export default function VehiclePage() {
         </div>
       )}
 
-      {/* Screenshot OCR import prompt modal wrapper */}
+      {/* Screenshot Import Modal */}
       {showImport && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
@@ -1114,7 +1170,7 @@ export default function VehiclePage() {
               <button onClick={() => setShowImport(false)} className="text-[#555] text-lg p-1">✕</button>
             </div>
             <div className="px-5 pt-4 space-y-4">
-              <p className="text-[#888] text-sm leading-relaxed">
+              <p className="text-[#888] text-sm leading-relaxed font-sans">
                 {importType === 'fuel'
                   ? 'Upload a phone history screenshot from GasBuddy, your digital receipts, or credit records. Personal OS AI will parse it out natively.'
                   : 'Upload an invoice screenshot from Carfax, ACME shop slips, or commercial mechanics logs to parse items cleanly.'}
@@ -1140,21 +1196,21 @@ export default function VehiclePage() {
                   <div className="relative">
                     <img src={imagePreview} alt="Target file viewport preview" className="w-full max-h-48 object-contain bg-[#0a0a0a]" />
                     <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-2 text-center">
-                      <p className="text-[#f0a050] text-xs font-medium">Tap to swap uploaded asset file</p>
+                      <p className="text-[#f0a050] text-xs font-medium font-mono">Tap to swap uploaded asset file</p>
                     </div>
                   </div>
                 ) : (
                   <div className="py-12 flex flex-col items-center justify-center gap-2">
                     <span className="text-3xl text-[#555]">📷</span>
-                    <p className="text-[#555] text-sm font-medium">Select photo image asset file</p>
-                    <p className="text-[#333] text-xs">Camera capture roll or storage media</p>
+                    <p className="text-[#555] text-sm font-medium font-sans">Select photo image asset file</p>
+                    <p className="text-[#333] text-xs font-mono">Camera capture roll or storage media</p>
                   </div>
                 )}
               </button>
 
               {imageBase64 && importRecords.length === 0 && (
                 <button onClick={extractRecords} disabled={extracting}
-                  className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-60 flex items-center justify-center gap-2">
+                  className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-60 flex items-center justify-center gap-2 font-mono text-sm">
                   {extracting ? 'Processing Extraction Framework AI...' : 'Parse Screenshot Records with AI'}
                 </button>
               )}
@@ -1163,7 +1219,7 @@ export default function VehiclePage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-white font-semibold text-sm">{importRecords.filter(r => r._keep).length} selected</p>
-                    <button onClick={() => { setImportRecords([]); setImagePreview(null); setImageBase64(null); }} className="text-[#555] text-xs">Clear file</button>
+                    <button onClick={() => { setImportRecords([]); setImagePreview(null); setImageBase64(null); }} className="text-[#555] text-xs font-semibold font-mono">Clear file</button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                     {importRecords.map(rec => (
@@ -1173,19 +1229,19 @@ export default function VehiclePage() {
                             {importType === 'fuel' ? (
                               <>
                                 <p className="text-white text-sm font-semibold font-mono">{rec.total_cost != null ? fmt(rec.total_cost) : '—'}</p>
-                                <p className="text-[#ccc] mt-0.5">{rec.gallons != null ? `${rec.gallons} gal` : ''}{rec.price_per_gallon != null ? ` @ $${rec.price_per_gallon}/gal` : ''}</p>
-                                <p className="text-[#555] mt-0.5">{rec.date || ''}{rec.odometer != null ? ` · ${rec.odometer.toLocaleString()} mi` : ''}</p>
+                                <p className="text-[#ccc] mt-0.5 font-mono">{rec.gallons != null ? `${rec.gallons} gal` : ''}{rec.price_per_gallon != null ? ` @ $${rec.price_per_gallon}/gal` : ''}</p>
+                                <p className="text-[#555] mt-0.5 font-mono">{rec.date || ''}{rec.odometer != null ? ` · ${rec.odometer.toLocaleString()} mi` : ''}</p>
                               </>
                             ) : (
                               <>
                                 <p className="text-white text-sm font-semibold">{rec.service_type}</p>
-                                <p className="text-[#ccc] mt-0.5">{rec.date || ''}{rec.mileage != null ? ` · ${rec.mileage.toLocaleString()} mi` : ''}{rec.cost != null ? ` · ${fmt(rec.cost)}` : ''}</p>
+                                <p className="text-[#ccc] mt-0.5 font-mono">{rec.date || ''}{rec.mileage != null ? ` · ${rec.mileage.toLocaleString()} mi` : ''}{rec.cost != null ? ` · ${fmt(rec.cost)}` : ''}</p>
                               </>
                             )}
                           </div>
                           <button
                             onClick={() => setImportRecords(recs => recs.map(r => r._idx === rec._idx ? { ...r, _keep: !r._keep } : r))}
-                            className={`text-[10px] font-bold tracking-wider uppercase shrink-0 px-2 py-1 rounded-md ${rec._keep ? 'text-[#ef4444] bg-[#ef4444]/10' : 'text-[#22c55e] bg-[#22c55e]/10'}`}
+                            className={`text-[10px] font-bold tracking-wider uppercase shrink-0 px-2 py-1 rounded-md font-mono ${rec._keep ? 'text-[#ef4444] bg-[#ef4444]/10' : 'text-[#22c55e] bg-[#22c55e]/10'}`}
                           >
                             {rec._keep ? 'Skip' : 'Include'}
                           </button>
@@ -1194,7 +1250,7 @@ export default function VehiclePage() {
                     ))}
                   </div>
                   <button onClick={saveImported} disabled={importSaving || importRecords.filter(r => r._keep).length === 0}
-                    className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-50">
+                    className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-50 font-mono text-sm">
                     {importSaving ? 'Committing records up...' : `Ingest ${importRecords.filter(r => r._keep).length} Parsed Records`}
                   </button>
                 </div>
@@ -1204,29 +1260,29 @@ export default function VehiclePage() {
         </div>
       )}
 
-      {/* Delete fuel confirmation bottom sheet sheet */}
+      {/* Delete Fuel Confirmation Sheet */}
       {deleteFuelId && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
           <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
             <p className="text-white font-semibold text-center mb-1">Delete Fuel Log Entry?</p>
-            <p className="text-[#888] text-xs text-center mb-4">This action resets the historical calculations basis</p>
+            <p className="text-[#888] text-xs text-center mb-4 font-sans">This action resets the historical calculations basis</p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteFuelId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-medium">Keep</button>
-              <button onClick={() => deleteFuel(deleteFuelId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium">Delete record</button>
+              <button onClick={() => deleteFuel(deleteFuelId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium font-mono">Delete record</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete maintenance confirmation layout item sheet */}
+      {/* Delete Maintenance Confirmation Sheet */}
       {deleteMaintId && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
           <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
             <p className="text-white font-semibold text-center mb-1">Delete Service Record?</p>
-            <p className="text-[#888] text-xs text-center mb-4">This permanent change resets your vehicle service timeline</p>
+            <p className="text-[#888] text-xs text-center mb-4 font-sans">This permanent change resets your vehicle service timeline</p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteMaintId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-medium">Keep</button>
-              <button onClick={() => deleteMaint(deleteMaintId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium">Delete record</button>
+              <button onClick={() => deleteMaint(deleteMaintId)} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-medium font-mono">Delete record</button>
             </div>
           </div>
         </div>
