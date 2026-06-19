@@ -1,55 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
-const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
-const INCOME_CATEGORIES = ['Income', 'Other Inc.', 'Roth IRA', '401K', 'HSA', 'Transfer'];
+export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
+const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
+
+// Categories that represent investment account contributions
+const INVESTMENT_CONTRIBUTION_CATEGORIES: Record<string, string> = {
+  'Roth IRA': 'Roth IRA',
+  'HSA': 'HSA',
+};
+
+export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.accessToken) {
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { date, merchant, account, amount, category } = body;
-
-    if (!date || !merchant || !account || !amount || !category) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-
-    const dateObj = new Date(date + 'T00:00:00');
-    const formattedDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
-    const sheetMonth = dateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-    const supabaseMonth = date.substring(0, 7);
-    const id = `manual-${Date.now()}`;
-
-    // Expenses are negative, income/transfers are positive
-    const rawAmount = parseFloat(amount);
-    const signedAmount = INCOME_CATEGORIES.includes(category) ? rawAmount : -Math.abs(rawAmount);
-
-    const row = [id, formattedDate, merchant, account, signedAmount, category, sheetMonth];
-
-    const sheetId = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
-    const range = 'Transactions!A:G';
-
-    const sheetsResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ values: [row] }),
-      }
-    );
-
-    if (!sheetsResponse.ok) {
-      const err = await sheetsResponse.text();
-      return NextResponse.json({ error: `Sheets error: ${err}` }, { status: 500 });
     }
 
     const supabase = createClient(
@@ -57,26 +25,72 @@ export async function POST(req: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const { error: dbError } = await supabase.from('transactions').insert({
-      id,
-      date,
-      merchant,
-      account,
-      amount: signedAmount,
-      category,
-      month: supabaseMonth,
-      source: 'manual',
-      user_id: USER_ID,
-    });
+    const body = await req.json();
+    const { merchant, date, account, amount, category } = body;
 
-    if (dbError) {
-      return NextResponse.json({ error: `DB error: ${dbError.message}` }, { status: 500 });
+    const id = `manual-${Date.now()}`;
+    const month = date.substring(0, 7); // YYYY-MM from YYYY-MM-DD
+    const numericAmount = parseFloat(String(amount));
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert([{
+        id,
+        date,
+        merchant,
+        account,
+        amount: numericAmount,
+        category,
+        month,
+        source: 'manual',
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[transactions/add] insert_error=${error.message}`);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    // Auto-update investment_cash when a Roth IRA or HSA contribution is logged
+    const investmentAccount = INVESTMENT_CONTRIBUTION_CATEGORIES[category];
+    if (investmentAccount && numericAmount > 0) {
+      try {
+        const { data: cashRow, error: fetchErr } = await supabase
+          .from('investment_cash')
+          .select('cash_balance')
+          .eq('user_id', USER_ID)
+          .eq('account', investmentAccount)
+          .single();
 
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: `Exception: ${message}` }, { status: 500 });
+        if (fetchErr) {
+          console.error(`[transactions/add] cash_fetch_error=${fetchErr.message} account=${investmentAccount}`);
+        } else if (cashRow) {
+          const newBalance = parseFloat(String(cashRow.cash_balance)) + numericAmount;
+          const { error: updateErr } = await supabase
+            .from('investment_cash')
+            .update({ cash_balance: newBalance, updated_at: new Date().toISOString() })
+            .eq('user_id', USER_ID)
+            .eq('account', investmentAccount);
+
+          if (updateErr) {
+            console.error(`[transactions/add] cash_update_error=${updateErr.message} account=${investmentAccount}`);
+          } else {
+            console.error(`[transactions/add] cash_updated account=${investmentAccount} delta=+${numericAmount} new=${newBalance}`);
+          }
+        }
+      } catch (cashErr: any) {
+        // Don't fail the request — transaction was saved successfully
+        console.error(`[transactions/add] cash_exception=${cashErr.message}`);
+      }
+    }
+
+    return NextResponse.json(
+      { success: true, transaction: data },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
+  } catch (err: any) {
+    console.error(`[transactions/add] caught=${err.message}`);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
