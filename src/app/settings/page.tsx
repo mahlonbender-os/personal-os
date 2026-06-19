@@ -13,10 +13,28 @@ export default function SettingsPage() {
     if ('Notification' in window) {
       setPermission(Notification.permission);
     }
+    
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(() => {
+      // 1. Check if a service worker is actively controlling the page right now
+      if (navigator.serviceWorker.controller) {
         setSwRegistered(true);
+      }
+
+      // 2. Scan all active registrations as a bulletproof fallback indicator
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        if (registrations.length > 0) {
+          setSwRegistered(true);
+        }
       });
+
+      // 3. Fallback register inline to guarantee activation on this route path
+      navigator.serviceWorker.register('/sw.js')
+        .then(() => {
+          setSwRegistered(true);
+        })
+        .catch((err) => {
+          console.error('Settings page inline service worker registration failed:', err);
+        });
     }
   }, []);
 
@@ -39,7 +57,6 @@ export default function SettingsPage() {
         
         if (!sub) {
           try {
-            // Cryptographic subscription parameter configuration block
             sub = await reg.pushManager.subscribe({
               userVisibleOnly: true,
               applicationServerKey: urlBase64ToUint8Array(
@@ -73,7 +90,6 @@ export default function SettingsPage() {
     }
   }
 
-  // Cryptographic Base64 Uint8 parser helper utility
   function urlBase64ToUint8Array(base64String: string) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
@@ -116,7 +132,7 @@ export default function SettingsPage() {
           </div>
         </div>
         <h1 className="text-sm font-bold tracking-wider uppercase font-mono text-[#888]">System Settings</h1>
-        <div className="w-10" /> {/* Design symmetry balancer block */}
+        <div className="w-10" />
       </div>
 
       <div className="px-4 pt-6 space-y-4">
@@ -125,11 +141,11 @@ export default function SettingsPage() {
           <div className="w-10 h-10 rounded-full bg-[#1c1c1e] flex items-center justify-center text-xl">⚙️</div>
           <div>
             <h2 className="text-white text-base font-bold font-sans">Command Core Settings</h2>
-            <p className="text-[#555] text-xs font-mono mt-0.5">Personal OS · Production v1.4.2</p>
+            <p className="text-[#555] text-xs font-mono mt-0.5">Personal OS · Production v1.4.3</p>
           </div>
         </div>
 
-        {/* Track 3 Core Controls Framework Card */}
+        {/* Controls Framework Card */}
         <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 space-y-4">
           <div className="flex items-center justify-between border-b border-[#1a1a1a]/60 pb-3">
             <div>
