@@ -43,6 +43,7 @@ export async function POST(req: Request) {
         category,
         month,
         source: 'manual',
+        user_id: USER_ID,
       }])
       .select()
       .single();
