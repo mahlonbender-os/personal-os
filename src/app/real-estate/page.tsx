@@ -52,7 +52,7 @@ export default function RealEstateOptimizationPage() {
   // Real estate math calculations
   const homeValue = data?.homeValue || 425000; 
   const helocBalance = data?.helocBalance || 18450;
-  const primaryMortgage = data?.primaryMortgage || 172000;
+  const primaryMortgage = 172000;
   
   const totalDebt = primaryMortgage + helocBalance;
   const currentEquity = homeValue - totalDebt;
@@ -192,7 +192,7 @@ export default function RealEstateOptimizationPage() {
       </PullToRefresh>
 
       {/* Floating Bottom Nav Fixed Element Outside Scroll Bounds */}
-      <BottomNav activeTab="more" />
+      <BottomNav active="more" />
     </div>
   );
 }
