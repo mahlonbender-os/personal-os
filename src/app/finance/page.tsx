@@ -61,11 +61,40 @@ interface NetWorthSnapshot {
   liabilities: number;
 }
 
-type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth';
+interface CreditScore {
+  id: string;
+  score: number;
+  score_date: string;
+  bureau: string;
+  source: string;
+  notes: string;
+}
+
+interface HelocTransaction {
+  id: string;
+  transaction_date: string;
+  transaction_type: 'deposit' | 'draw' | 'payment';
+  amount: number;
+  running_balance: number;
+  description: string;
+}
+
+interface Subscription {
+  id: string;
+  name: string;
+  amount: number;
+  billing_cycle: string;
+  next_charge_date: string | null;
+  category: string;
+  is_active: boolean;
+  notes: string;
+}
+
+type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth' | 'credit' | 'heloc' | 'subscriptions';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v6'; // Increment to bust localized stale caches
+const CACHE_VERSION = 'v7';
 const AMBER = '#f0a050';
 const GREEN = '#22c55e';
 const RED = '#ef4444';
@@ -133,6 +162,24 @@ function monthLabel(key: string) {
   return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 }
 
+function monthlyEquiv(amount: number, cycle: string): number {
+  switch (cycle) {
+    case 'annual': return amount / 12;
+    case 'quarterly': return amount / 3;
+    case 'weekly': return (amount * 52) / 12;
+    default: return amount;
+  }
+}
+
+function cycleLabel(cycle: string): string {
+  switch (cycle) {
+    case 'annual': return 'Annual';
+    case 'quarterly': return 'Quarterly';
+    case 'weekly': return 'Weekly';
+    default: return 'Monthly';
+  }
+}
+
 async function syncSheets() {
   await fetch('/api/sync/sheets', { method: 'POST' });
   try {
@@ -156,6 +203,24 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2 px-1">{children}</p>;
+}
+
+function DeleteSheet({ onCancel, onConfirm, deleting, message }: { onCancel: () => void; onConfirm: () => void; deleting: boolean; message?: string }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+      <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
+        <p className="text-base font-semibold text-white text-center mb-1">Delete this entry?</p>
+        {message && <p className="text-[11px] text-[#555] text-center mb-4">{message}</p>}
+        {!message && <div className="mb-4" />}
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
+          <button onClick={onConfirm} disabled={deleting} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold disabled:opacity-40">
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
@@ -185,12 +250,10 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
         fetch('/api/finance/transactions?limit=5'), fetch('/api/finance/bills'),
       ]);
       const [cfData, nwData, txData, blData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json(), blRes.json()]);
-      
       const now = new Date();
       const monthName = now.toLocaleString('default', { month: 'long' });
       const cur = cfData.months?.find((m: { month: string }) => m.month.toLowerCase().includes(monthName.toLowerCase()));
       const cf = cur ? { income: cur.income, expenses: cur.essentials + cur.discretionary, net: cur.net } : null;
-      
       if (cf) setCashFlow(cf);
       setNetWorth(nwData);
       setRecentTx(txData.transactions || []);
@@ -210,7 +273,6 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      {/* Net Worth hero layout block */}
       <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('networth')}>
         <Card className="p-5">
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-1">Net Worth</p>
@@ -227,7 +289,6 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
         </Card>
       </div>
 
-      {/* Cash Flow */}
       {cashFlow && (
         <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('budget')}>
           <Card className="p-4">
@@ -250,7 +311,6 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
         </div>
       )}
 
-      {/* Bills due soon */}
       {dueSoon.length > 0 && (
         <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('bills')}>
           <Card className="p-4">
@@ -264,7 +324,6 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
         </div>
       )}
 
-      {/* Recent Transactions */}
       <Card className="overflow-hidden">
         <div className="w-full px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between active:bg-[#161616] cursor-pointer" onClick={() => onNavigateRow('transactions')}>
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Recent Transactions</p>
@@ -324,10 +383,8 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
       setSelectedMonth(data.month);
       setCurrentMonth(data.currentMonth);
       setAvailableMonths(data.availableMonths || []);
-
       const cfData = await fetch('/api/finance/cash-flow').then(r => r.json());
       if (cfData.months) {
-        // Build chronological historical graph tracking backward from selected month point
         const targetMonthIndex = cfData.months.findIndex((m: CashFlowMonth) => m.rawHeader === (month || data.month));
         if (targetMonthIndex !== -1) {
           const sliceStart = Math.max(0, targetMonthIndex - 5);
@@ -350,10 +407,9 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
   function CashFlowTrendChart() {
     if (historicalMonths.length < 2) return null;
     const maxVal = Math.max(...historicalMonths.map(m => Math.max(m.income, m.essentials + m.discretionary, 1)));
-
     return (
       <div>
-        <SectionLabel>Historical Cash Flow Trends</SectionLabel>
+        <SectionLabel>Historical Cash Flow</SectionLabel>
         <Card className="p-4 space-y-4">
           <div className="h-28 flex items-end justify-between gap-2 pt-2 px-1">
             {historicalMonths.map((m, i) => {
@@ -361,7 +417,6 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
               const incHeight = (m.income / maxVal) * 100;
               const expHeight = (totalExp / maxVal) * 100;
               const labelShort = m.month.split(' ')[0].substring(0, 3);
-
               return (
                 <div key={i} className="flex-1 flex flex-col items-center h-full justify-end">
                   <div className="flex items-end justify-center gap-1.5 w-full h-full pb-1">
@@ -374,14 +429,8 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
             })}
           </div>
           <div className="flex items-center justify-center gap-4 text-[10px] border-t border-[#1a1a1a] pt-2 text-[#555]">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-[#22c55e]" />
-              <span>Income</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-[#ef4444]" />
-              <span>Expenses</span>
-            </div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#22c55e]" /><span>Income</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#ef4444]" /><span>Expenses</span></div>
           </div>
         </Card>
       </div>
@@ -429,9 +478,10 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
           </div>
         </Card>
       </div>
-  );
-}
-return (
+    );
+  }
+
+  return (
     <div className="space-y-4 animate-fadeIn">
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3">
@@ -460,7 +510,6 @@ return (
           </div>
         </div>
       </Card>
-
       {loading ? (
         <div className="flex justify-center py-8"><Spinner /></div>
       ) : error ? (
@@ -490,11 +539,8 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
     try {
       const data = await fetch(`/api/finance/transactions?limit=300&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
       setTransactions(data.transactions || []);
-    } catch (e) {
-      console.error('Failed to load transactions:', e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error('Failed to load transactions:', e); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { setSearchQuery(''); setSelectedCategory('All'); load(); }, [load, onRefresh]);
@@ -528,14 +574,11 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] placeholder-[#333] outline-none focus:ring-1 focus:ring-[#f0a050]" />
         </div>
-
         <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
           className="w-full px-3 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] outline-none focus:ring-1 focus:ring-[#f0a050]">
           {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
         </select>
       </div>
-
-      {/* Local scroll containment framework */}
       <div className="flex-1 overflow-y-auto pb-16 space-y-4 pr-1 scrollbar-hide">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
@@ -630,7 +673,6 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
         <p className="text-2xl font-bold text-white font-mono">{fmt(totalMonthly)}</p>
         <p className="text-[10px] text-[#444] mt-0.5">{bills.length} unpaid bills</p>
       </Card>
-
       {loading ? <div className="flex justify-center py-8"><Spinner /></div> : bills.length === 0 ? (
         <div className="text-center py-10 text-[#333] text-sm">No upcoming bills — pull down to sync</div>
       ) : (
@@ -686,25 +728,19 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
   function NetWorthSparkline() {
     if (historyList.length < 2) return null;
-    
     const values = historyList.map(h => h.net_worth);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min === 0 ? 1 : max - min;
-
-    const width = 340;
-    const height = 80;
-    const padding = 10;
-    
+    const width = 340; const height = 80; const padding = 10;
     const points = historyList.map((h, i) => {
       const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
       const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
       return `${x},${y}`;
     }).join(' ');
-
     return (
       <div>
-        <SectionLabel>Net Worth Trajectory Baseline</SectionLabel>
+        <SectionLabel>Net Worth Trajectory</SectionLabel>
         <Card className="p-4 flex flex-col items-center">
           <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
             <polyline fill="none" stroke="#f0a050" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
@@ -740,9 +776,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           </div>
         </div>
       </div>
-
       <NetWorthSparkline />
-
       {assets.length > 0 && (
         <div>
           <SectionLabel>Assets</SectionLabel>
@@ -757,7 +791,6 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           </Card>
         </div>
       )}
-
       {liabilities.length > 0 && (
         <div>
           <SectionLabel>Liabilities</SectionLabel>
@@ -776,199 +809,855 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Credit Tab ───────────────────────────────────────────────────────────────
 
-function FinancePageInner() {
-  const { data: session, status } = useSession();
-  const searchParams = useSearchParams();
-  const initialTab = (searchParams.get('tab') as Tab) || 'overview';
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
-  const [refreshCount, setRefreshCount] = useState(0);
-  const [syncing, setSyncing] = useState(false);
-  const [showAddTx, setShowAddTx] = useState(false);
-  const [txForm, setTxForm] = useState({
-    date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
-    merchant: '', account: '', amount: '', category: '',
-  });
-  const [txSaving, setTxSaving] = useState(false);
-  const [txError, setTxError] = useState('');
+function CreditTab({ onRefresh }: { onRefresh: number }) {
+  const [scores, setScores] = useState<CreditScore[]>([]);
+  const [accounts, setAccounts] = useState<{ name: string; balance: number; limit: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  async function handleAddTransaction() {
-    setTxError('');
-    if (!txForm.date || !txForm.merchant || !txForm.account || !txForm.amount || !txForm.category) {
-      setTxError('All fields are required.'); return;
-    }
-    setTxSaving(true);
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/finance/transactions/add', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(txForm),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: 'Failed to save' }));
-        throw new Error(errData.error || 'Failed to save');
-      }
-
-      setShowAddTx(false);
-      setTxForm({ date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }), merchant: '', account: '', amount: '', category: '' });
-
-      try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
-      setRefreshCount(c => c + 1);
-
-      syncSheets().then(() => setRefreshCount(c => c + 1));
-
-    } catch (e: unknown) {
-      setTxError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
-    }
-    finally { setTxSaving(false); }
-  }
-
-  const handleRefresh = useCallback(async () => {
-    setSyncing(true);
-    await syncSheets();
-    setSyncing(false);
-    setRefreshCount(c => c + 1);
+      const [creditRes, acctRes] = await Promise.all([
+        fetch('/api/finance/credit'),
+        fetch('/api/finance/accounts'),
+      ]);
+      const [creditData, acctData] = await Promise.all([creditRes.json(), acctRes.json()]);
+      setScores(creditData.scores || []);
+      setAccounts((acctData.accounts || []).filter((a: { limit: number }) => parseFloat(String(a.limit)) > 0));
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }, []);
 
-  if (status === 'loading') return <div className="min-h-screen flex items-center justify-center bg-black"><Spinner /></div>;
-  if (!session) return <div className="min-h-screen flex items-center justify-center bg-black"><p className="text-[#555]">Please sign in</p></div>;
+  useEffect(() => { load(); }, [load, onRefresh]);
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'budget', label: 'Budget' },
-    { id: 'transactions', label: 'Transactions' },
-    { id: 'bills', label: 'Bills' },
-    { id: 'networth', label: 'Net Worth' },
-  ];
+  async function handleDelete() {
+    if (!deleteId) return;
+    setDeleting(true);
+    await fetch(`/api/finance/credit?id=${deleteId}`, { method: 'DELETE' });
+    setDeleting(false);
+    setDeleteId(null);
+    setExpandedId(null);
+    load();
+  }
+
+  function scoreColor(s: number) {
+    if (s >= 750) return '#22c55e';
+    if (s >= 700) return '#f0a050';
+    if (s >= 650) return '#f59e0b';
+    return '#ef4444';
+  }
+  function scoreLabel(s: number) {
+    if (s >= 800) return 'Exceptional';
+    if (s >= 750) return 'Very Good';
+    if (s >= 700) return 'Good';
+    if (s >= 650) return 'Fair';
+    return 'Poor';
+  }
+
+  const latestScore = scores[0];
+
+  if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
-      {/* Header element - locked to top */}
-      <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-xl font-bold text-white">Finance</h1>
-            {syncing && (
-              <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
-                <div className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
-                Syncing…
+    <>
+      <div className="space-y-4 animate-fadeIn">
+        {/* Latest score hero */}
+        <Card className="p-5 text-center">
+          {latestScore ? (
+            <>
+              <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Credit Score</p>
+              <p className="text-[56px] font-extrabold leading-none" style={{ color: scoreColor(latestScore.score), fontFamily: 'system-ui' }}>
+                {latestScore.score}
+              </p>
+              <p className="text-sm font-semibold mt-1" style={{ color: scoreColor(latestScore.score) }}>{scoreLabel(latestScore.score)}</p>
+              <div className="flex justify-center gap-2 mt-2 text-[10px] text-[#444]">
+                <span>{latestScore.bureau}</span>
+                <span>·</span>
+                <span>{fmtDate(latestScore.score_date)}</span>
+                {latestScore.source && <><span>·</span><span>{latestScore.source}</span></>}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <p className="text-[#333] text-sm py-6">No scores logged yet — tap Log Score to start tracking</p>
+          )}
+        </Card>
 
-          {/* Context-aware text link header action button */}
-          <button
-            onClick={() => {
-              if (navigator.vibrate) navigator.vibrate(8);
-              if (activeTab === 'transactions') {
-                setTxForm(f => ({ ...f, date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }) }));
-                setShowAddTx(true);
-              } else {
-                handleRefresh();
-              }
-            }}
-            className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
-          >
-            {activeTab === 'transactions' ? 'Log Tx' : 'Sync'}
-          </button>
-        </div>
-        <div className="flex gap-0 overflow-x-auto scrollbar-hide">
-          {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${
-                activeTab === tab.id ? 'border-[#f0a050] text-[#f0a050]' : 'border-transparent text-[#555]'
-              }`}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+        {/* Score range bar */}
+        {latestScore && (
+          <Card className="p-4">
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">Score Range</p>
+            <div className="relative h-3 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #ef4444 0%, #f59e0b 25%, #f0a050 50%, #22c55e 80%)' }}>
+              <div className="absolute top-0 w-3 h-3 rounded-full bg-white border-2 border-[#111] shadow-lg"
+                style={{ left: `calc(${Math.min(Math.max((latestScore.score - 300) / 550, 0), 1) * 100}% - 6px)` }} />
+            </div>
+            <div className="flex justify-between mt-1.5 text-[9px] text-[#444]">
+              <span>300 Poor</span><span>580</span><span>670</span><span>740</span><span>850 Exc.</span>
+            </div>
+          </Card>
+        )}
 
-      {/* Structured tab rendering block preventing endless scrolling loops */}
-      <div className="flex-1 overflow-hidden relative bg-black">
-        {activeTab === 'transactions' ? (
-          // Transactions logs run separate full-viewport scroll metrics
-          <div className="h-full px-4 pt-4">
-            <TransactionsTab onRefresh={refreshCount} />
+        {/* Card utilization */}
+        {accounts.length > 0 && (
+          <div>
+            <SectionLabel>Card Utilization</SectionLabel>
+            <Card className="overflow-hidden">
+              {accounts.map((acct, idx) => {
+                const bal = parseFloat(String(acct.balance));
+                const lim = parseFloat(String(acct.limit));
+                const util = lim > 0 ? (bal / lim) * 100 : 0;
+                const utilHigh = util > 30;
+                return (
+                  <div key={idx} className={`px-4 py-3 ${idx !== accounts.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-sm text-[#ccc] truncate flex-1 mr-2">{acct.name}</p>
+                      <p className={`text-sm font-bold font-mono flex-shrink-0 ${utilHigh ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>{util.toFixed(1)}%</p>
+                    </div>
+                    <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${utilHigh ? 'bg-[#ef4444]' : 'bg-[#22c55e]'}`} style={{ width: `${Math.min(util, 100)}%` }} />
+                    </div>
+                    <div className="flex justify-between mt-1 text-[9px] text-[#444]">
+                      <span>{fmt(bal)} used</span>
+                      <span>{fmt(lim)} limit</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
           </div>
-        ) : (
-          // Static layout blocks remain fully encapsulated inside pull-to-refresh
-          <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
-            <PullToRefresh onRefresh={handleRefresh}>
-              {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} />}
-              {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
-              {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
-              {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
-            </PullToRefresh>
+        )}
+
+        {/* Score history */}
+        {scores.length > 0 && (
+          <div>
+            <SectionLabel>Score History</SectionLabel>
+            <Card className="overflow-hidden">
+              {scores.map((score, idx) => (
+                <div key={score.id}>
+                  <div
+                    className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== scores.length - 1 || expandedId === score.id ? 'border-b border-[#1a1a1a]' : ''}`}
+                    onClick={() => setExpandedId(expandedId === score.id ? null : score.id)}
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: scoreColor(score.score) + '20' }}>
+                      <span className="text-xs font-bold font-mono" style={{ color: scoreColor(score.score) }}>{score.score}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[#ccc]">{score.bureau}</p>
+                      <p className="text-[10px] text-[#444]">{fmtDate(score.score_date)}{score.source ? ` · ${score.source}` : ''}</p>
+                    </div>
+                    <span className="text-[10px] font-semibold flex-shrink-0" style={{ color: scoreColor(score.score) }}>{scoreLabel(score.score)}</span>
+                  </div>
+                  {expandedId === score.id && (
+                    <div className={`px-4 py-3 bg-[#0d0d0d] flex items-center gap-3 ${idx !== scores.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                      {score.notes ? <p className="flex-1 text-[11px] text-[#555] italic">{score.notes}</p> : <div className="flex-1" />}
+                      <button onClick={() => setDeleteId(score.id)} className="text-xs font-semibold text-[#ef4444] active:opacity-70 px-3 py-2 rounded-lg bg-[#ef4444]/10">Delete</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Card>
           </div>
         )}
       </div>
 
-      {/* Viewport fixed structural overlays completely outside scroll container nodes */}
-      {/* Add Transaction Modal wrapper */}
-      {showAddTx && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddTx(false)}>
-          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
-              <button onClick={() => setShowAddTx(false)} className="text-[#f0a050] text-sm">Cancel</button>
-              <h2 className="text-base font-semibold text-white">New Transaction</h2>
-              <button onClick={handleAddTransaction} disabled={txSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
-                {txSaving ? 'Saving…' : 'Add'}
-              </button>
-            </div>
-            <div className="px-4 pt-4 space-y-3">
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
-                  <input type="date" value={txForm.date} onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Merchant</span>
-                  <input type="text" placeholder="Name" value={txForm.merchant} onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
-              </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
-                  <input type="number" placeholder="0.00" step="0.01" value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
-              </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Account</span>
-                  <select value={txForm.account} onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
-                    <option value="" className="bg-[#2c2c2e]">Select…</option>
-                    {ACCOUNTS.map(a => <option key={a} value={a} className="bg-[#2c2c2e]">{a}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
-                  <select value={txForm.category} onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
-                    <option value="" className="bg-[#2c2c2e]">Select…</option>
-                    {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              {txError && <p className="text-[#ef4444] text-xs px-1 font-mono">{txError}</p>}
-            </div>
-          </div>
-        </div>
+      {deleteId && (
+        <DeleteSheet
+          onCancel={() => setDeleteId(null)}
+          onConfirm={handleDelete}
+          deleting={deleting}
+          message="This cannot be undone."
+        />
       )}
-
-      <BottomNav active="finance" />
-    </div>
+    </>
   );
 }
 
-export default function FinancePage() {
+// ─── HELOC Tab ────────────────────────────────────────────────────────────────
+
+function HelocTab({ onRefresh }: { onRefresh: number }) {
+  const [transactions, setTransactions] = useState<HelocTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetch('/api/finance/heloc').then(r => r.json());
+      setTransactions(data.transactions || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load, onRefresh]);
+
+  async function handleDelete() {
+    if (!deleteId) return;
+    setDeleting(true);
+    await fetch(`/api/finance/heloc?id=${deleteId}`, { method: 'DELETE' });
+    setDeleting(false);
+    setDeleteId(null);
+    setExpandedId(null);
+    load();
+  }
+
+  const typeColor = (t: string) => t === 'deposit' ? '#22c55e' : t === 'draw' ? '#ef4444' : '#f0a050';
+  const typeLabel = (t: string) => t === 'deposit' ? 'DEPOSIT' : t === 'draw' ? 'DRAW' : 'PAYMENT';
+  const currentBalance = transactions.length > 0 ? parseFloat(String(transactions[0].running_balance)) : null;
+
+  if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
+
   return (
-    <Suspense fallback={null}>
-      <FinancePageInner />
-    </Suspense>
+    <>
+      <div className="space-y-4 animate-fadeIn">
+        <Card className="p-5">
+          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-1">HELOC Balance Owed</p>
+          <p className="text-[32px] font-extrabold text-white leading-none font-mono">
+            {currentBalance !== null ? fmt(currentBalance) : '—'}
+          </p>
+          <p className="text-[10px] text-[#444] mt-1">Members 1st HELOC · Outstanding balance</p>
+        </Card>
+
+        {transactions.length === 0 ? (
+          <div className="text-center py-12 text-[#333] text-sm space-y-2">
+            <p>No entries yet.</p>
+            <p className="text-[11px]">Tap Add Entry — use Balance After to set your current HELOC balance on your first entry.</p>
+          </div>
+        ) : (
+          <div>
+            <SectionLabel>Transaction History</SectionLabel>
+            <Card className="overflow-hidden">
+              {transactions.map((tx, idx) => (
+                <div key={tx.id}>
+                  <div
+                    className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== transactions.length - 1 || expandedId === tx.id ? 'border-b border-[#1a1a1a]' : ''}`}
+                    onClick={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
+                  >
+                    <div className="flex-shrink-0 w-16">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: typeColor(tx.transaction_type) + '20', color: typeColor(tx.transaction_type) }}>
+                        {typeLabel(tx.transaction_type)}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[#ccc] truncate">{tx.description || typeLabel(tx.transaction_type)}</p>
+                      <p className="text-[10px] text-[#444]">{fmtDate(tx.transaction_date)}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-semibold font-mono" style={{ color: typeColor(tx.transaction_type) }}>{fmt(parseFloat(String(tx.amount)))}</p>
+                      <p className="text-[9px] text-[#444] font-mono">{fmt(parseFloat(String(tx.running_balance)))} bal</p>
+                    </div>
+                  </div>
+                  {expandedId === tx.id && (
+                    <div className={`px-4 py-3 bg-[#0d0d0d] flex items-center gap-3 ${idx !== transactions.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                      <p className="text-[10px] text-[#444] flex-1">Mirrors to Transactions as {tx.transaction_type === 'deposit' ? 'Income' : 'Transfer'}</p>
+                      <button onClick={() => setDeleteId(tx.id)} className="text-xs font-semibold text-[#ef4444] active:opacity-70 px-3 py-2 rounded-lg bg-[#ef4444]/10">Delete</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {deleteId && (
+        <DeleteSheet
+          onCancel={() => setDeleteId(null)}
+          onConfirm={handleDelete}
+          deleting={deleting}
+          message="Also removes the mirrored transaction record. Cannot be undone."
+        />
+      )}
+    </>
   );
+}
+
+// ─── Subscriptions Tab ────────────────────────────────────────────────────────
+
+function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
+  const [subs, setSubs] = useState<Subscription[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetch('/api/finance/subscriptions').then(r => r.json());
+      setSubs(data.subscriptions || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load, onRefresh]);
+
+  async function handleDelete() {
+    if (!deleteId) return;
+    setDeleting(true);
+    await fetch(`/api/finance/subscriptions?id=${deleteId}`, { method: 'DELETE' });
+    setDeleting(false);
+    setDeleteId(null);
+    setExpandedId(null);
+    load();
+  }
+
+  async function handleToggle(sub: Subscription) {
+    setTogglingId(sub.id);
+    await fetch(`/api/finance/subscriptions?id=${sub.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: !sub.is_active }),
+    });
+    setTogglingId(null);
+    load();
+  }
+
+  const activeSubs = subs.filter(s => s.is_active);
+  const inactiveSubs = subs.filter(s => !s.is_active);
+  const monthlyTotal = activeSubs.reduce((sum, s) => sum + monthlyEquiv(parseFloat(String(s.amount)), s.billing_cycle), 0);
+  const annualTotal = monthlyTotal * 12;
+
+  function SubRow({ sub }: { sub: Subscription }) {
+    const monthly = monthlyEquiv(parseFloat(String(sub.amount)), sub.billing_cycle);
+    const isExpanded = expandedId === sub.id;
+    return (
+      <div>
+        <div
+          className="flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors border-b border-[#1a1a1a]"
+          onClick={() => setExpandedId(isExpanded ? null : sub.id)}
+        >
+          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor(sub.category) }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-[#ccc] truncate">{sub.name}</p>
+            <p className="text-[10px] text-[#444]">
+              {cycleLabel(sub.billing_cycle)}{sub.next_charge_date ? ` · next ${fmtDate(sub.next_charge_date)}` : ''}
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-sm font-semibold text-[#f0a050] font-mono">{fmt(parseFloat(String(sub.amount)))}</p>
+            {sub.billing_cycle !== 'monthly' && <p className="text-[9px] text-[#444] font-mono">{fmt(monthly)}/mo</p>}
+          </div>
+        </div>
+        {isExpanded && (
+          <div className="px-4 py-3 bg-[#0d0d0d] flex items-center gap-3 border-b border-[#1a1a1a]">
+            {sub.notes ? <p className="flex-1 text-[11px] text-[#555] italic truncate">{sub.notes}</p> : <div className="flex-1" />}
+            <button
+              onClick={() => handleToggle(sub)}
+              disabled={togglingId === sub.id}
+              className="text-xs font-semibold text-[#f0a050] active:opacity-70 px-3 py-2 rounded-lg bg-[#f0a050]/10 disabled:opacity-40"
+            >
+              {togglingId === sub.id ? '…' : sub.is_active ? 'Deactivate' : 'Activate'}
+            </button>
+            <button onClick={() => setDeleteId(sub.id)} className="text-xs font-semibold text-[#ef4444] active:opacity-70 px-3 py-2 rounded-lg bg-[#ef4444]/10">Delete</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
+
+  return (
+    <>
+      <div className="space-y-4 animate-fadeIn">
+        <Card className="p-4">
+          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">Active Subscriptions</p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-[10px] text-[#444] mb-0.5">Monthly</p>
+              <p className="text-base font-bold text-[#f0a050] font-mono">{fmt(monthlyTotal)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-[#444] mb-0.5">Annual</p>
+          <p className="text-base font-bold text-white font-mono">{fmt(annualTotal)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-[#444] mb-0.5">Count</p>
+          <p className="text-base font-bold text-white">{activeSubs.length}</p>
+        </div>
+      </div>
+    </Card>
+
+    {subs.length === 0 ? (
+      <div className="text-center py-12 text-[#333] text-sm">No subscriptions logged — tap Add Sub to start</div>
+    ) : (
+      <>
+        {activeSubs.length > 0 && (
+          <div>
+            <SectionLabel>Active</SectionLabel>
+            <Card className="overflow-hidden">
+              {activeSubs.map(sub => <SubRow key={sub.id} sub={sub} />)}
+            </Card>
+          </div>
+        )}
+        {inactiveSubs.length > 0 && (
+          <div>
+            <SectionLabel>Inactive</SectionLabel>
+            <Card className="overflow-hidden">
+              {inactiveSubs.map(sub => <SubRow key={sub.id} sub={sub} />)}
+            </Card>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+
+  {deleteId && (
+    <DeleteSheet
+      onCancel={() => setDeleteId(null)}
+      onConfirm={handleDelete}
+      deleting={deleting}
+      message="This cannot be undone."
+    />
+  )}
+</>);
+}
+// ─── Main Page ────────────────────────────────────────────────────────────────
+function FinancePageInner() {
+const { data: session, status } = useSession();
+const searchParams = useSearchParams();
+const initialTab = (searchParams.get('tab') as Tab) || 'overview';
+const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+const [refreshCount, setRefreshCount] = useState(0);
+const [syncing, setSyncing] = useState(false);
+// Add Transaction modal
+const [showAddTx, setShowAddTx] = useState(false);
+const [txForm, setTxForm] = useState({
+date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
+merchant: '', account: '', amount: '', category: '',
+});
+const [txSaving, setTxSaving] = useState(false);
+const [txError, setTxError] = useState('');
+// Log Score modal
+const [showAddScore, setShowAddScore] = useState(false);
+const [scoreForm, setScoreForm] = useState({
+date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
+score: '', bureau: 'Experian', source: 'Credit Karma', notes: '',
+});
+const [scoreSaving, setScoreSaving] = useState(false);
+const [scoreError, setScoreError] = useState('');
+// HELOC Entry modal
+const [showAddHeloc, setShowAddHeloc] = useState(false);
+const [helocForm, setHelocForm] = useState({
+date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
+transaction_type: 'deposit', amount: '', description: '', balance_override: '',
+});
+const [helocSaving, setHelocSaving] = useState(false);
+const [helocError, setHelocError] = useState('');
+// Add Subscription modal
+const [showAddSub, setShowAddSub] = useState(false);
+const [subForm, setSubForm] = useState({
+name: '', amount: '', billing_cycle: 'monthly', next_charge_date: '', category: 'Subscriptions', notes: '',
+});
+const [subSaving, setSubSaving] = useState(false);
+const [subError, setSubError] = useState('');
+const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
+async function handleAddTransaction() {
+setTxError('');
+if (!txForm.date || !txForm.merchant || !txForm.account || !txForm.amount || !txForm.category) {
+setTxError('All fields are required.'); return;
+}
+setTxSaving(true);
+try {
+const res = await fetch('/api/finance/transactions/add', {
+method: 'POST', headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(txForm),
+});
+if (!res.ok) { const d = await res.json().catch(() => ({ error: 'Failed to save' })); throw new Error(d.error || 'Failed to save'); }
+setShowAddTx(false);
+setTxForm({ date: today, merchant: '', account: '', amount: '', category: '' });
+try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
+setRefreshCount(c => c + 1);
+syncSheets().then(() => setRefreshCount(c => c + 1));
+} catch (e: unknown) { setTxError(e instanceof Error ? e.message : 'Something went wrong. Try again.'); }
+finally { setTxSaving(false); }
+}
+async function handleAddScore() {
+setScoreError('');
+if (!scoreForm.score || !scoreForm.date) { setScoreError('Score and date are required.'); return; }
+setScoreSaving(true);
+try {
+const res = await fetch('/api/finance/credit', {
+method: 'POST', headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(scoreForm),
+});
+if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+setShowAddScore(false);
+setScoreForm({ date: today, score: '', bureau: 'Experian', source: 'Credit Karma', notes: '' });
+setRefreshCount(c => c + 1);
+} catch (e: unknown) { setScoreError(e instanceof Error ? e.message : 'Something went wrong.'); }
+finally { setScoreSaving(false); }
+}
+async function handleAddHeloc() {
+setHelocError('');
+if (!helocForm.date || !helocForm.amount) { setHelocError('Date and amount are required.'); return; }
+setHelocSaving(true);
+try {
+const res = await fetch('/api/finance/heloc', {
+method: 'POST', headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(helocForm),
+});
+if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+setShowAddHeloc(false);
+setHelocForm({ date: today, transaction_type: 'deposit', amount: '', description: '', balance_override: '' });
+try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
+setRefreshCount(c => c + 1);
+} catch (e: unknown) { setHelocError(e instanceof Error ? e.message : 'Something went wrong.'); }
+finally { setHelocSaving(false); }
+}
+async function handleAddSub() {
+setSubError('');
+if (!subForm.name || !subForm.amount || !subForm.billing_cycle) { setSubError('Name, amount, and billing cycle are required.'); return; }
+setSubSaving(true);
+try {
+const res = await fetch('/api/finance/subscriptions', {
+method: 'POST', headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(subForm),
+});
+if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+setShowAddSub(false);
+setSubForm({ name: '', amount: '', billing_cycle: 'monthly', next_charge_date: '', category: 'Subscriptions', notes: '' });
+setRefreshCount(c => c + 1);
+} catch (e: unknown) { setSubError(e instanceof Error ? e.message : 'Something went wrong.'); }
+finally { setSubSaving(false); }
+}
+const handleRefresh = useCallback(async () => {
+setSyncing(true);
+await syncSheets();
+setSyncing(false);
+setRefreshCount(c => c + 1);
+}, []);
+if (status === 'loading') return <div className="min-h-screen flex items-center justify-center bg-black"><Spinner /></div>;
+if (!session) return <div className="min-h-screen flex items-center justify-center bg-black"><p className="text-[#555]">Please sign in</p></div>;
+const tabs: { id: Tab; label: string }[] = [
+{ id: 'overview', label: 'Overview' },
+{ id: 'budget', label: 'Budget' },
+{ id: 'transactions', label: 'Transactions' },
+{ id: 'bills', label: 'Bills' },
+{ id: 'networth', label: 'Net Worth' },
+{ id: 'credit', label: 'Credit' },
+{ id: 'heloc', label: 'HELOC' },
+{ id: 'subscriptions', label: 'Subscriptions' },
+];
+const headerButtonLabel =
+activeTab === 'transactions' ? 'Log Tx' :
+activeTab === 'credit' ? 'Log Score' :
+activeTab === 'heloc' ? 'Add Entry' :
+activeTab === 'subscriptions' ? 'Add Sub' : 'Sync';
+return (
+<div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
+{/* Header */}
+<div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
+<div className="flex items-center justify-between mb-3">
+<div>
+<h1 className="text-xl font-bold text-white">Finance</h1>
+{syncing && (
+<div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
+<div className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+Syncing…
+</div>
+)}
+</div>
+<button
+onClick={() => {
+if (navigator.vibrate) navigator.vibrate(8);
+if (activeTab === 'transactions') {
+setTxForm(f => ({ ...f, date: today }));
+setShowAddTx(true);
+} else if (activeTab === 'credit') {
+setScoreForm(f => ({ ...f, date: today }));
+setShowAddScore(true);
+} else if (activeTab === 'heloc') {
+setHelocForm(f => ({ ...f, date: today }));
+setShowAddHeloc(true);
+} else if (activeTab === 'subscriptions') {
+setShowAddSub(true);
+} else {
+handleRefresh();
+}
+}}
+className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+>
+{headerButtonLabel}
+</button>
+</div>
+<div className="flex gap-0 overflow-x-auto scrollbar-hide">
+{tabs.map(tab => (
+<button key={tab.id} onClick={() => setActiveTab(tab.id)}
+className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${activeTab === tab.id ? 'border-[#f0a050] text-[#f0a050]' : 'border-transparent text-[#555]'}`}>
+{tab.label}
+</button>
+))}
+</div>
+</div>
+{/* Tab content */}
+  <div className="flex-1 overflow-hidden relative bg-black">
+    {activeTab === 'transactions' ? (
+      <div className="h-full px-4 pt-4">
+        <TransactionsTab onRefresh={refreshCount} />
+      </div>
+    ) : (
+      <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
+        <PullToRefresh onRefresh={handleRefresh}>
+          {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} />}
+          {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
+          {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
+          {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
+          {activeTab === 'credit' && <CreditTab onRefresh={refreshCount} />}
+          {activeTab === 'heloc' && <HelocTab onRefresh={refreshCount} />}
+          {activeTab === 'subscriptions' && <SubscriptionsTab onRefresh={refreshCount} />}
+        </PullToRefresh>
+      </div>
+    )}
+  </div>
+
+  {/* ── Add Transaction Modal ────────────────────────────────── */}
+  {showAddTx && (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddTx(false)}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+          <button onClick={() => setShowAddTx(false)} className="text-[#f0a050] text-sm">Cancel</button>
+          <h2 className="text-base font-semibold text-white">New Transaction</h2>
+          <button onClick={handleAddTransaction} disabled={txSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
+            {txSaving ? 'Saving…' : 'Add'}
+          </button>
+        </div>
+        <div className="px-4 pt-4 space-y-3">
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
+              <input type="date" value={txForm.date} onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Merchant</span>
+              <input type="text" placeholder="Name" value={txForm.merchant} onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
+              <input type="number" placeholder="0.00" step="0.01" value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Account</span>
+              <select value={txForm.account} onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                <option value="" className="bg-[#2c2c2e]">Select…</option>
+                {ACCOUNTS.map(a => <option key={a} value={a} className="bg-[#2c2c2e]">{a}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
+              <select value={txForm.category} onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                <option value="" className="bg-[#2c2c2e]">Select…</option>
+                {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
+              </select>
+            </div>
+          </div>
+          {txError && <p className="text-[#ef4444] text-xs px-1 font-mono">{txError}</p>}
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ── Log Score Modal ──────────────────────────────────────── */}
+  {showAddScore && (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddScore(false)}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+          <button onClick={() => setShowAddScore(false)} className="text-[#f0a050] text-sm">Cancel</button>
+          <h2 className="text-base font-semibold text-white">Log Credit Score</h2>
+          <button onClick={handleAddScore} disabled={scoreSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
+            {scoreSaving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        <div className="px-4 pt-4 space-y-3">
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
+              <input type="date" value={scoreForm.date} onChange={e => setScoreForm(f => ({ ...f, date: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Score</span>
+              <input type="number" placeholder="750" min="300" max="850" value={scoreForm.score}
+                onChange={e => setScoreForm(f => ({ ...f, score: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Bureau</span>
+              <select value={scoreForm.bureau} onChange={e => setScoreForm(f => ({ ...f, bureau: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                <option value="Experian" className="bg-[#2c2c2e]">Experian</option>
+                <option value="Equifax" className="bg-[#2c2c2e]">Equifax</option>
+                <option value="TransUnion" className="bg-[#2c2c2e]">TransUnion</option>
+              </select>
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Source</span>
+              <input type="text" placeholder="Credit Karma, Experian app…" value={scoreForm.source}
+                onChange={e => setScoreForm(f => ({ ...f, source: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
+              <input type="text" placeholder="Optional" value={scoreForm.notes}
+                onChange={e => setScoreForm(f => ({ ...f, notes: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          {scoreError && <p className="text-[#ef4444] text-xs px-1 font-mono">{scoreError}</p>}
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ── Add HELOC Entry Modal ────────────────────────────────── */}
+  {showAddHeloc && (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddHeloc(false)}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+          <button onClick={() => setShowAddHeloc(false)} className="text-[#f0a050] text-sm">Cancel</button>
+          <h2 className="text-base font-semibold text-white">HELOC Entry</h2>
+          <button onClick={handleAddHeloc} disabled={helocSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
+            {helocSaving ? 'Saving…' : 'Add'}
+          </button>
+        </div>
+        <div className="px-4 pt-4 space-y-3">
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-28 flex-shrink-0">Date</span>
+              <input type="date" value={helocForm.date} onChange={e => setHelocForm(f => ({ ...f, date: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-28 flex-shrink-0">Type</span>
+              <select value={helocForm.transaction_type} onChange={e => setHelocForm(f => ({ ...f, transaction_type: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                <option value="deposit" className="bg-[#2c2c2e]">Deposit — Paycheck In</option>
+                <option value="draw" className="bg-[#2c2c2e]">Draw — Take Out</option>
+                <option value="payment" className="bg-[#2c2c2e]">Payment — Pay Down</option>
+              </select>
+            </div>
+          </div>
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-28 flex-shrink-0">Amount</span>
+              <input type="number" placeholder="0.00" step="0.01" value={helocForm.amount}
+                onChange={e => setHelocForm(f => ({ ...f, amount: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-28 flex-shrink-0">Description</span>
+              <input type="text" placeholder="Optional" value={helocForm.description}
+                onChange={e => setHelocForm(f => ({ ...f, description: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-28 flex-shrink-0">Balance After</span>
+              <input type="number" placeholder="Auto-computed" step="0.01" value={helocForm.balance_override}
+                onChange={e => setHelocForm(f => ({ ...f, balance_override: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          <p className="text-[10px] text-[#444] px-1">Balance After is optional — set it on your first entry to match your actual HELOC statement. Leave blank after that for auto-tracking.</p>
+          {helocError && <p className="text-[#ef4444] text-xs px-1 font-mono">{helocError}</p>}
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ── Add Subscription Modal ───────────────────────────────── */}
+  {showAddSub && (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddSub(false)}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+          <button onClick={() => setShowAddSub(false)} className="text-[#f0a050] text-sm">Cancel</button>
+          <h2 className="text-base font-semibold text-white">New Subscription</h2>
+          <button onClick={handleAddSub} disabled={subSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
+            {subSaving ? 'Saving…' : 'Add'}
+          </button>
+        </div>
+        <div className="px-4 pt-4 space-y-3">
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Name</span>
+              <input type="text" placeholder="Netflix, Spotify…" value={subForm.name}
+                onChange={e => setSubForm(f => ({ ...f, name: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
+              <input type="number" placeholder="0.00" step="0.01" value={subForm.amount}
+                onChange={e => setSubForm(f => ({ ...f, amount: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Cycle</span>
+              <select value={subForm.billing_cycle} onChange={e => setSubForm(f => ({ ...f, billing_cycle: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                <option value="monthly" className="bg-[#2c2c2e]">Monthly</option>
+                <option value="annual" className="bg-[#2c2c2e]">Annual</option>
+                <option value="quarterly" className="bg-[#2c2c2e]">Quarterly</option>
+                <option value="weekly" className="bg-[#2c2c2e]">Weekly</option>
+              </select>
+            </div>
+            <div className="flex items-center px-4 py-3 border-b border-white/10">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Next Charge</span>
+              <input type="date" value={subForm.next_charge_date}
+                onChange={e => setSubForm(f => ({ ...f, next_charge_date: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
+            </div>
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
+              <select value={subForm.category} onChange={e => setSubForm(f => ({ ...f, category: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+            <div className="flex items-center px-4 py-3">
+              <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
+              <input type="text" placeholder="Optional" value={subForm.notes}
+                onChange={e => setSubForm(f => ({ ...f, notes: e.target.value }))}
+                className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+            </div>
+          </div>
+          {subError && <p className="text-[#ef4444] text-xs px-1 font-mono">{subError}</p>}
+        </div>
+      </div>
+    </div>
+  )}
+
+  <BottomNav active="finance" />
+</div>
+);
+}
+export default function FinancePage() {
+return (
+<Suspense fallback={null}>
+<FinancePageInner />
+</Suspense>
+);
 }
