@@ -11,10 +11,16 @@ interface HomeProfile {
   address?: string;
   purchase_date?: string;
   purchase_price?: number | string;
+  // HELOC terms
   heloc_lender?: string;
   heloc_credit_limit?: number | string;
   heloc_interest_rate?: number | string;
   heloc_draw_period_end?: string;
+  // Mortgage terms
+  mortgage_lender?: string;
+  mortgage_original_balance?: number | string;
+  mortgage_interest_rate?: number | string;
+  mortgage_payoff_date?: string;
   notes?: string;
 }
 
@@ -56,7 +62,7 @@ interface Project {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TABS = ['Profile', 'Maintenance', 'Projects'];
-const CACHE_PROFILE = 'home-profile-v1';
+const CACHE_PROFILE = 'home-profile-v2';
 const CACHE_BALANCES = 'home-balances-v1';
 const CACHE_MAINTENANCE = 'home-maintenance-v1';
 const CACHE_PROJECTS = 'home-projects-v1';
@@ -344,9 +350,20 @@ export default function HomePage() {
     (s, p) => s + (parseFloat(String(p.actual_cost)) || 0), 0
   );
 
+  // HELOC utilization
   const helocUtil =
     balances && profile?.heloc_credit_limit
       ? Math.min((balances.heloc_balance / parseFloat(String(profile.heloc_credit_limit))) * 100, 100)
+      : null;
+
+  // Mortgage payoff progress — how much has been paid off
+  const mortgageOriginal = profile?.mortgage_original_balance
+    ? parseFloat(String(profile.mortgage_original_balance))
+    : null;
+  const mortgageCurrent = balances?.mortgage_balance ?? null;
+  const mortgagePaidPct =
+    mortgageOriginal && mortgageCurrent !== null && mortgageOriginal > 0
+      ? Math.min(((mortgageOriginal - mortgageCurrent) / mortgageOriginal) * 100, 100)
       : null;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -441,6 +458,7 @@ export default function HomePage() {
                   <button onClick={openEditProfile} className="text-[#f0a050] text-sm font-semibold">Edit</button>
                 </div>
 
+                {/* Property card */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
                   {[
                     { label: 'Address', value: profile?.address },
@@ -457,14 +475,15 @@ export default function HomePage() {
                   ))}
                 </div>
 
-                <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">HELOC Terms</p>
+                {/* ── HELOC section ── */}
+                <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">HELOC</p>
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
                   {[
-                    { label: 'Lender', value: profile?.heloc_lender, live: false },
-                    { label: 'Credit Limit', value: fmt(profile?.heloc_credit_limit), live: false },
-                    { label: 'Current Balance', value: balances ? fmt(balances.heloc_balance) : '—', live: true },
-                    { label: 'Interest Rate', value: fmtPct(profile?.heloc_interest_rate), live: false },
-                    { label: 'Draw Period Ends', value: fmtDate(profile?.heloc_draw_period_end), live: false },
+                    { label: 'Lender', value: profile?.heloc_lender, mono: false, live: false },
+                    { label: 'Credit Limit', value: fmt(profile?.heloc_credit_limit), mono: true, live: false },
+                    { label: 'Current Balance', value: balances ? fmt(balances.heloc_balance) : '—', mono: true, live: true },
+                    { label: 'Interest Rate', value: fmtPct(profile?.heloc_interest_rate), mono: true, live: false },
+                    { label: 'Draw Period Ends', value: fmtDate(profile?.heloc_draw_period_end), mono: false, live: false },
                   ].map((row, i, arr) => (
                     <div
                       key={row.label}
@@ -473,12 +492,15 @@ export default function HomePage() {
                       <span className="text-[#888] text-sm">{row.label}</span>
                       <div className="flex items-center gap-1.5">
                         {row.live && <span className="text-[#22c55e] text-xs">live</span>}
-                        <span className="text-white text-sm font-medium font-mono">{row.value ?? '—'}</span>
+                        <span className={`text-white text-sm font-medium ${row.mono ? 'font-mono' : ''}`}>
+                          {row.value ?? '—'}
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
 
+                {/* HELOC utilization bar */}
                 {helocUtil !== null && (
                   <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3">
                     <div className="flex justify-between mb-2">
@@ -495,7 +517,9 @@ export default function HomePage() {
                       />
                     </div>
                     <div className="flex justify-between mt-1.5">
-                      <span className="text-[#555] text-xs font-mono">{balances ? fmt(balances.heloc_balance) : '—'} used</span>
+                      <span className="text-[#555] text-xs font-mono">
+                        {balances ? fmt(balances.heloc_balance) : '—'} used
+                      </span>
                       <span className="text-[#555] text-xs font-mono">
                         {balances && profile?.heloc_credit_limit
                           ? fmt(parseFloat(String(profile.heloc_credit_limit)) - balances.heloc_balance)
@@ -505,18 +529,56 @@ export default function HomePage() {
                   </div>
                 )}
 
+                {/* ── Mortgage section ── */}
                 <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">Mortgage</p>
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
-                  <div className="flex justify-between items-center px-4 py-3.5">
-                    <span className="text-[#888] text-sm">Wells Fargo Balance</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[#22c55e] text-xs">live</span>
-                      <span className="text-white text-sm font-medium font-mono">
-                        {balances ? fmt(balances.mortgage_balance) : '—'}
+                  {[
+                    { label: 'Lender', value: profile?.mortgage_lender ?? 'Wells Fargo', mono: false, live: false },
+                    { label: 'Starting Balance', value: fmt(profile?.mortgage_original_balance), mono: true, live: false },
+                    { label: 'Current Balance', value: balances ? fmt(balances.mortgage_balance) : '—', mono: true, live: true },
+                    { label: 'Interest Rate', value: fmtPct(profile?.mortgage_interest_rate), mono: true, live: false },
+                    { label: 'Est. Payoff Date', value: fmtDate(profile?.mortgage_payoff_date), mono: false, live: false },
+                  ].map((row, i, arr) => (
+                    <div
+                      key={row.label}
+                      className={`flex justify-between items-center px-4 py-3.5 ${i < arr.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
+                    >
+                      <span className="text-[#888] text-sm">{row.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        {row.live && <span className="text-[#22c55e] text-xs">live</span>}
+                        <span className={`text-white text-sm font-medium ${row.mono ? 'font-mono' : ''}`}>
+                          {row.value ?? '—'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Mortgage payoff progress bar */}
+                {mortgagePaidPct !== null && (
+                  <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[#888] text-xs">Mortgage Paid Off</span>
+                      <span className="text-white text-xs font-mono">{mortgagePaidPct.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-2 bg-[#222] rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[#22c55e] transition-all"
+                        style={{ width: `${mortgagePaidPct}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1.5">
+                      <span className="text-[#555] text-xs font-mono">
+                        {mortgageOriginal && mortgageCurrent !== null
+                          ? fmt(mortgageOriginal - mortgageCurrent)
+                          : '—'} paid
+                      </span>
+                      <span className="text-[#555] text-xs font-mono">
+                        {mortgageCurrent !== null ? fmt(mortgageCurrent) : '—'} remaining
                       </span>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {profile?.notes && (
                   <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3">
@@ -690,12 +752,30 @@ export default function HomePage() {
               <button onClick={() => setShowEditProfile(false)} className="text-[#555] text-sm">Cancel</button>
             </div>
             <div className="px-5 pt-4 space-y-3">
+
+              {/* Property */}
+              <p className="text-[#555] text-xs font-semibold uppercase tracking-wider">Property</p>
               {[
                 { key: 'address', label: 'Address', type: 'text' },
                 { key: 'purchase_date', label: 'Purchase Date', type: 'date' },
                 { key: 'purchase_price', label: 'Purchase Price', type: 'number' },
-                { key: 'heloc_lender', label: 'HELOC Lender', type: 'text' },
-                { key: 'heloc_credit_limit', label: 'HELOC Credit Limit', type: 'number' },
+              ].map(({ key, label, type }) => (
+                <div key={key}>
+                  <label className="text-[#888] text-xs block mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={(editProfileForm as any)[key] ?? ''}
+                    onChange={(e) => setEditProfileForm({ ...editProfileForm, [key]: e.target.value })}
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#f0a050]"
+                  />
+                </div>
+              ))}
+
+              {/* HELOC */}
+              <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">HELOC</p>
+              {[
+                { key: 'heloc_lender', label: 'Lender', type: 'text' },
+                { key: 'heloc_credit_limit', label: 'Credit Limit', type: 'number' },
                 { key: 'heloc_interest_rate', label: 'Interest Rate (%)', type: 'number' },
                 { key: 'heloc_draw_period_end', label: 'Draw Period End', type: 'date' },
               ].map(({ key, label, type }) => (
@@ -709,9 +789,28 @@ export default function HomePage() {
                   />
                 </div>
               ))}
-              <p className="text-[#333] text-xs">
-                HELOC balance, mortgage balance, and home value pull live from Finance.
-              </p>
+
+              {/* Mortgage */}
+              <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">Mortgage</p>
+              {[
+                { key: 'mortgage_lender', label: 'Lender', type: 'text' },
+                { key: 'mortgage_original_balance', label: 'Starting Balance', type: 'number' },
+                { key: 'mortgage_interest_rate', label: 'Interest Rate (%)', type: 'number' },
+                { key: 'mortgage_payoff_date', label: 'Est. Payoff Date', type: 'date' },
+              ].map(({ key, label, type }) => (
+                <div key={key}>
+                  <label className="text-[#888] text-xs block mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={(editProfileForm as any)[key] ?? ''}
+                    onChange={(e) => setEditProfileForm({ ...editProfileForm, [key]: e.target.value })}
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#f0a050]"
+                  />
+                </div>
+              ))}
+
+              <p className="text-[#333] text-xs">Current balances and home value pull live from Finance.</p>
+
               <div>
                 <label className="text-[#888] text-xs block mb-1">Notes</label>
                 <textarea
