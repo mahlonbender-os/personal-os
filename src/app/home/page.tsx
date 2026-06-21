@@ -11,13 +11,18 @@ interface HomeProfile {
   address?: string;
   purchase_date?: string;
   purchase_price?: number | string;
-  current_estimated_value?: number | string;
   heloc_lender?: string;
   heloc_credit_limit?: number | string;
-  heloc_current_balance?: number | string;
   heloc_interest_rate?: number | string;
   heloc_draw_period_end?: string;
   notes?: string;
+}
+
+interface HomeBalances {
+  home_value: number;
+  heloc_balance: number;
+  mortgage_balance: number;
+  equity: number;
 }
 
 interface Maintenance {
@@ -52,6 +57,7 @@ interface Project {
 
 const TABS = ['Profile', 'Maintenance', 'Projects'];
 const CACHE_PROFILE = 'home-profile-v1';
+const CACHE_BALANCES = 'home-balances-v1';
 const CACHE_MAINTENANCE = 'home-maintenance-v1';
 const CACHE_PROJECTS = 'home-projects-v1';
 
@@ -101,6 +107,8 @@ export default function HomePage() {
 
   // Profile
   const [profile, setProfile] = useState<HomeProfile | null>(null);
+  const [balances, setBalances] = useState<HomeBalances | null>(null);
+  const [balancesLoading, setBalancesLoading] = useState(true);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editProfileForm, setEditProfileForm] = useState<HomeProfile>({});
 
@@ -127,6 +135,8 @@ export default function HomePage() {
     try {
       const cp = localStorage.getItem(CACHE_PROFILE);
       if (cp) setProfile(JSON.parse(cp));
+      const cb = localStorage.getItem(CACHE_BALANCES);
+      if (cb) { setBalances(JSON.parse(cb)); setBalancesLoading(false); }
       const cm = localStorage.getItem(CACHE_MAINTENANCE);
       if (cm) setMaintenance(JSON.parse(cm));
       const cpr = localStorage.getItem(CACHE_PROJECTS);
@@ -136,9 +146,7 @@ export default function HomePage() {
   }, []);
 
   async function fetchAll() {
-    fetchProfile();
-    fetchMaintenance();
-    fetchProjects();
+    await Promise.all([fetchProfile(), fetchBalances(), fetchMaintenance(), fetchProjects()]);
   }
 
   async function fetchProfile() {
@@ -150,6 +158,19 @@ export default function HomePage() {
         localStorage.setItem(CACHE_PROFILE, JSON.stringify(data));
       }
     } catch {}
+  }
+
+  async function fetchBalances() {
+    setBalancesLoading(true);
+    try {
+      const res = await fetch('/api/home/balances');
+      const data = await res.json();
+      if (data && !data.error) {
+        setBalances(data);
+        localStorage.setItem(CACHE_BALANCES, JSON.stringify(data));
+      }
+    } catch {}
+    setBalancesLoading(false);
   }
 
   async function fetchMaintenance() {
@@ -308,13 +329,7 @@ export default function HomePage() {
     }
   }
 
-  // ── Derived data ───────────────────────────────────────────────────────────
-
-  const equity =
-    profile?.current_estimated_value && profile?.heloc_current_balance
-      ? parseFloat(String(profile.current_estimated_value)) -
-        parseFloat(String(profile.heloc_current_balance))
-      : null;
+  // ── Derived ───────────────────────────────────────────────────────────────
 
   const filteredMaintenance = maintenance.filter((m) => {
     if (showMaintenanceFilter === 'upcoming') return !m.is_complete;
@@ -323,13 +338,16 @@ export default function HomePage() {
   });
 
   const totalProjectEstimated = projects.reduce(
-    (s, p) => s + (parseFloat(String(p.estimated_cost)) || 0),
-    0
+    (s, p) => s + (parseFloat(String(p.estimated_cost)) || 0), 0
   );
   const totalProjectActual = projects.reduce(
-    (s, p) => s + (parseFloat(String(p.actual_cost)) || 0),
-    0
+    (s, p) => s + (parseFloat(String(p.actual_cost)) || 0), 0
   );
+
+  const helocUtil =
+    balances && profile?.heloc_credit_limit
+      ? Math.min((balances.heloc_balance / parseFloat(String(profile.heloc_credit_limit))) * 100, 100)
+      : null;
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -354,23 +372,45 @@ export default function HomePage() {
               </p>
             </div>
 
-            {/* Equity summary bar */}
-            {equity !== null && (
-              <div className="mx-4 mb-4 bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3 flex justify-between items-center">
-                <div>
-                  <p className="text-[#555] text-xs">Est. Equity</p>
-                  <p className="text-white font-mono text-lg font-semibold">{fmt(equity)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[#555] text-xs">Home Value</p>
-                  <p className="text-[#f0a050] font-mono text-sm">{fmt(profile?.current_estimated_value)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[#555] text-xs">HELOC Balance</p>
-                  <p className="text-[#ef4444] font-mono text-sm">{fmt(profile?.heloc_current_balance)}</p>
-                </div>
-              </div>
-            )}
+            {/* Live equity summary bar */}
+            <div className="mx-4 mb-4 bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3">
+              {balancesLoading && !balances ? (
+                <p className="text-[#555] text-xs text-center py-1">Loading balances…</p>
+              ) : balances ? (
+                <>
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <p className="text-[#555] text-xs mb-0.5">Est. Equity</p>
+                      <p
+                        className="font-mono text-xl font-bold"
+                        style={{ color: balances.equity >= 0 ? '#22c55e' : '#ef4444' }}
+                      >
+                        {fmt(balances.equity)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[#555] text-xs mb-0.5">Home Value</p>
+                      <p className="text-[#f0a050] font-mono text-sm font-semibold">
+                        {fmt(balances.home_value)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1 bg-[#1a1a1a] rounded-xl px-3 py-2">
+                      <p className="text-[#555] text-xs mb-0.5">HELOC</p>
+                      <p className="text-[#ef4444] font-mono text-sm">{fmt(balances.heloc_balance)}</p>
+                    </div>
+                    <div className="flex-1 bg-[#1a1a1a] rounded-xl px-3 py-2">
+                      <p className="text-[#555] text-xs mb-0.5">Mortgage</p>
+                      <p className="text-[#ef4444] font-mono text-sm">{fmt(balances.mortgage_balance)}</p>
+                    </div>
+                  </div>
+                  <p className="text-[#333] text-xs text-center mt-2">Live from Finance · pulls on refresh</p>
+                </>
+              ) : (
+                <p className="text-[#555] text-xs text-center py-1">Could not load balances</p>
+              )}
+            </div>
 
             {/* Tab bar */}
             <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
@@ -396,92 +436,88 @@ export default function HomePage() {
             {/* ── TAB 0: Profile ── */}
             {activeTab === 0 && (
               <div className="px-4 pt-4 space-y-3">
-                {/* Edit button */}
                 <div className="flex justify-between items-center">
                   <p className="text-[#555] text-xs font-semibold uppercase tracking-wider">Property Info</p>
-                  <button
-                    onClick={openEditProfile}
-                    className="text-[#f0a050] text-sm font-semibold"
-                  >
-                    Edit
-                  </button>
+                  <button onClick={openEditProfile} className="text-[#f0a050] text-sm font-semibold">Edit</button>
                 </div>
 
-                {/* Property card */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
                   {[
                     { label: 'Address', value: profile?.address },
                     { label: 'Purchase Date', value: fmtDate(profile?.purchase_date) },
                     { label: 'Purchase Price', value: fmt(profile?.purchase_price) },
-                    { label: 'Estimated Value', value: fmt(profile?.current_estimated_value) },
                   ].map((row, i, arr) => (
                     <div
                       key={row.label}
-                      className={`flex justify-between items-center px-4 py-3.5 ${
-                        i < arr.length - 1 ? 'border-b border-[#1a1a1a]' : ''
-                      }`}
+                      className={`flex justify-between items-center px-4 py-3.5 ${i < arr.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
                     >
                       <span className="text-[#888] text-sm">{row.label}</span>
-                      <span className="text-white text-sm font-medium text-right max-w-[60%]">
-                        {row.value ?? '—'}
-                      </span>
+                      <span className="text-white text-sm font-medium text-right max-w-[60%]">{row.value ?? '—'}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* HELOC card */}
-                <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">HELOC</p>
+                <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">HELOC Terms</p>
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
                   {[
-                    { label: 'Lender', value: profile?.heloc_lender },
-                    { label: 'Credit Limit', value: fmt(profile?.heloc_credit_limit) },
-                    { label: 'Current Balance', value: fmt(profile?.heloc_current_balance) },
-                    { label: 'Interest Rate', value: fmtPct(profile?.heloc_interest_rate) },
-                    { label: 'Draw Period Ends', value: fmtDate(profile?.heloc_draw_period_end) },
+                    { label: 'Lender', value: profile?.heloc_lender, live: false },
+                    { label: 'Credit Limit', value: fmt(profile?.heloc_credit_limit), live: false },
+                    { label: 'Current Balance', value: balances ? fmt(balances.heloc_balance) : '—', live: true },
+                    { label: 'Interest Rate', value: fmtPct(profile?.heloc_interest_rate), live: false },
+                    { label: 'Draw Period Ends', value: fmtDate(profile?.heloc_draw_period_end), live: false },
                   ].map((row, i, arr) => (
                     <div
                       key={row.label}
-                      className={`flex justify-between items-center px-4 py-3.5 ${
-                        i < arr.length - 1 ? 'border-b border-[#1a1a1a]' : ''
-                      }`}
+                      className={`flex justify-between items-center px-4 py-3.5 ${i < arr.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
                     >
                       <span className="text-[#888] text-sm">{row.label}</span>
-                      <span className="text-white text-sm font-medium font-mono">
-                        {row.value ?? '—'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {row.live && <span className="text-[#22c55e] text-xs">live</span>}
+                        <span className="text-white text-sm font-medium font-mono">{row.value ?? '—'}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
 
-                {/* HELOC utilization bar */}
-                {profile?.heloc_credit_limit && profile?.heloc_current_balance && (() => {
-                  const limit = parseFloat(String(profile.heloc_credit_limit));
-                  const bal = parseFloat(String(profile.heloc_current_balance));
-                  const pct = Math.min((bal / limit) * 100, 100);
-                  return (
-                    <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3">
-                      <div className="flex justify-between mb-2">
-                        <span className="text-[#888] text-xs">HELOC Utilization</span>
-                        <span className="text-white text-xs font-mono">{pct.toFixed(1)}%</span>
-                      </div>
-                      <div className="h-2 bg-[#222] rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${pct}%`,
-                            backgroundColor: pct > 80 ? '#ef4444' : pct > 50 ? '#f0a050' : '#22c55e',
-                          }}
-                        />
-                      </div>
-                      <div className="flex justify-between mt-1.5">
-                        <span className="text-[#555] text-xs font-mono">{fmt(bal)} used</span>
-                        <span className="text-[#555] text-xs font-mono">{fmt(limit - bal)} available</span>
-                      </div>
+                {helocUtil !== null && (
+                  <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[#888] text-xs">HELOC Utilization</span>
+                      <span className="text-white text-xs font-mono">{helocUtil.toFixed(1)}%</span>
                     </div>
-                  );
-                })()}
+                    <div className="h-2 bg-[#222] rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${helocUtil}%`,
+                          backgroundColor: helocUtil > 80 ? '#ef4444' : helocUtil > 50 ? '#f0a050' : '#22c55e',
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1.5">
+                      <span className="text-[#555] text-xs font-mono">{balances ? fmt(balances.heloc_balance) : '—'} used</span>
+                      <span className="text-[#555] text-xs font-mono">
+                        {balances && profile?.heloc_credit_limit
+                          ? fmt(parseFloat(String(profile.heloc_credit_limit)) - balances.heloc_balance)
+                          : '—'} available
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-                {/* Notes */}
+                <p className="text-[#555] text-xs font-semibold uppercase tracking-wider pt-2">Mortgage</p>
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                  <div className="flex justify-between items-center px-4 py-3.5">
+                    <span className="text-[#888] text-sm">Wells Fargo Balance</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[#22c55e] text-xs">live</span>
+                      <span className="text-white text-sm font-medium font-mono">
+                        {balances ? fmt(balances.mortgage_balance) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 {profile?.notes && (
                   <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3">
                     <p className="text-[#555] text-xs mb-1">Notes</p>
@@ -489,16 +525,10 @@ export default function HomePage() {
                   </div>
                 )}
 
-                {/* Empty state */}
                 {!profile && (
                   <div className="text-center py-10">
                     <p className="text-[#555] text-sm">No profile data yet.</p>
-                    <button
-                      onClick={openEditProfile}
-                      className="mt-3 text-[#f0a050] text-sm font-semibold"
-                    >
-                      Add Profile Info
-                    </button>
+                    <button onClick={openEditProfile} className="mt-3 text-[#f0a050] text-sm font-semibold">Add Profile Info</button>
                   </div>
                 )}
               </div>
@@ -507,7 +537,6 @@ export default function HomePage() {
             {/* ── TAB 1: Maintenance ── */}
             {activeTab === 1 && (
               <div className="px-4 pt-4 space-y-3">
-                {/* Header row */}
                 <div className="flex justify-between items-center">
                   <div className="flex gap-2">
                     {(['all', 'upcoming', 'complete'] as const).map((f) => (
@@ -515,21 +544,14 @@ export default function HomePage() {
                         key={f}
                         onClick={() => setShowMaintenanceFilter(f)}
                         className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-colors ${
-                          showMaintenanceFilter === f
-                            ? 'bg-[#f0a050] text-black'
-                            : 'bg-[#1a1a1a] text-[#888]'
+                          showMaintenanceFilter === f ? 'bg-[#f0a050] text-black' : 'bg-[#1a1a1a] text-[#888]'
                         }`}
                       >
                         {f.charAt(0).toUpperCase() + f.slice(1)}
                       </button>
                     ))}
                   </div>
-                  <button
-                    onClick={openAddMaintenance}
-                    className="text-[#f0a050] text-sm font-semibold"
-                  >
-                    + Add
-                  </button>
+                  <button onClick={openAddMaintenance} className="text-[#f0a050] text-sm font-semibold">+ Add</button>
                 </div>
 
                 {filteredMaintenance.length === 0 ? (
@@ -541,18 +563,13 @@ export default function HomePage() {
                     {filteredMaintenance.map((item, i) => (
                       <div
                         key={item.id}
-                        className={`px-4 py-3.5 ${
-                          i < filteredMaintenance.length - 1 ? 'border-b border-[#1a1a1a]' : ''
-                        }`}
+                        className={`px-4 py-3.5 ${i < filteredMaintenance.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
                       >
                         <div className="flex items-start gap-3">
-                          {/* Checkbox */}
                           <button
                             onClick={() => toggleMaintenanceComplete(item)}
                             className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                              item.is_complete
-                                ? 'border-[#22c55e] bg-[#22c55e]'
-                                : 'border-[#333]'
+                              item.is_complete ? 'border-[#22c55e] bg-[#22c55e]' : 'border-[#333]'
                             }`}
                           >
                             {item.is_complete && (
@@ -566,44 +583,19 @@ export default function HomePage() {
                               <p className={`text-sm font-medium ${item.is_complete ? 'text-[#555] line-through' : 'text-white'}`}>
                                 {item.title}
                               </p>
-                              {item.cost && (
-                                <span className="text-[#888] text-xs font-mono flex-shrink-0">
-                                  {fmt(item.cost)}
-                                </span>
-                              )}
+                              {item.cost && <span className="text-[#888] text-xs font-mono flex-shrink-0">{fmt(item.cost)}</span>}
                             </div>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                              {item.category && (
-                                <span className="text-[#f0a050] text-xs">{item.category}</span>
-                              )}
-                              {item.due_date && !item.is_complete && (
-                                <span className="text-[#555] text-xs">Due {fmtDate(item.due_date)}</span>
-                              )}
-                              {item.completed_date && item.is_complete && (
-                                <span className="text-[#22c55e] text-xs">Done {fmtDate(item.completed_date)}</span>
-                              )}
-                              {item.contractor && (
-                                <span className="text-[#555] text-xs">· {item.contractor}</span>
-                              )}
-                              {item.is_recurring && (
-                                <span className="text-[#888] text-xs">↻ {item.recurrence_months}mo</span>
-                              )}
+                              {item.category && <span className="text-[#f0a050] text-xs">{item.category}</span>}
+                              {item.due_date && !item.is_complete && <span className="text-[#555] text-xs">Due {fmtDate(item.due_date)}</span>}
+                              {item.completed_date && item.is_complete && <span className="text-[#22c55e] text-xs">Done {fmtDate(item.completed_date)}</span>}
+                              {item.contractor && <span className="text-[#555] text-xs">· {item.contractor}</span>}
+                              {item.is_recurring && <span className="text-[#888] text-xs">↻ {item.recurrence_months}mo</span>}
                             </div>
                           </div>
-                          {/* Actions */}
                           <div className="flex gap-3 flex-shrink-0">
-                            <button
-                              onClick={() => openEditMaintenance(item)}
-                              className="text-[#555] text-xs"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => setDeleteMaintenanceId(item.id)}
-                              className="text-[#ef4444] text-xs"
-                            >
-                              Del
-                            </button>
+                            <button onClick={() => openEditMaintenance(item)} className="text-[#555] text-xs">Edit</button>
+                            <button onClick={() => setDeleteMaintenanceId(item.id)} className="text-[#ef4444] text-xs">Del</button>
                           </div>
                         </div>
                       </div>
@@ -616,20 +608,13 @@ export default function HomePage() {
             {/* ── TAB 2: Projects ── */}
             {activeTab === 2 && (
               <div className="px-4 pt-4 space-y-3">
-                {/* Header row */}
                 <div className="flex justify-between items-center">
                   <p className="text-[#555] text-xs font-semibold uppercase tracking-wider">
                     {projects.length} project{projects.length !== 1 ? 's' : ''}
                   </p>
-                  <button
-                    onClick={openAddProject}
-                    className="text-[#f0a050] text-sm font-semibold"
-                  >
-                    + Add
-                  </button>
+                  <button onClick={openAddProject} className="text-[#f0a050] text-sm font-semibold">+ Add</button>
                 </div>
 
-                {/* Totals bar */}
                 {projects.length > 0 && (
                   <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3 flex justify-between">
                     <div>
@@ -650,10 +635,7 @@ export default function HomePage() {
                 ) : (
                   <div className="space-y-2">
                     {projects.map((p) => (
-                      <div
-                        key={p.id}
-                        className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3.5"
-                      >
+                      <div key={p.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl px-4 py-3.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -666,50 +648,20 @@ export default function HomePage() {
                               >
                                 {p.status ?? 'planned'}
                               </span>
-                              {p.funded_by && (
-                                <span className="text-[#555] text-xs">{p.funded_by}</span>
-                              )}
+                              {p.funded_by && <span className="text-[#555] text-xs">{p.funded_by}</span>}
                             </div>
                             <p className="text-white text-sm font-medium">{p.title}</p>
-                            {p.description && (
-                              <p className="text-[#555] text-xs mt-0.5">{p.description}</p>
-                            )}
+                            {p.description && <p className="text-[#555] text-xs mt-0.5">{p.description}</p>}
                             <div className="flex gap-3 mt-1.5 flex-wrap">
-                              {p.estimated_cost && (
-                                <span className="text-[#888] text-xs font-mono">
-                                  Est: {fmt(p.estimated_cost)}
-                                </span>
-                              )}
-                              {p.actual_cost && (
-                                <span className="text-[#f0a050] text-xs font-mono">
-                                  Actual: {fmt(p.actual_cost)}
-                                </span>
-                              )}
-                              {p.start_date && (
-                                <span className="text-[#555] text-xs">
-                                  Start: {fmtDate(p.start_date)}
-                                </span>
-                              )}
-                              {p.completion_date && (
-                                <span className="text-[#555] text-xs">
-                                  Done: {fmtDate(p.completion_date)}
-                                </span>
-                              )}
+                              {p.estimated_cost && <span className="text-[#888] text-xs font-mono">Est: {fmt(p.estimated_cost)}</span>}
+                              {p.actual_cost && <span className="text-[#f0a050] text-xs font-mono">Actual: {fmt(p.actual_cost)}</span>}
+                              {p.start_date && <span className="text-[#555] text-xs">Start: {fmtDate(p.start_date)}</span>}
+                              {p.completion_date && <span className="text-[#555] text-xs">Done: {fmtDate(p.completion_date)}</span>}
                             </div>
                           </div>
                           <div className="flex gap-3 flex-shrink-0">
-                            <button
-                              onClick={() => openEditProject(p)}
-                              className="text-[#555] text-xs"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => setDeleteProjectId(p.id)}
-                              className="text-[#ef4444] text-xs"
-                            >
-                              Del
-                            </button>
+                            <button onClick={() => openEditProject(p)} className="text-[#555] text-xs">Edit</button>
+                            <button onClick={() => setDeleteProjectId(p.id)} className="text-[#ef4444] text-xs">Del</button>
                           </div>
                         </div>
                       </div>
@@ -742,10 +694,8 @@ export default function HomePage() {
                 { key: 'address', label: 'Address', type: 'text' },
                 { key: 'purchase_date', label: 'Purchase Date', type: 'date' },
                 { key: 'purchase_price', label: 'Purchase Price', type: 'number' },
-                { key: 'current_estimated_value', label: 'Estimated Value', type: 'number' },
                 { key: 'heloc_lender', label: 'HELOC Lender', type: 'text' },
                 { key: 'heloc_credit_limit', label: 'HELOC Credit Limit', type: 'number' },
-                { key: 'heloc_current_balance', label: 'HELOC Balance', type: 'number' },
                 { key: 'heloc_interest_rate', label: 'Interest Rate (%)', type: 'number' },
                 { key: 'heloc_draw_period_end', label: 'Draw Period End', type: 'date' },
               ].map(({ key, label, type }) => (
@@ -759,6 +709,9 @@ export default function HomePage() {
                   />
                 </div>
               ))}
+              <p className="text-[#333] text-xs">
+                HELOC balance, mortgage balance, and home value pull live from Finance.
+              </p>
               <div>
                 <label className="text-[#888] text-xs block mb-1">Notes</label>
                 <textarea
@@ -785,9 +738,7 @@ export default function HomePage() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6">
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
-              <h2 className="text-white font-semibold">
-                {editMaintenance ? 'Edit Maintenance' : 'Add Maintenance'}
-              </h2>
+              <h2 className="text-white font-semibold">{editMaintenance ? 'Edit Maintenance' : 'Add Maintenance'}</h2>
               <button onClick={() => setShowAddMaintenance(false)} className="text-[#555] text-sm">Cancel</button>
             </div>
             <div className="px-5 pt-4 space-y-3">
@@ -831,7 +782,7 @@ export default function HomePage() {
                 </div>
               ))}
               <div>
-                <label className="text-[#888] text-xs block mb-1">Description / Notes</label>
+                <label className="text-[#888] text-xs block mb-1">Notes</label>
                 <textarea
                   value={maintenanceForm.notes ?? ''}
                   onChange={(e) => setMaintenanceForm({ ...maintenanceForm, notes: e.target.value })}
@@ -839,7 +790,6 @@ export default function HomePage() {
                   className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#f0a050] resize-none"
                 />
               </div>
-              {/* Toggles */}
               <div className="flex items-center justify-between">
                 <span className="text-[#888] text-sm">Mark Complete</span>
                 <button
@@ -886,9 +836,7 @@ export default function HomePage() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6">
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
-              <h2 className="text-white font-semibold">
-                {editProject ? 'Edit Project' : 'Add Project'}
-              </h2>
+              <h2 className="text-white font-semibold">{editProject ? 'Edit Project' : 'Add Project'}</h2>
               <button onClick={() => setShowAddProject(false)} className="text-[#555] text-sm">Cancel</button>
             </div>
             <div className="px-5 pt-4 space-y-3">
@@ -910,9 +858,7 @@ export default function HomePage() {
                       key={s}
                       onClick={() => setProjectForm({ ...projectForm, status: s })}
                       className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                        projectForm.status === s
-                          ? 'bg-[#f0a050] text-black'
-                          : 'bg-[#1a1a1a] text-[#888]'
+                        projectForm.status === s ? 'bg-[#f0a050] text-black' : 'bg-[#1a1a1a] text-[#888]'
                       }`}
                     >
                       {s}
@@ -974,19 +920,8 @@ export default function HomePage() {
             <p className="text-white font-semibold text-center mb-1">Delete Entry?</p>
             <p className="text-[#888] text-sm text-center mb-5">This cannot be undone.</p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteMaintenanceId(null)}
-                className="flex-1 py-3 rounded-xl bg-[#1a1a1a] text-white text-sm font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={deleteMaintenance}
-                disabled={saving}
-                className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold disabled:opacity-50"
-              >
-                Delete
-              </button>
+              <button onClick={() => setDeleteMaintenanceId(null)} className="flex-1 py-3 rounded-xl bg-[#1a1a1a] text-white text-sm font-semibold">Cancel</button>
+              <button onClick={deleteMaintenance} disabled={saving} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold disabled:opacity-50">Delete</button>
             </div>
           </div>
         </div>
@@ -999,19 +934,8 @@ export default function HomePage() {
             <p className="text-white font-semibold text-center mb-1">Delete Project?</p>
             <p className="text-[#888] text-sm text-center mb-5">This cannot be undone.</p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteProjectId(null)}
-                className="flex-1 py-3 rounded-xl bg-[#1a1a1a] text-white text-sm font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={deleteProject}
-                disabled={saving}
-                className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold disabled:opacity-50"
-              >
-                Delete
-              </button>
+              <button onClick={() => setDeleteProjectId(null)} className="flex-1 py-3 rounded-xl bg-[#1a1a1a] text-white text-sm font-semibold">Cancel</button>
+              <button onClick={deleteProject} disabled={saving} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold disabled:opacity-50">Delete</button>
             </div>
           </div>
         </div>
