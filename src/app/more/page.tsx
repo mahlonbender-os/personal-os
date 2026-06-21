@@ -10,6 +10,7 @@ const GROUPS = [
     items: [
       { label: 'Knox', href: '/knox', icon: '🐺' },
       { label: 'Vehicle', href: '/vehicle', icon: '🚗' },
+      { label: 'Home', href: '/home', icon: '🏠' },
     ],
   },
   {
@@ -33,7 +34,7 @@ const GROUPS = [
       { label: 'Warranties', href: '/warranties', icon: '📄' },
       { label: 'Digital Wallet', href: '/wallet', icon: '💳' },
       { label: 'Investments', href: '/investments', icon: '📈' },
-      { label: 'Equity Optimizer', href: '/real-estate', icon: '🏠' },
+      { label: 'Equity Optimizer', href: '/real-estate', icon: '📊' },
     ],
   },
   {
