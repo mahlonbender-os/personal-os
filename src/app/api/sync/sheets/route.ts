@@ -211,7 +211,8 @@ export async function POST() {
         const category = (row[1] || '').toString().trim();
         const amount = parseFloat((row[2] || '0').toString().replace(/[$,]/g, ''));
         const dueDay = parseInt((row[3] || '0').toString(), 10);
-        const dueDate = (row[4] || '').toString().trim() || null;
+        const rawDueDate = (row[4] || '').toString().trim();
+        const dueDate = rawDueDate ? sheetDateToISO(rawDueDate) : null;
         const paymentAccount = (row[5] || '').toString().trim();
         const status = (row[6] || 'Upcoming').toString().trim();
         const id = `sheet-bill-${idx}-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
@@ -226,6 +227,7 @@ export async function POST() {
           payment_account: paymentAccount,
           status,
           source: 'google_sheets',
+          user_id: USER_ID,
         };
       });
 
