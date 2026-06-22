@@ -38,13 +38,87 @@ export async function POST(req: Request) {
     );
 
     const body = await req.json();
-    const { merchant, date, account, amount, category } = body;
+    const { merchant, date, account, amount, category, toAccount } = body;
 
-    const id = `manual-${Date.now()}`;
     const month = date.substring(0, 7);
-    const numericAmount = parseFloat(String(amount));
+    const sheetDate = isoToSheetDate(date);
+    const ts = Date.now();
 
-    // ── 1. Insert to Supabase ───────────────────────────────────────────────
+    // ── TRANSFER: two rows ─────────────────────────────────────────────────
+    if (toAccount) {
+      const amt = Math.abs(parseFloat(String(amount)));
+      const fromId = `manual-${ts}-from`;
+      const toId   = `manual-${ts}-to`;
+      const label  = merchant || 'Transfer';
+
+      // Insert both rows to Supabase
+      const { error: insertErr } = await supabase.from('transactions').insert([
+        {
+          id: fromId,
+          date,
+          merchant: label,
+          account,
+          amount: -amt,
+          category: 'Transfer',
+          month,
+          source: 'manual',
+          user_id: USER_ID,
+        },
+        {
+          id: toId,
+          date,
+          merchant: label,
+          account: toAccount,
+          amount: amt,
+          category: 'Transfer',
+          month,
+          source: 'manual',
+          user_id: USER_ID,
+        },
+      ]);
+
+      if (insertErr) {
+        console.error(`[transactions/add] transfer_insert_error=${insertErr.message}`);
+        return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      }
+
+      // Append both rows to Sheets
+      try {
+        const appendRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Transactions!A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              values: [
+                [fromId, sheetDate, label, account,   -amt, 'Transfer', month],
+                [toId,   sheetDate, label, toAccount,  amt, 'Transfer', month],
+              ],
+            }),
+          }
+        );
+        if (!appendRes.ok) {
+          const errBody = await appendRes.text();
+          console.error(`[transactions/add] transfer_sheets_append_failed status=${appendRes.status} body=${errBody}`);
+        } else {
+          console.error(`[transactions/add] transfer_sheets_append_ok from=${account} to=${toAccount} amt=${amt}`);
+        }
+      } catch (sheetsErr: any) {
+        console.error(`[transactions/add] transfer_sheets_exception=${sheetsErr.message}`);
+      }
+
+      return NextResponse.json(
+        { success: true },
+        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    }
+
+    // ── SINGLE ROW: expense or income ──────────────────────────────────────
+    const id = `manual-${ts}`;
+    const numericAmount = parseFloat(String(amount));
 
     const { data, error } = await supabase
       .from('transactions')
@@ -67,10 +141,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // ── 2. Append row to Google Sheets Transactions tab ─────────────────────
-
+    // Append single row to Sheets
     try {
-      const sheetDate = isoToSheetDate(date);
       const appendRes = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Transactions!A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
         {
@@ -84,7 +156,6 @@ export async function POST(req: Request) {
           }),
         }
       );
-
       if (!appendRes.ok) {
         const errBody = await appendRes.text();
         console.error(`[transactions/add] sheets_append_failed status=${appendRes.status} body=${errBody}`);
@@ -92,12 +163,10 @@ export async function POST(req: Request) {
         console.error(`[transactions/add] sheets_append_ok id=${id} merchant=${merchant}`);
       }
     } catch (sheetsErr: any) {
-      // Don't fail the request — Supabase insert succeeded
       console.error(`[transactions/add] sheets_exception=${sheetsErr.message}`);
     }
 
-    // ── 3. Auto-update investment_cash for Roth IRA / HSA contributions ─────
-
+    // Auto-update investment_cash for Roth IRA / HSA contributions
     const investmentAccount = INVESTMENT_CONTRIBUTION_CATEGORIES[category];
     if (investmentAccount && numericAmount > 0) {
       try {

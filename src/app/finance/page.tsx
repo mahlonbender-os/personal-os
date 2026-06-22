@@ -91,13 +91,11 @@ interface Subscription {
 }
 
 type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth' | 'credit' | 'heloc' | 'subscriptions';
+type TxType = 'expense' | 'transfer' | 'income';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CACHE_VERSION = 'v7';
-const AMBER = '#f0a050';
-const GREEN = '#22c55e';
-const RED = '#ef4444';
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Knox 🐾': '#f59e0b',
@@ -178,6 +176,12 @@ function cycleLabel(cycle: string): string {
     case 'weekly': return 'Weekly';
     default: return 'Monthly';
   }
+}
+
+function txColor(category: string): string {
+  if (INCOME_CATEGORIES.includes(category)) return 'text-[#22c55e]';
+  if (category === 'Transfer' || !category) return 'text-[#888]';
+  return 'text-[#ef4444]';
 }
 
 async function syncSheets() {
@@ -340,7 +344,7 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
                   <p className="text-sm font-medium text-[#e0e0e0] truncate">{tx.merchant}</p>
                   <p className="text-[10px] text-[#444]">{tx.category} · {fmtDate(tx.date)}</p>
                 </div>
-                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : tx.category === 'Transfer' ? 'text-[#888]' : 'text-[#ef4444]'}`}>{fmt(tx.amount)}</p>
+                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${txColor(tx.category)}`}>{fmt(tx.amount)}</p>
               </div>
             ))}
           </div>
@@ -576,7 +580,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
         </div>
         <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
           className="w-full px-3 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] outline-none focus:ring-1 focus:ring-[#f0a050]">
-          {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          {categories.map(cat => <option key={cat} value={cat}>{cat || '(no category)'}</option>)}
         </select>
       </div>
       <div className="flex-1 overflow-y-auto pb-16 space-y-4 pr-1 scrollbar-hide">
@@ -606,13 +610,13 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
                         <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden">
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0"
                             style={{ backgroundColor: catColor(tx.category) + '20', color: catColor(tx.category) }}>
-                            {tx.category}
+                            {tx.category || 'Transfer'}
                           </span>
                           <span className="text-[10px] text-[#444] flex-shrink-0">{fmtDate(tx.date)}</span>
                           {tx.account && <span className="text-[10px] text-[#333] truncate min-w-0">{tx.account}</span>}
                         </div>
                       </div>
-                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 font-mono ${INCOME_CATEGORIES.includes(tx.category) ? 'text-[#22c55e]' : tx.category === 'Transfer' ? 'text-[#888]' : 'text-[#ef4444]'}`}>{fmt(tx.amount)}</p>
+                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 font-mono ${txColor(tx.category)}`}>{fmt(tx.amount)}</p>
                     </div>
                   ))}
                 </Card>
@@ -860,7 +864,6 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
   }
 
   const latestScore = scores[0];
-
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
 
   return (
@@ -875,8 +878,7 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
               </p>
               <p className="text-sm font-semibold mt-1" style={{ color: scoreColor(latestScore.score) }}>{scoreLabel(latestScore.score)}</p>
               <div className="flex justify-center gap-2 mt-2 text-[10px] text-[#444]">
-                <span>{latestScore.bureau}</span>
-                <span>·</span>
+                <span>{latestScore.bureau}</span><span>·</span>
                 <span>{fmtDate(latestScore.score_date)}</span>
                 {latestScore.source && <><span>·</span><span>{latestScore.source}</span></>}
               </div>
@@ -918,8 +920,7 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
                       <div className={`h-full rounded-full ${utilHigh ? 'bg-[#ef4444]' : 'bg-[#22c55e]'}`} style={{ width: `${Math.min(util, 100)}%` }} />
                     </div>
                     <div className="flex justify-between mt-1 text-[9px] text-[#444]">
-                      <span>{fmt(bal)} used</span>
-                      <span>{fmt(lim)} limit</span>
+                      <span>{fmt(bal)} used</span><span>{fmt(lim)} limit</span>
                     </div>
                   </div>
                 );
@@ -934,12 +935,9 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
             <Card className="overflow-hidden">
               {scores.map((score, idx) => (
                 <div key={score.id}>
-                  <div
-                    className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== scores.length - 1 || expandedId === score.id ? 'border-b border-[#1a1a1a]' : ''}`}
-                    onClick={() => setExpandedId(expandedId === score.id ? null : score.id)}
-                  >
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: scoreColor(score.score) + '20' }}>
+                  <div className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== scores.length - 1 || expandedId === score.id ? 'border-b border-[#1a1a1a]' : ''}`}
+                    onClick={() => setExpandedId(expandedId === score.id ? null : score.id)}>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: scoreColor(score.score) + '20' }}>
                       <span className="text-xs font-bold font-mono" style={{ color: scoreColor(score.score) }}>{score.score}</span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -960,15 +958,7 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
           </div>
         )}
       </div>
-
-      {deleteId && (
-        <DeleteSheet
-          onCancel={() => setDeleteId(null)}
-          onConfirm={handleDelete}
-          deleting={deleting}
-          message="This cannot be undone."
-        />
-      )}
+      {deleteId && <DeleteSheet onCancel={() => setDeleteId(null)} onConfirm={handleDelete} deleting={deleting} message="This cannot be undone." />}
     </>
   );
 }
@@ -990,9 +980,6 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
 
   useEffect(() => { load(); }, [load, onRefresh]);
 
-  const typeColor = (t: string) => t === 'deposit' ? '#22c55e' : t === 'draw' ? '#ef4444' : '#f0a050';
-  const typeLabel = (t: string) => t === 'deposit' ? 'INCOME' : 'EXPENSE';
-
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
 
   return (
@@ -1006,22 +993,24 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
         <div>
           <SectionLabel>HELOC Transaction History</SectionLabel>
           <Card className="overflow-hidden">
-            {transactions.map((tx, idx) => (
-              <div key={tx.id} className={`flex items-center px-4 py-3 gap-3 ${idx !== transactions.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                <div className="flex-shrink-0 w-16">
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: typeColor(tx.transaction_type) + '20', color: typeColor(tx.transaction_type) }}>
-                    {typeLabel(tx.transaction_type)}
-                  </span>
+            {transactions.map((tx, idx) => {
+              const isIncome = tx.transaction_type === 'deposit';
+              const color = isIncome ? '#22c55e' : '#888';
+              return (
+                <div key={tx.id} className={`flex items-center px-4 py-3 gap-3 ${idx !== transactions.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                  <div className="flex-shrink-0 w-16">
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: color + '20', color }}>
+                      {isIncome ? 'INCOME' : 'TRANSFER'}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[#ccc] truncate">{tx.description}</p>
+                    <p className="text-[10px] text-[#444]">{fmtDate(tx.transaction_date)}</p>
+                  </div>
+                  <p className="text-sm font-semibold font-mono flex-shrink-0" style={{ color }}>{fmt(tx.amount)}</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-[#ccc] truncate">{tx.description}</p>
-                  <p className="text-[10px] text-[#444]">{fmtDate(tx.transaction_date)}</p>
-                </div>
-                <p className="text-sm font-semibold font-mono flex-shrink-0" style={{ color: typeColor(tx.transaction_type) }}>
-                  {fmt(tx.amount)}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </Card>
         </div>
       )}
@@ -1054,21 +1043,17 @@ function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
     if (!deleteId) return;
     setDeleting(true);
     await fetch(`/api/finance/subscriptions?id=${deleteId}`, { method: 'DELETE' });
-    setDeleting(false);
-    setDeleteId(null);
-    setExpandedId(null);
+    setDeleting(false); setDeleteId(null); setExpandedId(null);
     load();
   }
 
   async function handleToggle(sub: Subscription) {
     setTogglingId(sub.id);
     await fetch(`/api/finance/subscriptions?id=${sub.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !sub.is_active }),
     });
-    setTogglingId(null);
-    load();
+    setTogglingId(null); load();
   }
 
   const activeSubs = subs.filter(s => s.is_active);
@@ -1081,16 +1066,12 @@ function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
     const isExpanded = expandedId === sub.id;
     return (
       <div>
-        <div
-          className="flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors border-b border-[#1a1a1a]"
-          onClick={() => setExpandedId(isExpanded ? null : sub.id)}
-        >
+        <div className="flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors border-b border-[#1a1a1a]"
+          onClick={() => setExpandedId(isExpanded ? null : sub.id)}>
           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor(sub.category) }} />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-[#ccc] truncate">{sub.name}</p>
-            <p className="text-[10px] text-[#444]">
-              {cycleLabel(sub.billing_cycle)}{sub.next_charge_date ? ` · next ${fmtDate(sub.next_charge_date)}` : ''}
-            </p>
+            <p className="text-[10px] text-[#444]">{cycleLabel(sub.billing_cycle)}{sub.next_charge_date ? ` · next ${fmtDate(sub.next_charge_date)}` : ''}</p>
           </div>
           <div className="text-right flex-shrink-0">
             <p className="text-sm font-semibold text-[#f0a050] font-mono">{fmt(parseFloat(String(sub.amount)))}</p>
@@ -1100,11 +1081,8 @@ function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
         {isExpanded && (
           <div className="px-4 py-3 bg-[#0d0d0d] flex items-center gap-3 border-b border-[#1a1a1a]">
             {sub.notes ? <p className="flex-1 text-[11px] text-[#555] italic truncate">{sub.notes}</p> : <div className="flex-1" />}
-            <button
-              onClick={() => handleToggle(sub)}
-              disabled={togglingId === sub.id}
-              className="text-xs font-semibold text-[#f0a050] active:opacity-70 px-3 py-2 rounded-lg bg-[#f0a050]/10 disabled:opacity-40"
-            >
+            <button onClick={() => handleToggle(sub)} disabled={togglingId === sub.id}
+              className="text-xs font-semibold text-[#f0a050] active:opacity-70 px-3 py-2 rounded-lg bg-[#f0a050]/10 disabled:opacity-40">
               {togglingId === sub.id ? '…' : sub.is_active ? 'Deactivate' : 'Activate'}
             </button>
             <button onClick={() => setDeleteId(sub.id)} className="text-xs font-semibold text-[#ef4444] active:opacity-70 px-3 py-2 rounded-lg bg-[#ef4444]/10">Delete</button>
@@ -1122,53 +1100,21 @@ function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
         <Card className="p-4">
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">Active Subscriptions</p>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div>
-              <p className="text-[10px] text-[#444] mb-0.5">Monthly</p>
-              <p className="text-base font-bold text-[#f0a050] font-mono">{fmt(monthlyTotal)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-[#444] mb-0.5">Annual</p>
-              <p className="text-base font-bold text-white font-mono">{fmt(annualTotal)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-[#444] mb-0.5">Count</p>
-              <p className="text-base font-bold text-white">{activeSubs.length}</p>
-            </div>
+            <div><p className="text-[10px] text-[#444] mb-0.5">Monthly</p><p className="text-base font-bold text-[#f0a050] font-mono">{fmt(monthlyTotal)}</p></div>
+            <div><p className="text-[10px] text-[#444] mb-0.5">Annual</p><p className="text-base font-bold text-white font-mono">{fmt(annualTotal)}</p></div>
+            <div><p className="text-[10px] text-[#444] mb-0.5">Count</p><p className="text-base font-bold text-white">{activeSubs.length}</p></div>
           </div>
         </Card>
-
         {subs.length === 0 ? (
           <div className="text-center py-12 text-[#333] text-sm">No subscriptions logged — tap Add Sub to start</div>
         ) : (
           <>
-            {activeSubs.length > 0 && (
-              <div>
-                <SectionLabel>Active</SectionLabel>
-                <Card className="overflow-hidden">
-                  {activeSubs.map(sub => <SubRow key={sub.id} sub={sub} />)}
-                </Card>
-              </div>
-            )}
-            {inactiveSubs.length > 0 && (
-              <div>
-                <SectionLabel>Inactive</SectionLabel>
-                <Card className="overflow-hidden">
-                  {inactiveSubs.map(sub => <SubRow key={sub.id} sub={sub} />)}
-                </Card>
-              </div>
-            )}
+            {activeSubs.length > 0 && <div><SectionLabel>Active</SectionLabel><Card className="overflow-hidden">{activeSubs.map(sub => <SubRow key={sub.id} sub={sub} />)}</Card></div>}
+            {inactiveSubs.length > 0 && <div><SectionLabel>Inactive</SectionLabel><Card className="overflow-hidden">{inactiveSubs.map(sub => <SubRow key={sub.id} sub={sub} />)}</Card></div>}
           </>
         )}
       </div>
-
-      {deleteId && (
-        <DeleteSheet
-          onCancel={() => setDeleteId(null)}
-          onConfirm={handleDelete}
-          deleting={deleting}
-          message="This cannot be undone."
-        />
-      )}
+      {deleteId && <DeleteSheet onCancel={() => setDeleteId(null)} onConfirm={handleDelete} deleting={deleting} message="This cannot be undone." />}
     </>
   );
 }
@@ -1183,56 +1129,82 @@ function FinancePageInner() {
   const [refreshCount, setRefreshCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
-  // Add Transaction modal
+  // ── Add Transaction modal ────────────────────────────────────────────────
   const [showAddTx, setShowAddTx] = useState(false);
-  const [txIsExpense, setTxIsExpense] = useState(true);
-  const [txForm, setTxForm] = useState({
-    date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
-    merchant: '', account: '', amount: '', category: '',
-  });
+  const [txType, setTxType] = useState<TxType>('expense');
+  const [txForm, setTxForm] = useState({ date: '', merchant: '', account: '', amount: '', category: '' });
+  const [txToAccount, setTxToAccount] = useState('');
   const [txSaving, setTxSaving] = useState(false);
   const [txError, setTxError] = useState('');
 
-  // Log Score modal
+  // ── Log Score modal ──────────────────────────────────────────────────────
   const [showAddScore, setShowAddScore] = useState(false);
-  const [scoreForm, setScoreForm] = useState({
-    date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
-    score: '', bureau: 'Experian', source: 'Credit Karma', notes: '',
-  });
+  const [scoreForm, setScoreForm] = useState({ date: '', score: '', bureau: 'Experian', source: 'Credit Karma', notes: '' });
   const [scoreSaving, setScoreSaving] = useState(false);
   const [scoreError, setScoreError] = useState('');
 
-  // Add Subscription modal
+  // ── Add Subscription modal ───────────────────────────────────────────────
   const [showAddSub, setShowAddSub] = useState(false);
-  const [subForm, setSubForm] = useState({
-    name: '', amount: '', billing_cycle: 'monthly', next_charge_date: '', category: 'Subscriptions', notes: '',
-  });
+  const [subForm, setSubForm] = useState({ name: '', amount: '', billing_cycle: 'monthly', next_charge_date: '', category: 'Subscriptions', notes: '' });
   const [subSaving, setSubSaving] = useState(false);
   const [subError, setSubError] = useState('');
 
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
 
+  function resetTxModal() {
+    setTxType('expense');
+    setTxForm({ date: today, merchant: '', account: '', amount: '', category: '' });
+    setTxToAccount('');
+    setTxError('');
+  }
+
+  function cycleTxType() {
+    setTxType(t => t === 'expense' ? 'transfer' : t === 'transfer' ? 'income' : 'expense');
+  }
+
   async function handleAddTransaction() {
     setTxError('');
-    if (!txForm.date || !txForm.merchant || !txForm.account || !txForm.amount || !txForm.category) {
-      setTxError('All fields are required.'); return;
+    if (!txForm.date || !txForm.account || !txForm.amount) {
+      setTxError('Date, account, and amount are required.'); return;
+    }
+    if (!txForm.merchant && txType !== 'transfer') {
+      setTxError('Merchant is required.'); return;
+    }
+    if (txType === 'transfer' && !txToAccount) {
+      setTxError('To Account is required for transfers.'); return;
+    }
+    if (txType !== 'transfer' && !txForm.category) {
+      setTxError('Category is required.'); return;
     }
     setTxSaving(true);
     try {
       const rawAmt = Math.abs(parseFloat(txForm.amount));
-      const signedAmount = INCOME_CATEGORIES.includes(txForm.category) ? rawAmt : (txIsExpense ? -rawAmt : rawAmt);
+      let signedAmount: number;
+      if (txType === 'transfer') {
+        signedAmount = rawAmt;
+      } else if (INCOME_CATEGORIES.includes(txForm.category)) {
+        signedAmount = rawAmt;
+      } else {
+        signedAmount = txType === 'expense' ? -rawAmt : rawAmt;
+      }
+
+      const payload: Record<string, unknown> = { ...txForm, amount: signedAmount };
+      if (txType === 'transfer') {
+        payload.toAccount = txToAccount;
+        payload.category = 'Transfer';
+      }
+
       const res = await fetch('/api/finance/transactions/add', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...txForm, amount: signedAmount }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({ error: 'Failed to save' })); throw new Error(d.error || 'Failed to save'); }
       setShowAddTx(false);
-      setTxForm({ date: today, merchant: '', account: '', amount: '', category: '' });
-      setTxIsExpense(true);
+      resetTxModal();
       try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
       setRefreshCount(c => c + 1);
       syncSheets().then(() => setRefreshCount(c => c + 1));
-    } catch (e: unknown) { setTxError(e instanceof Error ? e.message : 'Something went wrong. Try again.'); }
+    } catch (e: unknown) { setTxError(e instanceof Error ? e.message : 'Something went wrong.'); }
     finally { setTxSaving(false); }
   }
 
@@ -1296,8 +1268,16 @@ function FinancePageInner() {
     activeTab === 'credit' ? 'Log Score' :
     activeTab === 'subscriptions' ? 'Add Sub' : 'Sync';
 
+  const txTypeMeta: Record<TxType, { label: string; bg: string; text: string }> = {
+    expense:  { label: '− Expense',  bg: 'bg-[#ef4444]/20', text: 'text-[#ef4444]' },
+    transfer: { label: '⇄ Transfer', bg: 'bg-[#888]/20',    text: 'text-[#888]'    },
+    income:   { label: '+ Income',   bg: 'bg-[#22c55e]/20', text: 'text-[#22c55e]' },
+  };
+  const meta = txTypeMeta[txType];
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
+
       {/* Header */}
       <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
         <div className="flex items-center justify-between mb-3">
@@ -1313,18 +1293,10 @@ function FinancePageInner() {
           <button
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(8);
-              if (activeTab === 'transactions') {
-                setTxForm(f => ({ ...f, date: today }));
-                setTxIsExpense(true);
-                setShowAddTx(true);
-              } else if (activeTab === 'credit') {
-                setScoreForm(f => ({ ...f, date: today }));
-                setShowAddScore(true);
-              } else if (activeTab === 'subscriptions') {
-                setShowAddSub(true);
-              } else {
-                handleRefresh();
-              }
+              if (activeTab === 'transactions') { resetTxModal(); setShowAddTx(true); }
+              else if (activeTab === 'credit') { setScoreForm(f => ({ ...f, date: today })); setShowAddScore(true); }
+              else if (activeTab === 'subscriptions') { setShowAddSub(true); }
+              else { handleRefresh(); }
             }}
             className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
           >
@@ -1374,6 +1346,8 @@ function FinancePageInner() {
               </button>
             </div>
             <div className="px-4 pt-4 space-y-3">
+
+              {/* Date + Description/Merchant */}
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center px-4 py-3 border-b border-white/10">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
@@ -1381,44 +1355,66 @@ function FinancePageInner() {
                     className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
                 </div>
                 <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Merchant</span>
-                  <input type="text" placeholder="Name" value={txForm.merchant} onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">{txType === 'transfer' ? 'Description' : 'Merchant'}</span>
+                  <input type="text" placeholder={txType === 'transfer' ? 'Optional label' : 'Name'} value={txForm.merchant}
+                    onChange={e => setTxForm(f => ({ ...f, merchant: e.target.value }))}
                     className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
                 </div>
               </div>
+
+              {/* Amount + Type toggle */}
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center px-4 py-3">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
                   <div className="flex items-center gap-2 flex-1 justify-end">
-                    <button
-                      onClick={() => setTxIsExpense(e => !e)}
-                      className={`text-xs font-bold px-2.5 py-1 rounded-lg flex-shrink-0 ${txIsExpense ? 'bg-[#ef4444]/20 text-[#ef4444]' : 'bg-[#22c55e]/20 text-[#22c55e]'}`}
-                    >
-                      {txIsExpense ? '− Expense' : '+ Income'}
+                    <button onClick={cycleTxType}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg flex-shrink-0 ${meta.bg} ${meta.text}`}>
+                      {meta.label}
                     </button>
-                    <input type="number" placeholder="0.00" step="0.01" value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
+                    <input type="number" placeholder="0.00" step="0.01" value={txForm.amount}
+                      onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
                       className="w-28 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
                   </div>
                 </div>
               </div>
+
+              {/* Accounts + Category */}
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Account</span>
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">{txType === 'transfer' ? 'From' : 'Account'}</span>
                   <select value={txForm.account} onChange={e => setTxForm(f => ({ ...f, account: e.target.value }))}
                     className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
                     <option value="" className="bg-[#2c2c2e]">Select…</option>
                     {ACCOUNTS.map(a => <option key={a} value={a} className="bg-[#2c2c2e]">{a}</option>)}
                   </select>
                 </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
-                  <select value={txForm.category} onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
-                    <option value="" className="bg-[#2c2c2e]">Select…</option>
-                    {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
-                  </select>
-                </div>
+
+                {txType === 'transfer' && (
+                  <div className="flex items-center px-4 py-3 border-b border-white/10">
+                    <span className="text-sm text-[#888] w-24 flex-shrink-0">To</span>
+                    <select value={txToAccount} onChange={e => setTxToAccount(e.target.value)}
+                      className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                      <option value="" className="bg-[#2c2c2e]">Select…</option>
+                      {ACCOUNTS.filter(a => a !== txForm.account).map(a => <option key={a} value={a} className="bg-[#2c2c2e]">{a}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {txType !== 'transfer' && (
+                  <div className="flex items-center px-4 py-3">
+                    <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
+                    <select value={txForm.category} onChange={e => setTxForm(f => ({ ...f, category: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                      <option value="" className="bg-[#2c2c2e]">Select…</option>
+                      {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
+
+              {txType === 'transfer' && (
+                <p className="text-[10px] text-[#444] px-1">Creates two entries — debit on From, credit on To. Both saved as Transfer.</p>
+              )}
               {txError && <p className="text-[#ef4444] text-xs px-1 font-mono">{txError}</p>}
             </div>
           </div>
