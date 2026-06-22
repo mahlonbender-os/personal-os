@@ -108,6 +108,7 @@ export async function POST() {
           category: r.category,
           month,
           source: 'google_sheets',
+          user_id: USER_ID,
         };
       })
       .filter((r) => r.date); // Discard rows where date conversion failed
