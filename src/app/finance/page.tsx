@@ -705,10 +705,72 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── Net Worth Tab ────────────────────────────────────────────────────────────
 
+// Hardcoded card details — cashback rates accurate as of June 2026
+// Update limits here AND in project instructions when limits change
+const CARD_DETAILS: Record<string, {
+  limit: number;
+  baseRate: number;
+  annualFee: number;
+  categories: { label: string; rate: string }[];
+}> = {
+  '1stFinancial': {
+    limit: 3150,
+    baseRate: 1,
+    annualFee: 0,
+    categories: [],
+  },
+  'Apple': {
+    limit: 8100,
+    baseRate: 2,
+    annualFee: 0,
+    categories: [{ label: 'Apple purchases', rate: '3%' }],
+  },
+  'American Express Blue Cash Preferred': {
+    limit: 35000,
+    baseRate: 1,
+    annualFee: 95,
+    categories: [
+      { label: 'Groceries', rate: '6%' },
+      { label: 'Streaming', rate: '6%' },
+      { label: 'Gas', rate: '3%' },
+      { label: 'Transit', rate: '3%' },
+    ],
+  },
+  "Capital One BJ's": {
+    limit: 8000,
+    baseRate: 1.5,
+    annualFee: 0,
+    categories: [
+      { label: "BJ's", rate: '5%' },
+      { label: 'Gas', rate: '15¢/gal' },
+    ],
+  },
+  'Capital One Savor': {
+    limit: 11150,
+    baseRate: 1,
+    annualFee: 0,
+    categories: [
+      { label: 'Dining', rate: '3%' },
+      { label: 'Entertainment', rate: '3%' },
+      { label: 'Groceries', rate: '3%' },
+    ],
+  },
+  'Chase Sapphire Preferred': {
+    limit: 12300,
+    baseRate: 1,
+    annualFee: 95,
+    categories: [
+      { label: 'Dining', rate: '3x' },
+      { label: 'Travel', rate: '2x' },
+    ],
+  },
+};
+
 function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; history?: NetWorthSnapshot[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -729,6 +791,12 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   const assets = data.accounts.filter(a => a.type === 'asset');
   const liabilities = data.accounts.filter(a => a.type === 'liability');
   const historyList = data.history || [];
+
+  function toggleAccount(name: string, isExpandable: boolean) {
+    if (!isExpandable) return;
+    if (navigator.vibrate) navigator.vibrate(6);
+    setExpandedAccount(prev => prev === name ? null : name);
+  }
 
   function NetWorthSparkline() {
     if (historyList.length < 2) return null;
@@ -764,6 +832,49 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
     );
   }
 
+  // Expandable detail panel for credit cards
+  function CardDetail({ acct }: { acct: NetWorthAccount }) {
+    const card = CARD_DETAILS[acct.name];
+    if (!card) return null;
+    const balance = Math.abs(parseFloat(String(acct.value)));
+    const util = card.limit > 0 ? (balance / card.limit) * 100 : 0;
+    const utilHigh = util > 30;
+    return (
+      <div className="px-4 py-3 bg-[#0d0d0d] border-t border-[#1a1a1a] space-y-3">
+        {/* Utilization bar */}
+        <div>
+          <div className="flex justify-between text-[10px] mb-1.5">
+            <span className="text-[#555]">{fmt(balance)} used</span>
+            <span className={`font-bold font-mono ${utilHigh ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>{util.toFixed(1)}% utilized</span>
+            <span className="text-[#555]">{fmt(card.limit)} limit</span>
+          </div>
+          <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${utilHigh ? 'bg-[#ef4444]' : 'bg-[#22c55e]'}`}
+              style={{ width: `${Math.min(util, 100)}%` }}
+            />
+          </div>
+        </div>
+        {/* Cashback rate pills */}
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-[10px] px-2 py-1 rounded-full bg-[#f0a050]/10 text-[#f0a050] font-semibold">
+            Base {card.baseRate}%
+          </span>
+          {card.categories.map(cat => (
+            <span key={cat.label} className="text-[10px] px-2 py-1 rounded-full bg-[#22c55e]/10 text-[#22c55e] font-semibold">
+              {cat.label} {cat.rate}
+            </span>
+          ))}
+          {card.annualFee > 0 && (
+            <span className="text-[10px] px-2 py-1 rounded-full bg-[#2a2a2a] text-[#555]">
+              ${card.annualFee}/yr fee
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 animate-fadeIn">
       <div className="rounded-2xl bg-gradient-to-br from-[#1a1000] to-[#111] border border-[#f0a050]/20 p-5">
@@ -780,32 +891,57 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           </div>
         </div>
       </div>
+
       <NetWorthSparkline />
+
       {assets.length > 0 && (
         <div>
           <SectionLabel>Assets</SectionLabel>
           <Card className="overflow-hidden">
             {assets.map((acct, idx) => (
-              <div key={idx} className={`flex items-center px-4 py-3 gap-3 ${idx !== assets.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                <div className="w-2 h-2 rounded-full bg-[#22c55e] flex-shrink-0" />
-                <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
-                <p className="text-sm font-semibold text-[#22c55e] font-mono">{fmt(acct.value)}</p>
+              <div key={acct.name}>
+                <div className={`flex items-center px-4 py-3 gap-3 ${idx !== assets.length - 1 || expandedAccount === acct.name ? 'border-b border-[#1a1a1a]' : ''}`}>
+                  <div className="w-2 h-2 rounded-full bg-[#22c55e] flex-shrink-0" />
+                  <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
+                  <p className="text-sm font-semibold text-[#22c55e] font-mono">{fmt(acct.value)}</p>
+                </div>
               </div>
             ))}
           </Card>
         </div>
       )}
+
       {liabilities.length > 0 && (
         <div>
           <SectionLabel>Liabilities</SectionLabel>
           <Card className="overflow-hidden">
-            {liabilities.map((acct, idx) => (
-              <div key={idx} className={`flex items-center px-4 py-3 gap-3 ${idx !== liabilities.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                <div className="w-2 h-2 rounded-full bg-[#ef4444] flex-shrink-0" />
-                <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
-                <p className="text-sm font-semibold text-[#ef4444] font-mono">{fmt(acct.value)}</p>
-              </div>
-            ))}
+            {liabilities.map((acct, idx) => {
+              const isCard = !!CARD_DETAILS[acct.name];
+              const isExpanded = expandedAccount === acct.name;
+              const isLast = idx === liabilities.length - 1;
+              return (
+                <div key={acct.name}>
+                  {/* Row */}
+                  <div
+                    className={`flex items-center px-4 py-3 gap-3 ${isCard ? 'cursor-pointer active:bg-[#161616] transition-colors' : ''} ${!isLast || isExpanded ? 'border-b border-[#1a1a1a]' : ''}`}
+                    onClick={() => toggleAccount(acct.name, isCard)}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-[#ef4444] flex-shrink-0" />
+                    <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
+                    {isCard && (
+                      <span className={`text-[10px] text-[#555] mr-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+                    )}
+                    <p className="text-sm font-semibold text-[#ef4444] font-mono">{fmt(acct.value)}</p>
+                  </div>
+                  {/* Expanded detail */}
+                  {isExpanded && isCard && (
+                    <div className={!isLast ? 'border-b border-[#1a1a1a]' : ''}>
+                      <CardDetail acct={acct} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </Card>
         </div>
       )}
