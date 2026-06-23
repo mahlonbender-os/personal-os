@@ -707,6 +707,8 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
 
 // Hardcoded card details — cashback rates accurate as of June 2026
 // Update limits here AND in project instructions when limits change
+// Keys are fuzzy-matched against sheet account names (case-insensitive, partial)
+// so minor sheet name variations don't break the expand
 const CARD_DETAILS: Record<string, {
   limit: number;
   baseRate: number;
@@ -765,6 +767,21 @@ const CARD_DETAILS: Record<string, {
     ],
   },
 };
+
+// Fuzzy match: handles curly apostrophes, extra words, minor sheet name diffs
+function getCardInfo(name: string) {
+  if (!name) return null;
+  // Exact match first
+  if (CARD_DETAILS[name]) return CARD_DETAILS[name];
+  // Normalize: lowercase, strip punctuation, collapse spaces
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  const normName = norm(name);
+  const key = Object.keys(CARD_DETAILS).find(k => {
+    const normKey = norm(k);
+    return normKey === normName || normName.includes(normKey) || normKey.includes(normName);
+  });
+  return key ? CARD_DETAILS[key] : null;
+}
 
 function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; history?: NetWorthSnapshot[] } | null>(null);
@@ -834,7 +851,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
   // Expandable detail panel for credit cards
   function CardDetail({ acct }: { acct: NetWorthAccount }) {
-    const card = CARD_DETAILS[acct.name];
+    const card = getCardInfo(acct.name);
     if (!card) return null;
     const balance = Math.abs(parseFloat(String(acct.value)));
     const util = card.limit > 0 ? (balance / card.limit) * 100 : 0;
@@ -916,7 +933,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           <SectionLabel>Liabilities</SectionLabel>
           <Card className="overflow-hidden">
             {liabilities.map((acct, idx) => {
-              const isCard = !!CARD_DETAILS[acct.name];
+              const isCard = !!getCardInfo(acct.name);
               const isExpanded = expandedAccount === acct.name;
               const isLast = idx === liabilities.length - 1;
               return (
