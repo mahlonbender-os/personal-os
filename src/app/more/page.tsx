@@ -32,7 +32,6 @@ const GROUPS = [
     items: [
       { label: 'Insurance', href: '/insurance', icon: '🛡️' },
       { label: 'Warranties', href: '/warranties', icon: '📄' },
-      { label: 'Digital Wallet', href: '/wallet', icon: '💳' },
       { label: 'Investments', href: '/investments', icon: '📈' },
       { label: 'Equity Optimizer', href: '/real-estate', icon: '📊' },
     ],
