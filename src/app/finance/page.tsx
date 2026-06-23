@@ -33,6 +33,7 @@ interface NetWorthAccount {
   name: string;
   value: number;
   type: 'asset' | 'liability';
+  limit?: number;
 }
 
 interface BudgetItem {
@@ -851,11 +852,12 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
   // Expandable detail panel for credit cards
   function CardDetail({ acct }: { acct: NetWorthAccount }) {
-    const card = getCardInfo(acct.name);
-    if (!card) return null;
     const balance = Math.abs(parseFloat(String(acct.value)));
-    const util = card.limit > 0 ? (balance / card.limit) * 100 : 0;
+    const limit = acct.limit ?? 0;
+    if (limit <= 0) return null;
+    const util = (balance / limit) * 100;
     const utilHigh = util > 30;
+    const card = getCardInfo(acct.name); // for cashback rates — may be null if name differs from sheet
     return (
       <div className="px-4 py-3 bg-[#0d0d0d] border-t border-[#1a1a1a] space-y-3">
         {/* Utilization bar */}
@@ -863,7 +865,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           <div className="flex justify-between text-[10px] mb-1.5">
             <span className="text-[#555]">{fmt(balance)} used</span>
             <span className={`font-bold font-mono ${utilHigh ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>{util.toFixed(1)}% utilized</span>
-            <span className="text-[#555]">{fmt(card.limit)} limit</span>
+            <span className="text-[#555]">{fmt(limit)} limit</span>
           </div>
           <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
             <div
@@ -872,22 +874,24 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
             />
           </div>
         </div>
-        {/* Cashback rate pills */}
-        <div className="flex flex-wrap gap-1.5">
-          <span className="text-[10px] px-2 py-1 rounded-full bg-[#f0a050]/10 text-[#f0a050] font-semibold">
-            Base {card.baseRate}%
-          </span>
-          {card.categories.map(cat => (
-            <span key={cat.label} className="text-[10px] px-2 py-1 rounded-full bg-[#22c55e]/10 text-[#22c55e] font-semibold">
-              {cat.label} {cat.rate}
+        {/* Cashback rate pills — only shown if name matched */}
+        {card && (
+          <div className="flex flex-wrap gap-1.5">
+            <span className="text-[10px] px-2 py-1 rounded-full bg-[#f0a050]/10 text-[#f0a050] font-semibold">
+              Base {card.baseRate}%
             </span>
-          ))}
-          {card.annualFee > 0 && (
-            <span className="text-[10px] px-2 py-1 rounded-full bg-[#2a2a2a] text-[#555]">
-              ${card.annualFee}/yr fee
-            </span>
-          )}
-        </div>
+            {card.categories.map(cat => (
+              <span key={cat.label} className="text-[10px] px-2 py-1 rounded-full bg-[#22c55e]/10 text-[#22c55e] font-semibold">
+                {cat.label} {cat.rate}
+              </span>
+            ))}
+            {card.annualFee > 0 && (
+              <span className="text-[10px] px-2 py-1 rounded-full bg-[#2a2a2a] text-[#555]">
+                ${card.annualFee}/yr fee
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -933,7 +937,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           <SectionLabel>Liabilities</SectionLabel>
           <Card className="overflow-hidden">
             {liabilities.map((acct, idx) => {
-              const isCard = !!getCardInfo(acct.name);
+              const isCard = (acct.limit ?? 0) > 0;
               const isExpanded = expandedAccount === acct.name;
               const isLast = idx === liabilities.length - 1;
               return (
