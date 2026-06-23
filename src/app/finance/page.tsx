@@ -706,10 +706,7 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── Net Worth Tab ────────────────────────────────────────────────────────────
 
-// Hardcoded card details — cashback rates accurate as of June 2026
-// Update limits here AND in project instructions when limits change
-// Keys are fuzzy-matched against sheet account names (case-insensitive, partial)
-// so minor sheet name variations don't break the expand
+// Cashback rates for credit cards — fuzzy-matched against sheet account names
 const CARD_DETAILS: Record<string, {
   limit: number;
   baseRate: number;
@@ -769,12 +766,10 @@ const CARD_DETAILS: Record<string, {
   },
 };
 
-// Fuzzy match: handles curly apostrophes, extra words, minor sheet name diffs
+// Fuzzy match for cashback rates — handles curly apostrophes, minor name diffs
 function getCardInfo(name: string) {
   if (!name) return null;
-  // Exact match first
   if (CARD_DETAILS[name]) return CARD_DETAILS[name];
-  // Normalize: lowercase, strip punctuation, collapse spaces
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
   const normName = norm(name);
   const key = Object.keys(CARD_DETAILS).find(k => {
@@ -784,18 +779,59 @@ function getCardInfo(name: string) {
   return key ? CARD_DETAILS[key] : null;
 }
 
+// Determine account class from name — drives expanded detail layout
+function getAcctMeta(name: string, isLiability: boolean, limit: number): {
+  typeLabel: string; emoji: string;
+  isRevolving: boolean; isInvestment: boolean; isLoan: boolean; isChecking: boolean; isHome: boolean;
+} {
+  const n = name.toLowerCase();
+  if (n.includes('heloc'))     return { typeLabel: 'Home Equity Line of Credit', emoji: '🏠', isRevolving: true,  isInvestment: false, isLoan: false, isChecking: false, isHome: false };
+  if (n.includes('hsa'))       return { typeLabel: 'Health Savings Account',     emoji: '🏥', isRevolving: false, isInvestment: true,  isLoan: false, isChecking: false, isHome: false };
+  if (n.includes('roth'))      return { typeLabel: 'Roth IRA',                   emoji: '📈', isRevolving: false, isInvestment: true,  isLoan: false, isChecking: false, isHome: false };
+  if (n.includes('401'))       return { typeLabel: '401(k) Retirement',          emoji: '💼', isRevolving: false, isInvestment: true,  isLoan: false, isChecking: false, isHome: false };
+  if (n.includes('fidelity'))  return { typeLabel: 'Brokerage Account',          emoji: '📊', isRevolving: false, isInvestment: true,  isLoan: false, isChecking: false, isHome: false };
+  if (n.includes('aidvantage'))return { typeLabel: 'Student Loan',               emoji: '🎓', isRevolving: false, isInvestment: false, isLoan: true,  isChecking: false, isHome: false };
+  if (n.includes('wells'))     return { typeLabel: 'Mortgage / Loan',            emoji: '🏦', isRevolving: false, isInvestment: false, isLoan: true,  isChecking: false, isHome: false };
+  if (n.includes('checking'))  return { typeLabel: 'Checking Account',           emoji: '🏦', isRevolving: false, isInvestment: false, isLoan: false, isChecking: true,  isHome: false };
+  if (n.includes('zestimate') || (n.includes('home') && !isLiability))
+                               return { typeLabel: 'Home Value (Zillow)',         emoji: '🏡', isRevolving: false, isInvestment: false, isLoan: false, isChecking: false, isHome: true  };
+  // Liability with a credit limit = credit card
+  if (isLiability && limit > 0) return { typeLabel: 'Credit Card',              emoji: '💳', isRevolving: true,  isInvestment: false, isLoan: false, isChecking: false, isHome: false };
+  return { typeLabel: isLiability ? 'Liability' : 'Asset', emoji: '💰', isRevolving: false, isInvestment: false, isLoan: false, isChecking: false, isHome: false };
+}
+
 function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; history?: NetWorthSnapshot[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
+  // Monthly activity per account — fetched once when tab loads
+  const [monthlyActivity, setMonthlyActivity] = useState<Record<string, { income: number; expenses: number; txCount: number }>>({});
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const d = await fetch('/api/finance/net-worth').then(r => r.json());
+      const [nwRes, txRes] = await Promise.all([
+        fetch('/api/finance/net-worth'),
+        fetch(`/api/finance/transactions?limit=400&_=${Date.now()}`, { cache: 'no-store' }),
+      ]);
+      const [d, txData] = await Promise.all([nwRes.json(), txRes.json()]);
       if (d.error) throw new Error(d.error);
       setData(d);
+
+      // Build per-account activity for current month
+      const currentMonth = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }).substring(0, 7);
+      const activity: Record<string, { income: number; expenses: number; txCount: number }> = {};
+      (txData.transactions || []).forEach((tx: Transaction) => {
+        if (!tx.month?.startsWith(currentMonth)) return;
+        if (!tx.account) return;
+        if (!activity[tx.account]) activity[tx.account] = { income: 0, expenses: 0, txCount: 0 };
+        const amt = parseFloat(String(tx.amount));
+        if (amt > 0) activity[tx.account].income += amt;
+        else activity[tx.account].expenses += Math.abs(amt);
+        activity[tx.account].txCount += 1;
+      });
+      setMonthlyActivity(activity);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, []);
@@ -810,8 +846,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   const liabilities = data.accounts.filter(a => a.type === 'liability');
   const historyList = data.history || [];
 
-  function toggleAccount(name: string, isExpandable: boolean) {
-    if (!isExpandable) return;
+  function toggle(name: string) {
     if (navigator.vibrate) navigator.vibrate(6);
     setExpandedAccount(prev => prev === name ? null : name);
   }
@@ -850,46 +885,138 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
     );
   }
 
-  // Expandable detail panel for credit cards
-  function CardDetail({ acct }: { acct: NetWorthAccount }) {
+  // Rich expanded detail panel — content varies by account type
+  function AccountDetail({ acct, isLiability }: { acct: NetWorthAccount; isLiability: boolean }) {
     const balance = Math.abs(parseFloat(String(acct.value)));
     const limit = acct.limit ?? 0;
-    if (limit <= 0) return null;
-    const util = (balance / limit) * 100;
+    const meta = getAcctMeta(acct.name, isLiability, limit);
+    const activity = monthlyActivity[acct.name];
+    const cardInfo = (meta.isRevolving && !meta.typeLabel.includes('Equity')) ? getCardInfo(acct.name) : null;
+    const util = limit > 0 ? (balance / limit) * 100 : 0;
     const utilHigh = util > 30;
-    const card = getCardInfo(acct.name); // for cashback rates — may be null if name differs from sheet
+    const available = limit > 0 ? limit - balance : 0;
+
     return (
-      <div className="px-4 py-3 bg-[#0d0d0d] border-t border-[#1a1a1a] space-y-3">
-        {/* Utilization bar */}
-        <div>
-          <div className="flex justify-between text-[10px] mb-1.5">
-            <span className="text-[#555]">{fmt(balance)} used</span>
-            <span className={`font-bold font-mono ${utilHigh ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>{util.toFixed(1)}% utilized</span>
-            <span className="text-[#555]">{fmt(limit)} limit</span>
-          </div>
-          <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${utilHigh ? 'bg-[#ef4444]' : 'bg-[#22c55e]'}`}
-              style={{ width: `${Math.min(util, 100)}%` }}
-            />
-          </div>
+      <div className="bg-[#0d0d0d] border-t border-[#1a1a1a] divide-y divide-[#141414]">
+
+        {/* Account type badge row */}
+        <div className="px-4 py-2.5 flex items-center gap-2">
+          <span className="text-base">{meta.emoji}</span>
+          <span className="text-[11px] font-semibold text-[#555] uppercase tracking-wide">{meta.typeLabel}</span>
         </div>
-        {/* Cashback rate pills — only shown if name matched */}
-        {card && (
-          <div className="flex flex-wrap gap-1.5">
-            <span className="text-[10px] px-2 py-1 rounded-full bg-[#f0a050]/10 text-[#f0a050] font-semibold">
-              Base {card.baseRate}%
-            </span>
-            {card.categories.map(cat => (
-              <span key={cat.label} className="text-[10px] px-2 py-1 rounded-full bg-[#22c55e]/10 text-[#22c55e] font-semibold">
-                {cat.label} {cat.rate}
-              </span>
+
+        {/* Revolving credit (cards + HELOC): utilization bar + available */}
+        {meta.isRevolving && limit > 0 && (
+          <div className="px-4 py-3 space-y-2">
+            <div className="flex justify-between text-[10px] mb-1">
+              <span className="text-[#555]">{fmt(balance)} balance</span>
+              <span className={`font-bold font-mono ${utilHigh ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>{util.toFixed(1)}%</span>
+              <span className="text-[#555]">{fmt(limit)} limit</span>
+            </div>
+            <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${utilHigh ? 'bg-[#ef4444]' : 'bg-[#22c55e]'}`} style={{ width: `${Math.min(util, 100)}%` }} />
+            </div>
+            <p className="text-[10px] text-[#555]">
+              <span className="text-[#22c55e] font-semibold font-mono">{fmt(available)}</span> available
+            </p>
+          </div>
+        )}
+
+        {/* Cashback rates — credit cards only */}
+        {cardInfo && (
+          <div className="px-4 py-3 flex flex-wrap gap-1.5">
+            <span className="text-[10px] px-2 py-1 rounded-full bg-[#f0a050]/10 text-[#f0a050] font-semibold">Base {cardInfo.baseRate}%</span>
+            {cardInfo.categories.map(cat => (
+              <span key={cat.label} className="text-[10px] px-2 py-1 rounded-full bg-[#22c55e]/10 text-[#22c55e] font-semibold">{cat.label} {cat.rate}</span>
             ))}
-            {card.annualFee > 0 && (
-              <span className="text-[10px] px-2 py-1 rounded-full bg-[#2a2a2a] text-[#555]">
-                ${card.annualFee}/yr fee
-              </span>
+            {cardInfo.annualFee > 0 && (
+              <span className="text-[10px] px-2 py-1 rounded-full bg-[#2a2a2a] text-[#555]">${cardInfo.annualFee}/yr fee</span>
             )}
+          </div>
+        )}
+
+        {/* Investment accounts: class hint */}
+        {meta.isInvestment && (
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-[#555]">
+              {acct.name.toLowerCase().includes('hsa') && 'Tax-advantaged · Medical expenses or retirement'}
+              {acct.name.toLowerCase().includes('roth') && 'Tax-free growth · Qualified withdrawals tax-free'}
+              {acct.name.toLowerCase().includes('401') && 'Tax-deferred · Employer-sponsored retirement'}
+              {acct.name.toLowerCase().includes('fidelity') && 'Taxable brokerage · See Investments for holdings'}
+            </p>
+          </div>
+        )}
+
+        {/* Loan accounts */}
+        {meta.isLoan && (
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-[#555]">Remaining balance <span className="text-[#ef4444] font-semibold font-mono">{fmt(balance)}</span></p>
+          </div>
+        )}
+
+        {/* Home value note */}
+        {meta.isHome && (
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-[#555]">Estimated market value via Zillow · Updates on sync</p>
+          </div>
+        )}
+
+        {/* Monthly activity — shown for all accounts that have transactions */}
+        {activity && activity.txCount > 0 && (
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-[#444] mb-2 uppercase tracking-wide font-semibold">This Month · {activity.txCount} transaction{activity.txCount !== 1 ? 's' : ''}</p>
+            <div className="flex gap-6">
+              {activity.income > 0 && (
+                <div>
+                  <p className="text-[9px] text-[#444] mb-0.5">In / Credits</p>
+                  <p className="text-sm font-bold text-[#22c55e] font-mono">{fmt(activity.income)}</p>
+                </div>
+              )}
+              {activity.expenses > 0 && (
+                <div>
+                  <p className="text-[9px] text-[#444] mb-0.5">Out / Charges</p>
+                  <p className="text-sm font-bold text-[#ef4444] font-mono">{fmt(activity.expenses)}</p>
+                </div>
+              )}
+              {activity.income > 0 && activity.expenses > 0 && (
+                <div>
+                  <p className="text-[9px] text-[#444] mb-0.5">Net</p>
+                  <p className={`text-sm font-bold font-mono ${activity.income - activity.expenses >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                    {fmt(Math.abs(activity.income - activity.expenses))}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+      </div>
+    );
+  }
+
+  function AccountRow({ acct, isLiability, isLast }: { acct: NetWorthAccount; isLiability: boolean; isLast: boolean }) {
+    const isExpanded = expandedAccount === acct.name;
+    const dotColor = isLiability ? 'bg-[#ef4444]' : 'bg-[#22c55e]';
+    const valColor = isLiability ? 'text-[#ef4444]' : 'text-[#22c55e]';
+    const meta = getAcctMeta(acct.name, isLiability, acct.limit ?? 0);
+
+    return (
+      <div>
+        <div
+          className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${!isLast || isExpanded ? 'border-b border-[#1a1a1a]' : ''}`}
+          onClick={() => toggle(acct.name)}
+        >
+          <span className="text-sm flex-shrink-0">{meta.emoji}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-[#ccc] truncate">{acct.name}</p>
+            <p className="text-[10px] text-[#444]">{meta.typeLabel}</p>
+          </div>
+          <span className={`text-[10px] text-[#555] mr-1 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+          <p className={`text-sm font-semibold font-mono flex-shrink-0 ${valColor}`}>{fmt(acct.value)}</p>
+        </div>
+        {isExpanded && (
+          <div className={!isLast ? 'border-b border-[#1a1a1a]' : ''}>
+            <AccountDetail acct={acct} isLiability={isLiability} />
           </div>
         )}
       </div>
@@ -920,13 +1047,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
           <SectionLabel>Assets</SectionLabel>
           <Card className="overflow-hidden">
             {assets.map((acct, idx) => (
-              <div key={acct.name}>
-                <div className={`flex items-center px-4 py-3 gap-3 ${idx !== assets.length - 1 || expandedAccount === acct.name ? 'border-b border-[#1a1a1a]' : ''}`}>
-                  <div className="w-2 h-2 rounded-full bg-[#22c55e] flex-shrink-0" />
-                  <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
-                  <p className="text-sm font-semibold text-[#22c55e] font-mono">{fmt(acct.value)}</p>
-                </div>
-              </div>
+              <AccountRow key={acct.name} acct={acct} isLiability={false} isLast={idx === assets.length - 1} />
             ))}
           </Card>
         </div>
@@ -936,33 +1057,9 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
         <div>
           <SectionLabel>Liabilities</SectionLabel>
           <Card className="overflow-hidden">
-            {liabilities.map((acct, idx) => {
-              const isCard = (acct.limit ?? 0) > 0;
-              const isExpanded = expandedAccount === acct.name;
-              const isLast = idx === liabilities.length - 1;
-              return (
-                <div key={acct.name}>
-                  {/* Row */}
-                  <div
-                    className={`flex items-center px-4 py-3 gap-3 ${isCard ? 'cursor-pointer active:bg-[#161616] transition-colors' : ''} ${!isLast || isExpanded ? 'border-b border-[#1a1a1a]' : ''}`}
-                    onClick={() => toggleAccount(acct.name, isCard)}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-[#ef4444] flex-shrink-0" />
-                    <p className="flex-1 text-sm text-[#ccc]">{acct.name}</p>
-                    {isCard && (
-                      <span className={`text-[10px] text-[#555] mr-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
-                    )}
-                    <p className="text-sm font-semibold text-[#ef4444] font-mono">{fmt(acct.value)}</p>
-                  </div>
-                  {/* Expanded detail */}
-                  {isExpanded && isCard && (
-                    <div className={!isLast ? 'border-b border-[#1a1a1a]' : ''}>
-                      <CardDetail acct={acct} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {liabilities.map((acct, idx) => (
+              <AccountRow key={acct.name} acct={acct} isLiability={true} isLast={idx === liabilities.length - 1} />
+            ))}
           </Card>
         </div>
       )}
