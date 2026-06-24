@@ -10,9 +10,9 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  const { data, error } = await supabase.from('knox_medications').select('*').eq('user_id', USER_ID).order('is_active', { ascending: false }).order('medication_name');
+  const { data, error } = await supabase.from('knox_milestones').select('*').eq('user_id', USER_ID).order('milestone_date', { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ medications: data }, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ milestones: data }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req: Request) {
@@ -20,21 +20,9 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const body = await req.json();
-  const { data, error } = await supabase.from('knox_medications').insert([{ ...body, user_id: USER_ID }]).select().single();
+  const { data, error } = await supabase.from('knox_milestones').insert([{ ...body, user_id: USER_ID }]).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ medication: data }, { headers: { 'Cache-Control': 'no-store' } });
-}
-
-export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  const id = new URL(req.url).searchParams.get('id');
-  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-  const body = await req.json();
-  const { error } = await supabase.from('knox_medications').update(body).eq('id', id).eq('user_id', USER_ID);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ milestone: data }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function DELETE(req: Request) {
@@ -43,7 +31,7 @@ export async function DELETE(req: Request) {
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-  const { error } = await supabase.from('knox_medications').delete().eq('id', id).eq('user_id', USER_ID);
+  const { error } = await supabase.from('knox_milestones').delete().eq('id', id).eq('user_id', USER_ID);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
 }
