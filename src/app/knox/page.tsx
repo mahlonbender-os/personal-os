@@ -150,12 +150,22 @@ function VetTab({ refresh }: { refresh: number }) {
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [nextVetDate, setNextVetDate] = useState('');
+  const [nextVetNotes, setNextVetNotes] = useState('');
+  const [showAppt, setShowAppt] = useState(false);
+  const [apptForm, setApptForm] = useState({ date: '', notes: '' });
+  const [savingAppt, setSavingAppt] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const d = await fetch('/api/knox/vet').then(r => r.json());
-      setVisits(d.visits || d || []);
+      const [vetRes, summaryRes] = await Promise.all([
+        fetch('/api/knox/vet').then(r => r.json()),
+        fetch('/api/knox/summary').then(r => r.json()),
+      ]);
+      setVisits(vetRes.visits || vetRes || []);
+      setNextVetDate(summaryRes.nextVetDate || '');
+      setNextVetNotes(summaryRes.nextVetNotes || '');
     } catch {}
     finally { setLoading(false); }
   }, []);
@@ -168,44 +178,159 @@ function VetTab({ refresh }: { refresh: number }) {
     setDeleting(false); setDeleteId(null); load();
   }
 
+  async function handleSaveAppt() {
+    setSavingAppt(true);
+    await fetch('/api/knox/summary', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ next_vet_date: apptForm.date || null, next_vet_notes: apptForm.notes || null }),
+    });
+    setSavingAppt(false);
+    setShowAppt(false);
+    load();
+  }
+
+  async function handleClearAppt() {
+    await fetch('/api/knox/summary', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ next_vet_date: null, next_vet_notes: null }),
+    });
+    load();
+  }
+
+  function apptDaysColor() {
+    if (!nextVetDate) return '#555';
+    const days = Math.round((new Date(nextVetDate + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+    if (days < 0) return '#ef4444';
+    if (days <= 7) return '#f0a050';
+    return '#22c55e';
+  }
+
+  function apptDaysLabel() {
+    if (!nextVetDate) return '';
+    const days = Math.round((new Date(nextVetDate + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+    if (days < 0) return `${Math.abs(days)} days ago`;
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Tomorrow';
+    return `In ${days} days`;
+  }
+
   const totalSpent = visits.reduce((s, v) => s + parseFloat(String(v.cost || 0)), 0);
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
-  if (!visits.length) return <Empty msg="No vet visits yet — tap Add Visit" />;
 
   return (
     <>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="p-4">
-            <p className="text-[10px] text-[#444] mb-1">Total Visits</p>
-            <p className="text-2xl font-bold text-white">{visits.length}</p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-[10px] text-[#444] mb-1">Total Spent</p>
-            <p className="text-2xl font-bold text-[#f0a050] font-mono">${totalSpent.toFixed(0)}</p>
-          </Card>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2 px-1">Visit History</p>
-          <Card className="overflow-hidden">
-            {visits.map((v, idx) => (
-              <div key={v.id}
-                className={`flex items-start px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== visits.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
-                onClick={() => setDeleteId(v.id)}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#ccc]">{v.reason}</p>
-                  <p className="text-[10px] text-[#444]">{v.vet_name} · {fmtDate(v.visit_date)}</p>
-                  {v.notes && <p className="text-[10px] text-[#333] mt-0.5 truncate">{v.notes}</p>}
-                </div>
-                <p className="text-sm font-semibold text-[#f0a050] font-mono flex-shrink-0">${parseFloat(String(v.cost || 0)).toFixed(2)}</p>
+        {/* Next Appointment Card */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Next Appointment</p>
+            {nextVetDate ? (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setApptForm({ date: nextVetDate, notes: nextVetNotes }); setShowAppt(true); }}
+                  className="text-xs font-semibold text-[#f0a050] px-2.5 py-1 rounded-lg bg-[#f0a050]/10">
+                  Edit
+                </button>
+                <button onClick={handleClearAppt} className="text-xs font-semibold text-[#555] px-2.5 py-1 rounded-lg bg-[#2a2a2a]">
+                  Clear
+                </button>
               </div>
-            ))}
-          </Card>
-          <p className="text-[10px] text-[#333] px-1 mt-1.5">Tap entry to delete</p>
-        </div>
+            ) : (
+              <button
+                onClick={() => { setApptForm({ date: today(), notes: '' }); setShowAppt(true); }}
+                className="text-xs font-semibold text-[#f0a050] px-2.5 py-1 rounded-lg bg-[#f0a050]/10">
+                Schedule
+              </button>
+            )}
+          </div>
+          {nextVetDate ? (
+            <div>
+              <div className="flex items-baseline gap-2">
+                <p className="text-lg font-bold font-mono" style={{ color: apptDaysColor() }}>{fmtDate(nextVetDate)}</p>
+                <p className="text-[11px]" style={{ color: apptDaysColor() }}>{apptDaysLabel()}</p>
+              </div>
+              {nextVetNotes && <p className="text-[11px] text-[#555] mt-0.5">{nextVetNotes}</p>}
+            </div>
+          ) : (
+            <p className="text-[11px] text-[#333]">No appointment scheduled — tap Schedule to set one</p>
+          )}
+        </Card>
+
+        {/* Stats */}
+        {visits.length > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            <Card className="p-4">
+              <p className="text-[10px] text-[#444] mb-1">Total Visits</p>
+              <p className="text-2xl font-bold text-white">{visits.length}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-[10px] text-[#444] mb-1">Total Spent</p>
+              <p className="text-2xl font-bold text-[#f0a050] font-mono">${totalSpent.toFixed(0)}</p>
+            </Card>
+          </div>
+        )}
+
+        {/* Visit history */}
+        {visits.length === 0 ? (
+          <Empty msg="No past visits yet — tap Add Visit to log one" />
+        ) : (
+          <div>
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2 px-1">Visit History</p>
+            <Card className="overflow-hidden">
+              {visits.map((v, idx) => (
+                <div key={v.id}
+                  className={`flex items-start px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== visits.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
+                  onClick={() => setDeleteId(v.id)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#ccc]">{v.reason}</p>
+                    <p className="text-[10px] text-[#444]">{v.vet_name} · {fmtDate(v.visit_date)}</p>
+                    {v.notes && <p className="text-[10px] text-[#333] mt-0.5 truncate">{v.notes}</p>}
+                  </div>
+                  <p className="text-sm font-semibold text-[#f0a050] font-mono flex-shrink-0">${parseFloat(String(v.cost || 0)).toFixed(2)}</p>
+                </div>
+              ))}
+            </Card>
+            <p className="text-[10px] text-[#333] px-1 mt-1.5">Tap entry to delete</p>
+          </div>
+        )}
       </div>
+
+      {/* Schedule Appointment Modal */}
+      {showAppt && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAppt(false)}>
+          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
+              <button onClick={() => setShowAppt(false)} className="text-[#f0a050] text-sm">Cancel</button>
+              <h2 className="text-base font-semibold text-white">Schedule Vet Visit</h2>
+              <button onClick={handleSaveAppt} disabled={savingAppt} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
+                {savingAppt ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            <div className="px-4 pt-4">
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center px-4 py-3 border-b border-white/10">
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
+                  <input type="date" value={apptForm.date}
+                    onChange={e => setApptForm(f => ({ ...f, date: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
+                </div>
+                <div className="flex items-center px-4 py-3">
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
+                  <input type="text" placeholder="Checkup, shots, etc." value={apptForm.notes}
+                    onChange={e => setApptForm(f => ({ ...f, notes: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+                </div>
+              </div>
+              <p className="text-[10px] text-[#444] px-1 mt-3">This date will appear on the Command Center as Knox's next vet visit.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteId && <DeleteSheet onCancel={() => setDeleteId(null)} onConfirm={handleDelete} deleting={deleting} />}
     </>
   );

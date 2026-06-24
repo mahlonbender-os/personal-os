@@ -4,18 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 import NewsCard from '@/components/command-center/NewsCard';
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n));
-}
-
-function getKnoxAge() {
-  const born = new Date('2026-01-14');
-  const now = new Date();
-  const months = (now.getFullYear() - born.getFullYear()) * 12 + (now.getMonth() - born.getMonth());
-  if (months < 1) return 'newborn';
-  if (months < 24) return `${months} month${months !== 1 ? 's' : ''} old`;
-  const years = Math.floor(months / 12);
-  return `${years} year${years !== 1 ? 's' : ''} old`;
 }
 
 function getGreeting() {
@@ -32,8 +24,7 @@ function formatDay() {
 function daysUntil(dateStr: string | null | undefined): number | null {
   if (!dateStr) return null;
   const now = new Date(); now.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr + 'T00:00:00');
-  return Math.round((d.getTime() - now.getTime()) / 86400000);
+  return Math.round((new Date(dateStr + 'T00:00:00').getTime() - now.getTime()) / 86400000);
 }
 
 function dueDateColor(days: number | null): string {
@@ -44,11 +35,74 @@ function dueDateColor(days: number | null): string {
   return '#22c55e';
 }
 
-function fmtShortDate(dateStr: string) {
+function fmtShort(dateStr: string) {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ── Health Card ───────────────────────────────────────────────────────────────
+function getKnoxAge() {
+  const born = new Date('2026-01-14');
+  const now = new Date();
+  const months = (now.getFullYear() - born.getFullYear()) * 12 + (now.getMonth() - born.getMonth());
+  return months < 24 ? `${months}mo` : `${Math.floor(months / 12)}y ${months % 12}mo`;
+}
+
+// Maps wttr.in weatherCode to emoji — day/night aware
+function weatherIcon(code: number | string, hour: number): string {
+  const c = Number(code);
+  const isDay = hour >= 6 && hour < 20;
+  if (c === 113) return isDay ? '☀️' : '🌙';
+  if (c === 116) return isDay ? '⛅' : '☁️';
+  if ([119, 122].includes(c)) return '☁️';
+  if ([143, 248, 260].includes(c)) return '🌫️';
+  if ([176, 263, 266, 293, 296, 353].includes(c)) return '🌦️';
+  if ([185, 281, 284, 299, 302, 305, 308, 311, 314, 356, 359].includes(c)) return '🌧️';
+  if ([200, 386, 389, 392, 395].includes(c)) return '⛈️';
+  if ([227, 230, 323, 326, 329, 332, 335, 338, 350, 362, 365, 368, 371, 374, 377].includes(c)) return '🌨️';
+  if ([317, 320].includes(c)) return '🌧️';
+  return isDay ? '⛅' : '🌙';
+}
+
+// ─── Activity Rings (Apple Watch style) ──────────────────────────────────────
+
+function ActivityRings({ calories, minutes, standHours }: { calories: number; minutes: number; standHours: number }) {
+  const size = 110; const cx = 55; const cy = 55; const sw = 9;
+  const rings = [
+    { r: 48, value: calories, goal: 500,  color: '#ef4444' },
+    { r: 34, value: minutes,  goal: 30,   color: '#22c55e' },
+    { r: 20, value: standHours, goal: 12, color: '#60a5fa' },
+  ];
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
+      {rings.map(({ r, value, goal, color }) => {
+        const circ = 2 * Math.PI * r;
+        const pct = Math.min(Math.max(value / goal, 0), 1);
+        return (
+          <g key={r}>
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={sw} opacity={0.15} />
+            {value > 0 && (
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={sw}
+                strokeDasharray={`${circ} ${circ}`}
+                strokeDashoffset={circ * (1 - pct)}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${cx} ${cy})`} />
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ─── Section Label ────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-bold text-[#333] uppercase tracking-widest px-1 pt-1">{children}</p>
+  );
+}
+
+// ─── Health Card ──────────────────────────────────────────────────────────────
+
 function HealthCard() {
   const [data, setData] = useState<any>(null);
 
@@ -63,10 +117,12 @@ function HealthCard() {
       .catch(() => {});
   }, []);
 
+  // Fix field names — health_logs uses exercise_minutes and heart_rate_avg
   const steps = data?.steps ?? 0;
-  const hr = data?.resting_heart_rate ?? 0;
-  const active = data?.activity_minutes ?? 0;
   const cal = data?.active_calories ?? 0;
+  const active = data?.exercise_minutes ?? data?.activity_minutes ?? 0;
+  const stand = data?.stand_hours ?? 0;
+  const hr = data?.heart_rate_avg ?? data?.resting_heart_rate ?? 0;
   const stepGoal = 10000;
   const stepPct = Math.min((steps / stepGoal) * 100, 100);
   const dateStr = data?.log_date ? new Date(data.log_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
@@ -77,39 +133,54 @@ function HealthCard() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-sm">❤️</span>
-          <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Today's Health</span>
+          <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Today's Activity</span>
         </div>
         {dateStr && <span className="text-[9px] text-[#333] bg-[#1a1a1a] px-2 py-0.5 rounded-full">{dateStr}</span>}
       </div>
-      <div className="grid grid-cols-4 gap-2 text-center">
-        {[
-          { val: steps > 0 ? steps.toLocaleString() : '—', label: 'Steps', color: '#60a5fa' },
-          { val: hr > 0 ? `${hr}` : '—', label: 'BPM', color: '#f87171' },
-          { val: active > 0 ? `${active}m` : '—', label: 'Active', color: '#f0a050' },
-          { val: cal > 0 ? cal.toLocaleString() : '—', label: 'Cal', color: '#fb923c' },
-        ].map(({ val, label, color }) => (
-          <div key={label}>
-            <div className="text-lg font-extrabold leading-none" style={{ color, fontFamily: "'Syne', sans-serif" }}>{val}</div>
-            <div className="text-[9px] text-[#444] mt-1">{label}</div>
+
+      <div className="flex items-center gap-4">
+        <ActivityRings calories={cal} minutes={active} standHours={stand} />
+        <div className="flex-1 min-w-0">
+          {/* Ring stats */}
+          <div className="grid grid-cols-3 gap-1 mb-3">
+            {[
+              { val: cal > 0 ? cal.toLocaleString() : '—', unit: 'cal', label: 'Move', color: '#ef4444' },
+              { val: active > 0 ? `${active}` : '—', unit: 'min', label: 'Exercise', color: '#22c55e' },
+              { val: stand > 0 ? `${stand}` : '—', unit: 'hrs', label: 'Stand', color: '#60a5fa' },
+            ].map(({ val, unit, label, color }) => (
+              <div key={label} className="text-center">
+                <p className="text-base font-extrabold leading-none" style={{ color }}>{val}</p>
+                <p className="text-[8px] text-[#444] mt-0.5">{unit}</p>
+                <p className="text-[8px] text-[#333] uppercase tracking-wider">{label}</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {steps > 0 && (
-        <div className="mt-3">
-          <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
-            <div className="h-full rounded-full bg-[#60a5fa] transition-all" style={{ width: `${stepPct}%` }} />
+          {/* Steps bar */}
+          <div>
+            <div className="flex justify-between mb-1">
+              <span className="text-[9px] text-[#555]">{steps > 0 ? steps.toLocaleString() : '—'} steps</span>
+              <span className="text-[9px] text-[#333]">10k</span>
+            </div>
+            <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden">
+              <div className="h-full bg-[#60a5fa] rounded-full transition-all" style={{ width: `${stepPct}%` }} />
+            </div>
           </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-[8px] text-[#333]">Steps goal</span>
-            <span className="text-[8px] text-[#444] font-mono">{steps.toLocaleString()} / {stepGoal.toLocaleString()}</span>
-          </div>
+          {/* BPM */}
+          {hr > 0 && (
+            <div className="flex items-center gap-1 mt-2">
+              <span className="text-[#f87171] text-xs">♥</span>
+              <span className="text-sm font-bold text-[#888] font-mono">{hr}</span>
+              <span className="text-[9px] text-[#444]">BPM resting</span>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ── Finance Row ───────────────────────────────────────────────────────────────
+// ─── Finance Row ──────────────────────────────────────────────────────────────
+
 function FinanceRow() {
   const [cf, setCf] = useState<any>(null);
   const [bills, setBills] = useState<any[]>([]);
@@ -120,20 +191,18 @@ function FinanceRow() {
       fetch('/api/finance/cash-flow').then(r => r.json()),
       fetch('/api/finance/bills').then(r => r.json()),
     ]).then(([cfData, blData]) => {
-      const now = new Date();
-      const monthName = now.toLocaleString('default', { month: 'long' });
+      const monthName = new Date().toLocaleString('default', { month: 'long' });
       const cur = cfData.months?.find((m: any) => m.month?.toLowerCase().includes(monthName.toLowerCase()));
       const newCf = cur ? { income: cur.income, expenses: cur.essentials + cur.discretionary, net: cur.net } : null;
       const newBills = (blData.bills || []).slice(0, 6);
-      setCf(newCf);
-      setBills(newBills);
+      setCf(newCf); setBills(newBills);
       try { localStorage.setItem('cc_finance_v1', JSON.stringify({ cf: newCf, bills: newBills })); } catch {}
     }).catch(() => {});
   }, []);
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const in7 = new Date(today); in7.setDate(today.getDate() + 7);
-  const dueSoon = bills.filter(b => { if (!b.due_date) return false; return new Date(b.due_date + 'T00:00:00') <= in7; });
+  const dueSoon = bills.filter(b => b.due_date && new Date(b.due_date + 'T00:00:00') <= in7);
   const dueTotal = dueSoon.reduce((s, b) => s + Math.abs(b.amount || 0), 0);
 
   return (
@@ -143,32 +212,25 @@ function FinanceRow() {
         <div className="text-[9px] font-semibold text-[#444] uppercase tracking-widest mb-2">Cash Flow</div>
         {cf ? (
           <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] text-[#555]">Income</span>
-              <span className="text-[11px] font-bold text-[#22c55e] font-mono">{formatCurrency(cf.income)}</span>
-            </div>
-            <div className="h-px bg-[#1a1a1a]" />
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] text-[#555]">Expenses</span>
-              <span className="text-[11px] font-bold text-[#ef4444] font-mono">{formatCurrency(cf.expenses)}</span>
-            </div>
-            <div className="h-px bg-[#1a1a1a]" />
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] text-[#555]">Net</span>
-              <span className={`text-[11px] font-bold font-mono ${cf.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{formatCurrency(cf.net)}</span>
-            </div>
+            {[{ label: 'Income', val: cf.income, color: 'text-[#22c55e]' }, { label: 'Expenses', val: cf.expenses, color: 'text-[#ef4444]' }, { label: 'Net', val: cf.net, color: cf.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]' }].map(({ label, val, color }) => (
+              <div key={label}>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-[#555]">{label}</span>
+                  <span className={`text-[11px] font-bold font-mono ${color}`}>{formatCurrency(val)}</span>
+                </div>
+                {label !== 'Net' && <div className="h-px bg-[#1a1a1a] mt-1.5" />}
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="text-[10px] text-[#333]">Pull to sync</div>
+          <div className="text-[10px] text-[#333] pt-1">Syncing…</div>
         )}
       </div>
 
       <div onClick={() => { window.location.href = '/finance'; }}
         className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer">
         <div className="text-[9px] font-semibold text-[#444] uppercase tracking-widest mb-2">Bills Due</div>
-        <div className="text-[18px] font-extrabold text-[#f0a050] leading-none" style={{ fontFamily: "'Syne', sans-serif" }}>
-          {formatCurrency(dueTotal)}
-        </div>
+        <div className="text-[18px] font-extrabold text-[#f0a050] leading-none mb-1" style={{ fontFamily: "'Syne', sans-serif" }}>{formatCurrency(dueTotal)}</div>
         <div className="text-[9px] text-[#444] mb-2">{dueSoon.length} bills · 7 days</div>
         <div className="space-y-1">
           {dueSoon.slice(0, 3).map((b, i) => (
@@ -184,46 +246,31 @@ function FinanceRow() {
   );
 }
 
-// ── Investments Card ──────────────────────────────────────────────────────────
+// ─── Investments Card ─────────────────────────────────────────────────────────
+
 function InvestmentsCard() {
   const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try { const c = localStorage.getItem('cc_investments_v1'); if (c) setData(JSON.parse(c)); } catch {}
-    fetch('/api/finance/investments')
+    try { const c = localStorage.getItem('cc_investments_v1'); if (c) { setData(JSON.parse(c)); setLoading(false); } } catch {}
+    fetch('/api/cc/investments')
       .then(r => r.json())
       .then(d => {
         setData(d);
+        setLoading(false);
         try { localStorage.setItem('cc_investments_v1', JSON.stringify(d)); } catch {}
       })
-      .catch(() => {});
+      .catch(() => setLoading(false));
   }, []);
 
-  const positions: any[] = data?.positions || [];
-  const cash: any[] = data?.cash || [];
-
-  // Handle multiple possible response shapes defensively
-  const positionsValue = positions.reduce((s: number, p: any) => {
-    const mv = parseFloat(String(p.market_value ?? 0));
-    const computed = parseFloat(String(p.shares ?? 0)) * parseFloat(String(p.current_price ?? p.avg_cost ?? 0));
-    return s + (mv || computed);
-  }, 0);
-  const cashValue = cash.reduce((s: number, c: any) => s + parseFloat(String(c.cash_balance ?? 0)), 0);
-  const totalValue = parseFloat(String(data?.totalValue ?? data?.total_value ?? 0)) || (positionsValue + cashValue);
-  const dailyChange = data?.dailyChange ?? data?.daily_change ?? data?.dailyGainLoss ?? null;
-  const dailyChangePct = data?.dailyChangePct ?? data?.daily_change_pct ?? null;
-  const totalGain = data?.totalGain ?? data?.total_gain ?? null;
-  const totalGainPct = data?.totalGainPct ?? data?.total_gain_pct ?? null;
-
-  // Group positions by account
-  const byAccount: Record<string, number> = {};
-  positions.forEach((p: any) => {
-    const mv = parseFloat(String(p.market_value ?? 0)) || parseFloat(String(p.shares ?? 0)) * parseFloat(String(p.current_price ?? p.avg_cost ?? 0));
-    byAccount[p.account] = (byAccount[p.account] || 0) + mv;
-  });
-  cash.forEach((c: any) => {
-    byAccount[c.account] = (byAccount[c.account] || 0) + parseFloat(String(c.cash_balance ?? 0));
-  });
+  const totalValue = data?.totalValue ?? 0;
+  const dailyChange = data?.dailyChange ?? null;
+  const dailyChangePct = data?.dailyChangePct ?? null;
+  const totalGain = data?.totalGain ?? null;
+  const totalGainPct = data?.totalGainPct ?? null;
+  const accounts: any[] = data?.accounts ?? [];
+  const hasPrices = data?.hasPrices ?? false;
 
   return (
     <div onClick={() => { window.location.href = '/investments'; }}
@@ -233,37 +280,37 @@ function InvestmentsCard() {
           <span className="text-sm">📈</span>
           <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Investments</span>
         </div>
-        {dailyChange !== null && (
+        {hasPrices && dailyChange !== null && (
           <span className={`text-[10px] font-semibold font-mono ${dailyChange >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
             {dailyChange >= 0 ? '+' : ''}{formatCurrency(dailyChange)} today
           </span>
         )}
       </div>
 
-      <div className="text-[28px] font-extrabold text-white font-mono leading-none mb-1" style={{ fontFamily: "'Syne', sans-serif" }}>
-        {totalValue > 0 ? formatCurrency(totalValue) : '—'}
-      </div>
+      <p className="text-[28px] font-extrabold text-white font-mono leading-none mb-1" style={{ fontFamily: "'Syne', sans-serif" }}>
+        {loading ? '—' : totalValue > 0 ? formatCurrency(totalValue) : '—'}
+      </p>
 
       <div className="flex items-center gap-3 mb-3">
-        {dailyChangePct !== null && (
+        {hasPrices && dailyChangePct !== null && (
           <span className={`text-[10px] font-semibold ${dailyChangePct >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
             {dailyChangePct >= 0 ? '+' : ''}{Number(dailyChangePct).toFixed(2)}% today
           </span>
         )}
         {totalGain !== null && (
-          <span className={`text-[10px] text-[#555]`}>
+          <span className="text-[10px] text-[#555]">
             {totalGain >= 0 ? '+' : ''}{formatCurrency(totalGain)} total
             {totalGainPct !== null ? ` (${Number(totalGainPct).toFixed(1)}%)` : ''}
           </span>
         )}
       </div>
 
-      {Object.keys(byAccount).length > 0 && (
+      {accounts.length > 0 && (
         <div className="border-t border-[#1a1a1a] pt-3 space-y-1.5">
-          {Object.entries(byAccount).map(([account, value]) => (
-            <div key={account} className="flex justify-between items-center">
-              <span className="text-[10px] text-[#555]">{account}</span>
-              <span className="text-[10px] font-semibold font-mono text-[#888]">{formatCurrency(value)}</span>
+          {accounts.map(acct => (
+            <div key={acct.name} className="flex justify-between items-center">
+              <span className="text-[10px] text-[#555]">{acct.name}</span>
+              <span className="text-[10px] font-semibold font-mono text-[#888]">{formatCurrency(acct.value)}</span>
             </div>
           ))}
         </div>
@@ -272,7 +319,8 @@ function InvestmentsCard() {
   );
 }
 
-// ── Calendar Card ─────────────────────────────────────────────────────────────
+// ─── Calendar Card ────────────────────────────────────────────────────────────
+
 function CalendarCard() {
   const [events, setEvents] = useState<any[]>([]);
 
@@ -289,13 +337,12 @@ function CalendarCard() {
   }, []);
 
   function fmtEventTime(e: any) {
-    if (e.allDay) return 'All day';
     const d = new Date(e.start);
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
     const prefix = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    return e.allDay ? prefix : `${prefix} · ${time}`;
+    if (e.allDay) return prefix;
+    return `${prefix} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
   }
 
   return (
@@ -306,7 +353,7 @@ function CalendarCard() {
           <span className="text-sm">📅</span>
           <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Calendar</span>
         </div>
-        <span className="text-[9px] text-[#f0a050]">Next 7 days →</span>
+        <span className="text-[9px] text-[#f0a050]">7 days →</span>
       </div>
       {events.length === 0 ? (
         <div className="px-4 py-4 text-[11px] text-[#333]">No upcoming events</div>
@@ -327,7 +374,8 @@ function CalendarCard() {
   );
 }
 
-// ── Tasks Card ────────────────────────────────────────────────────────────────
+// ─── Tasks Card ───────────────────────────────────────────────────────────────
+
 function TasksCard() {
   const [tasks, setTasks] = useState<any[]>([]);
 
@@ -337,7 +385,7 @@ function TasksCard() {
       .then(r => r.json())
       .then(async d => {
         const lists = d.lists || [];
-        if (lists.length === 0) return;
+        if (!lists.length) return;
         const preferred = lists.find((l: any) => l.title === 'Personal OS');
         const listId = (preferred || lists[0]).id;
         const res = await fetch(`/api/tasks/items?listId=${listId}&showCompleted=false`);
@@ -357,7 +405,7 @@ function TasksCard() {
           <span className="text-sm">☑</span>
           <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Tasks</span>
         </div>
-        <span className="text-[9px] text-[#f0a050]">+{tasks.length} pending →</span>
+        <span className="text-[9px] text-[#f0a050]">{tasks.length} pending →</span>
       </div>
       {tasks.length === 0 ? (
         <div className="px-4 py-4 text-[11px] text-[#333]">No pending tasks</div>
@@ -375,138 +423,118 @@ function TasksCard() {
   );
 }
 
-// ── Knox Card ─────────────────────────────────────────────────────────────────
+// ─── Knox Card ────────────────────────────────────────────────────────────────
+
 function KnoxCard() {
-  const [knox, setKnox] = useState<any>(null);
-  const [nextVaccine, setNextVaccine] = useState<any>(null);
+  const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    try { const c = localStorage.getItem('cc_knox_v1'); if (c) setKnox(JSON.parse(c)); } catch {}
-    try { const c = localStorage.getItem('cc_knox_vacc_v1'); if (c) setNextVaccine(JSON.parse(c)); } catch {}
-
+    try { const c = localStorage.getItem('cc_knox_v2'); if (c) setData(JSON.parse(c)); } catch {}
     fetch('/api/knox/summary')
       .then(r => r.json())
       .then(d => {
-        setKnox(d);
-        try { localStorage.setItem('cc_knox_v1', JSON.stringify(d)); } catch {}
-      })
-      .catch(() => {});
-
-    // Fetch vaccinations to find next due
-    fetch('/api/knox/vaccinations')
-      .then(r => r.json())
-      .then(d => {
-        const vaccs: any[] = d.vaccinations || [];
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const upcoming = vaccs
-          .filter(v => v.next_due_date)
-          .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
-        const next = upcoming[0] || null;
-        setNextVaccine(next);
-        try { localStorage.setItem('cc_knox_vacc_v1', JSON.stringify(next)); } catch {}
+        setData(d);
+        try { localStorage.setItem('cc_knox_v2', JSON.stringify(d)); } catch {}
       })
       .catch(() => {});
   }, []);
 
-  const nextVet = knox?.nextVet;
-  const latestWeight = knox?.latestWeight;
-  const nextMed = knox?.medications?.[0];
-
   function statusColor(dateStr: string | null | undefined) {
-    const d = daysUntil(dateStr ?? null);
-    return dueDateColor(d);
+    return dueDateColor(daysUntil(dateStr ?? null));
   }
 
-  function fmtTime(t: string) {
-    const [h, m] = t.split(':');
-    const hr = parseInt(h);
-    return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`;
+  function vetLabel(dateStr: string | null | undefined): string {
+    if (!dateStr) return '—';
+    const days = daysUntil(dateStr);
+    if (days === null) return fmtShort(dateStr);
+    if (days < 0) return `Overdue ${Math.abs(days)}d`;
+    if (days === 0) return 'Today';
+    if (days <= 7) return `In ${days}d`;
+    return fmtShort(dateStr);
   }
 
   return (
     <div onClick={() => { window.location.href = '/knox'; }}
-      className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer w-full">
-      <div className="flex items-center gap-2 mb-2">
+      className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer">
+      <div className="flex items-center gap-2 mb-3">
         <span className="text-base">🐺</span>
         <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Knox</span>
-        <span className="text-[10px] text-[#333] ml-auto font-mono">{getKnoxAge()}</span>
+        <span className="text-[10px] text-[#333] ml-auto">{getKnoxAge()}</span>
       </div>
       <div className="space-y-2">
         <div className="flex justify-between items-center">
           <span className="text-[11px] text-[#555]">Weight</span>
           <span className="text-[11px] font-bold font-mono text-[#888]">
-            {latestWeight ? `${latestWeight.weight_lbs} lbs` : '—'}
+            {data?.latestWeight ? `${parseFloat(String(data.latestWeight.weight_lbs)).toFixed(1)} lbs` : '—'}
           </span>
         </div>
         <div className="h-px bg-[#141414]" />
         <div className="flex justify-between items-center">
-          <span className="text-[11px] text-[#555]">Next Vet Visit</span>
-          {nextVet?.next_visit_date ? (
-            <span className="text-[11px] font-bold font-mono" style={{ color: statusColor(nextVet.next_visit_date) }}>
-              {fmtShortDate(nextVet.next_visit_date)}{nextVet.next_visit_time ? ` · ${fmtTime(nextVet.next_visit_time)}` : ''}
-            </span>
-          ) : (
-            <span className="text-[11px] text-[#2a2a2a]">—</span>
-          )}
+          <span className="text-[11px] text-[#555]">Next Vet</span>
+          <span className="text-[11px] font-bold font-mono" style={{ color: statusColor(data?.nextVetDate) }}>
+            {vetLabel(data?.nextVetDate)}
+          </span>
         </div>
         <div className="h-px bg-[#141414]" />
         <div className="flex justify-between items-center">
           <span className="text-[11px] text-[#555]">Next Vaccine</span>
-          {nextVaccine?.next_due_date ? (
-            <div className="text-right">
-              <span className="text-[11px] font-bold font-mono" style={{ color: statusColor(nextVaccine.next_due_date) }}>
-                {fmtShortDate(nextVaccine.next_due_date)}
-              </span>
-              <span className="text-[9px] text-[#444] block">{nextVaccine.vaccine_name}</span>
-            </div>
-          ) : (
-            <span className="text-[11px] text-[#2a2a2a]">—</span>
-          )}
+          <div className="text-right">
+            {data?.nextVaccine?.next_due_date ? (
+              <>
+                <span className="text-[11px] font-bold font-mono" style={{ color: statusColor(data.nextVaccine.next_due_date) }}>
+                  {vetLabel(data.nextVaccine.next_due_date)}
+                </span>
+                <span className="text-[9px] text-[#444] block">{data.nextVaccine.vaccine_name}</span>
+              </>
+            ) : <span className="text-[11px] text-[#2a2a2a]">—</span>}
+          </div>
         </div>
         <div className="h-px bg-[#141414]" />
         <div className="flex justify-between items-center">
           <span className="text-[11px] text-[#555]">Next Medication</span>
-          {nextMed?.next_due_date ? (
-            <span className="text-[11px] font-bold font-mono" style={{ color: statusColor(nextMed.next_due_date) }}>
-              {fmtShortDate(nextMed.next_due_date)}
-            </span>
-          ) : (
-            <span className="text-[11px] text-[#2a2a2a]">—</span>
-          )}
+          <div className="text-right">
+            {data?.nextMedication?.next_due_date ? (
+              <>
+                <span className="text-[11px] font-bold font-mono" style={{ color: statusColor(data.nextMedication.next_due_date) }}>
+                  {vetLabel(data.nextMedication.next_due_date)}
+                </span>
+                <span className="text-[9px] text-[#444] block">{data.nextMedication.medication_name}</span>
+              </>
+            ) : <span className="text-[11px] text-[#2a2a2a]">—</span>}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Vehicle Card ──────────────────────────────────────────────────────────────
+// ─── Vehicle Card ─────────────────────────────────────────────────────────────
+
 function VehicleCard() {
   const [vehicle, setVehicle] = useState<any>(null);
-  const [nextService, setNextService] = useState<any>(null);
+  const [lastService, setLastService] = useState<any>(null);
 
   useEffect(() => {
-    try { const c = localStorage.getItem('cc_vehicle_v1'); if (c) { const p = JSON.parse(c); setVehicle(p.vehicle); setNextService(p.nextService); } } catch {}
+    try { const c = localStorage.getItem('cc_vehicle_v1'); if (c) { const p = JSON.parse(c); setVehicle(p.v); setLastService(p.s); } } catch {}
     Promise.all([
       fetch('/api/vehicle/info').then(r => r.json()).catch(() => ({})),
       fetch('/api/vehicle/maintenance').then(r => r.json()).catch(() => ({})),
-    ]).then(([infoData, maintData]) => {
-      const v = infoData.vehicle || infoData || null;
-      const records: any[] = maintData.records || maintData.maintenance || maintData || [];
-      // Find next upcoming service (most recent past service to estimate next due)
-      const sorted = [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      const ns = sorted[0] || null;
-      setVehicle(v);
-      setNextService(ns);
-      try { localStorage.setItem('cc_vehicle_v1', JSON.stringify({ vehicle: v, nextService: ns })); } catch {}
+    ]).then(([info, maint]) => {
+      const v = info.vehicle || info || null;
+      const records: any[] = maint.records || maint.maintenance || maint || [];
+      const s = [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] || null;
+      setVehicle(v); setLastService(s);
+      try { localStorage.setItem('cc_vehicle_v1', JSON.stringify({ v, s })); } catch {}
     });
   }, []);
 
-  function statusLabel(days: number | null, dateStr: string | null | undefined): string {
+  function daysLabel(dateStr: string | null | undefined): string {
+    const days = daysUntil(dateStr ?? null);
     if (!dateStr || days === null) return '—';
     if (days < 0) return `Overdue ${Math.abs(days)}d`;
     if (days === 0) return 'Today';
     if (days <= 90) return `${days} days`;
-    return fmtShortDate(dateStr);
+    return fmtShort(dateStr);
   }
 
   const inspDays = daysUntil(vehicle?.inspection_expires);
@@ -518,32 +546,26 @@ function VehicleCard() {
       <div className="flex items-center gap-2 mb-3">
         <span className="text-sm">🚗</span>
         <span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Vehicle</span>
-        {vehicle?.year && (
-          <span className="text-[10px] text-[#333] ml-auto">{vehicle.year} {vehicle.make} {vehicle.model}</span>
-        )}
+        {vehicle?.year && <span className="text-[10px] text-[#333] ml-auto">{vehicle.year} {vehicle.make} {vehicle.model}</span>}
       </div>
       <div className="space-y-2">
         <div className="flex justify-between items-center">
           <span className="text-[11px] text-[#555]">Inspection</span>
-          <span className="text-[11px] font-bold font-mono" style={{ color: dueDateColor(inspDays) }}>
-            {statusLabel(inspDays, vehicle?.inspection_expires)}
-          </span>
+          <span className="text-[11px] font-bold font-mono" style={{ color: dueDateColor(inspDays) }}>{daysLabel(vehicle?.inspection_expires)}</span>
         </div>
         <div className="h-px bg-[#141414]" />
         <div className="flex justify-between items-center">
           <span className="text-[11px] text-[#555]">Registration</span>
-          <span className="text-[11px] font-bold font-mono" style={{ color: dueDateColor(regDays) }}>
-            {statusLabel(regDays, vehicle?.registration_expires)}
-          </span>
+          <span className="text-[11px] font-bold font-mono" style={{ color: dueDateColor(regDays) }}>{daysLabel(vehicle?.registration_expires)}</span>
         </div>
-        {nextService && (
+        {lastService && (
           <>
             <div className="h-px bg-[#141414]" />
             <div className="flex justify-between items-center">
               <span className="text-[11px] text-[#555]">Last Service</span>
               <div className="text-right">
-                <span className="text-[11px] font-bold font-mono text-[#888]">{fmtShortDate(nextService.date)}</span>
-                {nextService.service_type && <span className="text-[9px] text-[#444] block">{nextService.service_type}</span>}
+                <span className="text-[11px] font-bold font-mono text-[#888]">{fmtShort(lastService.date)}</span>
+                {lastService.service_type && <span className="text-[9px] text-[#444] block">{lastService.service_type}</span>}
               </div>
             </div>
           </>
@@ -553,28 +575,31 @@ function VehicleCard() {
   );
 }
 
-// ── Weather Widget ────────────────────────────────────────────────────────────
+// ─── Weather Widget ───────────────────────────────────────────────────────────
+
 function WeatherWidget() {
   const [weather, setWeather] = useState<{ temp: number; icon: string } | null>(null);
 
   useEffect(() => {
     try { const c = localStorage.getItem('cc_weather_v1'); if (c) setWeather(JSON.parse(c)); } catch {}
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(pos => {
-        fetch(`https://wttr.in/${pos.coords.latitude},${pos.coords.longitude}?format=j1`)
-          .then(r => r.json())
-          .then(d => {
-            const w = { temp: Math.round(d.current_condition[0].temp_F), icon: '⛅' };
-            setWeather(w);
-            try { localStorage.setItem('cc_weather_v1', JSON.stringify(w)); } catch {}
-          })
-          .catch(() => {});
-      });
-    }
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      fetch(`https://wttr.in/${pos.coords.latitude},${pos.coords.longitude}?format=j1`)
+        .then(r => r.json())
+        .then(d => {
+          const cond = d.current_condition?.[0];
+          if (!cond) return;
+          const code = parseInt(cond.weatherCode || '113');
+          const hour = new Date().getHours();
+          const w = { temp: Math.round(parseFloat(cond.temp_F)), icon: weatherIcon(code, hour) };
+          setWeather(w);
+          try { localStorage.setItem('cc_weather_v1', JSON.stringify(w)); } catch {}
+        })
+        .catch(() => {});
+    });
   }, []);
 
   if (!weather) return <div className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 text-[11px] text-[#333]">—°</div>;
-
   return (
     <div className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 flex items-center gap-1.5">
       <span className="text-sm">{weather.icon}</span>
@@ -583,7 +608,29 @@ function WeatherWidget() {
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ─── Quick Actions ────────────────────────────────────────────────────────────
+
+function QuickActions({ onSync }: { onSync: () => void }) {
+  const actions = [
+    { label: '+ Expense', action: () => { window.location.href = '/finance'; } },
+    { label: '🐺 Weight', action: () => { window.location.href = '/knox'; } },
+    { label: '🏋 Training', action: () => { window.location.href = '/knox'; } },
+    { label: '🔄 Sync', action: onSync },
+  ];
+  return (
+    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+      {actions.map(({ label, action }) => (
+        <button key={label} onClick={() => { if (navigator.vibrate) navigator.vibrate(8); action(); }}
+          className="flex-shrink-0 text-[11px] font-semibold text-[#f0a050] border border-[#f0a050]/30 bg-[#f0a050]/5 px-3 py-1.5 rounded-full active:bg-[#f0a050]/15 transition-colors">
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function CommandCenterCards() {
   const [syncing, setSyncing] = useState(false);
 
@@ -592,7 +639,7 @@ export default function CommandCenterCards() {
     await fetch('/api/sync/sheets', { method: 'POST' });
     try {
       ['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1',
-       'cc_weather_v1','cc_knox_v1','cc_knox_vacc_v1','cc_investments_v1','cc_vehicle_v1']
+       'cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1']
         .forEach(k => localStorage.removeItem(k));
     } catch {}
     setSyncing(false);
@@ -603,7 +650,7 @@ export default function CommandCenterCards() {
     <div className="fixed inset-0 bg-black flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 pb-3 z-30">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
             <div className="text-[22px] font-extrabold text-white leading-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
@@ -612,34 +659,33 @@ export default function CommandCenterCards() {
             {syncing && (
               <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono">
                 <div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin" />
-                Processing Sheets…
+                Syncing…
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <WeatherWidget />
-            <button
-              onClick={() => { if (navigator.vibrate) navigator.vibrate(8); handleRefresh(); }}
-              disabled={syncing}
-              className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1 disabled:opacity-40"
-            >
-              Sync
-            </button>
-          </div>
+          <WeatherWidget />
         </div>
+        <QuickActions onSync={handleRefresh} />
       </div>
 
       {/* Scrollable cards */}
       <div className="flex-1 overflow-y-auto">
         <PullToRefresh onRefresh={handleRefresh}>
           <div className="px-4 pt-4 pb-24 space-y-3">
+            <SectionLabel>Health</SectionLabel>
             <HealthCard />
+
+            <SectionLabel>Finance</SectionLabel>
             <FinanceRow />
             <InvestmentsCard />
+
+            <SectionLabel>My Life</SectionLabel>
             <CalendarCard />
             <TasksCard />
             <KnoxCard />
             <VehicleCard />
+
+            <SectionLabel>News</SectionLabel>
             <NewsCard />
           </div>
         </PullToRefresh>
