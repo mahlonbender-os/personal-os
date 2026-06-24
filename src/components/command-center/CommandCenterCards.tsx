@@ -460,8 +460,8 @@ export default function CommandCenterCards() {
   },[]);
 
   const quickActions=[
-    {label:'+ Expense',modal:'expense'},
-    {label:'📊 Log Trade',modal:'trade'},
+    {label:'+ Transaction',modal:'expense'},
+    {label:'📊 Trade',modal:'trade'},
     {label:'🐺 Weight',modal:'weight'},
     {label:'💪 Workout',modal:'workout'},
     {label:'🔄 Sync',modal:'sync'},

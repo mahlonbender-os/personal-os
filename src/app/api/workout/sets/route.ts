@@ -10,9 +10,30 @@ export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  const sessionId = new URL(req.url).searchParams.get('sessionId');
+  const params = new URL(req.url).searchParams;
+  const sessionId = params.get('sessionId');
+  const all = params.get('all');
+
+  if (all === 'true') {
+    // Return all sets with session dates for exercise history
+    const { data, error } = await supabase
+      .from('workout_sets')
+      .select('*, workout_sessions(session_date, name)')
+      .eq('user_id', USER_ID)
+      .order('created_at', { ascending: false });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ sets: data }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
-  const { data, error } = await supabase.from('workout_sets').select('*').eq('user_id', USER_ID).eq('session_id', sessionId).order('set_number');
+  const { data, error } = await supabase
+    .from('workout_sets')
+    .select('*')
+    .eq('user_id', USER_ID)
+    .eq('session_id', sessionId)
+    .order('muscle_group')
+    .order('exercise_name')
+    .order('set_number');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ sets: data }, { headers: { 'Cache-Control': 'no-store' } });
 }
