@@ -91,6 +91,16 @@ interface Subscription {
   notes: string;
 }
 
+interface SavingsGoal {
+  id: string;
+  name: string;
+  target_amount: number;
+  current_amount: number;
+  target_date: string | null;
+  notes: string | null;
+  is_complete: boolean;
+}
+
 type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth' | 'credit' | 'heloc' | 'subscriptions';
 type TxType = 'expense' | 'transfer' | 'income';
 
@@ -230,11 +240,15 @@ function DeleteSheet({ onCancel, onConfirm, deleting, message }: { onCancel: () 
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNavigateRow: (tab: Tab) => void }) {
+function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: number; onNavigateRow: (tab: Tab) => void; onAddGoal: () => void }) {
   const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number } | null>(null);
   const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number } | null>(null);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
+  const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
+  const [goalUpdateAmt, setGoalUpdateAmt] = useState('');
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -250,11 +264,12 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
       }
     } catch {}
     try {
-      const [cfRes, nwRes, txRes, blRes] = await Promise.all([
+      const [cfRes, nwRes, txRes, blRes, goalsRes] = await Promise.all([
         fetch('/api/finance/cash-flow'), fetch('/api/finance/net-worth'),
         fetch('/api/finance/transactions?limit=5'), fetch('/api/finance/bills'),
+        fetch('/api/finance/savings'),
       ]);
-      const [cfData, nwData, txData, blData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json(), blRes.json()]);
+      const [cfData, nwData, txData, blData, goalsData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json(), blRes.json(), goalsRes.json()]);
       const now = new Date();
       const monthName = now.toLocaleString('default', { month: 'long' });
       const cur = cfData.months?.find((m: { month: string }) => m.month.toLowerCase().includes(monthName.toLowerCase()));
@@ -263,6 +278,7 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
       setNetWorth(nwData);
       setRecentTx(txData.transactions || []);
       setBills(blData.bills || []);
+      setGoals(goalsData.goals || []);
       try { localStorage.setItem(`finance_overview_${CACHE_VERSION}`, JSON.stringify({ cf, nw: nwData, tx: txData.transactions || [], bl: blData.bills || [] })); } catch {}
     } finally { setLoading(false); }
   }, []);
@@ -326,6 +342,97 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
             <p className="text-xl font-bold text-[#f0a050] font-mono">{fmt(dueTotal)}</p>
             <p className="text-[10px] text-[#444]">{dueSoon.length} bill{dueSoon.length !== 1 ? 's' : ''} in next 7 days</p>
           </Card>
+        </div>
+      )}
+
+      {/* Savings Goals */}
+      {(goals.length > 0 || true) && (
+        <div>
+          <div className="flex items-center justify-between px-1 mb-2">
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Savings Goals</p>
+            <button onClick={onAddGoal} className="text-[11px] font-semibold text-[#f0a050] active:opacity-70">+ Add</button>
+          </div>
+          {goals.length === 0 ? (
+            <Card className="p-4">
+              <p className="text-[11px] text-[#333] text-center py-2">No savings goals yet — tap + Add to create one</p>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              {goals.filter(g => !g.is_complete).map((goal, idx, arr) => {
+                const target = parseFloat(String(goal.target_amount));
+                const current = parseFloat(String(goal.current_amount));
+                const pct = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+                const days = goal.target_date ? Math.round((new Date(goal.target_date + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000) : null;
+                const isExpanded = expandedGoalId === goal.id;
+                return (
+                  <div key={goal.id}>
+                    <div
+                      className={`px-4 py-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== arr.length - 1 || isExpanded ? 'border-b border-[#1a1a1a]' : ''}`}
+                      onClick={() => { setExpandedGoalId(isExpanded ? null : goal.id); setGoalUpdateAmt(current.toFixed(2)); }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-[#ccc]">{goal.name}</p>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-[#f0a050] font-mono">{fmt(current)}</p>
+                          <p className="text-[9px] text-[#444] font-mono">/ {fmt(target)}</p>
+                        </div>
+                      </div>
+                      <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden mb-1.5">
+                        <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-[#22c55e]' : 'bg-[#f0a050]'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex justify-between text-[9px]">
+                        <span className={pct >= 100 ? 'text-[#22c55e]' : 'text-[#555]'}>{pct.toFixed(0)}% saved</span>
+                        {days !== null && <span className={days < 0 ? 'text-[#ef4444]' : days <= 30 ? 'text-[#f0a050]' : 'text-[#444]'}>{days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`}</span>}
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className={`px-4 py-3 bg-[#0d0d0d] ${idx !== arr.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                        <p className="text-[10px] text-[#444] mb-2">Update current balance</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            value={goalUpdateAmt}
+                            onChange={e => setGoalUpdateAmt(e.target.value)}
+                            className="flex-1 bg-[#2c2c2e] text-white text-sm font-mono px-3 py-2 rounded-xl outline-none border border-[#3a3a3a] focus:border-[#f0a050]"
+                            placeholder="0.00"
+                          />
+                          <button
+                            disabled={updatingGoalId === goal.id}
+                            onClick={async () => {
+                              setUpdatingGoalId(goal.id);
+                              await fetch(`/api/finance/savings?id=${goal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_amount: parseFloat(goalUpdateAmt), is_complete: parseFloat(goalUpdateAmt) >= target }) });
+                              setUpdatingGoalId(null);
+                              setExpandedGoalId(null);
+                              load();
+                            }}
+                            className="px-4 py-2 rounded-xl bg-[#f0a050]/10 text-[#f0a050] text-sm font-semibold disabled:opacity-40"
+                          >
+                            {updatingGoalId === goal.id ? '…' : 'Update'}
+                          </button>
+                          <button
+                            onClick={async () => { await fetch(`/api/finance/savings?id=${goal.id}`, { method: 'DELETE' }); setExpandedGoalId(null); load(); }}
+                            className="px-3 py-2 rounded-xl bg-[#ef4444]/10 text-[#ef4444] text-sm font-semibold"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        {goal.notes && <p className="text-[10px] text-[#444] mt-2">{goal.notes}</p>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Completed goals */}
+              {goals.filter(g => g.is_complete).map((goal, idx, arr) => (
+                <div key={goal.id} className={`flex items-center px-4 py-3 gap-3 ${idx !== arr.length - 1 ? 'border-t border-[#1a1a1a]' : 'border-t border-[#1a1a1a]'}`}>
+                  <span className="text-[#22c55e] text-sm">✓</span>
+                  <p className="flex-1 text-sm text-[#444] line-through">{goal.name}</p>
+                  <p className="text-sm font-mono text-[#22c55e]">{fmt(parseFloat(String(goal.target_amount)))}</p>
+                  <button onClick={async () => { await fetch(`/api/finance/savings?id=${goal.id}`, { method: 'DELETE' }); load(); }} className="text-[10px] text-[#333] active:text-[#ef4444] ml-1">✕</button>
+                </div>
+              ))}
+            </Card>
+          )}
         </div>
       )}
 
@@ -1383,6 +1490,26 @@ function FinancePageInner() {
   const [refreshCount, setRefreshCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
+  // ── Add Goal modal ───────────────────────────────────────────────────────
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [goalForm, setGoalForm] = useState({ name: '', target_amount: '', current_amount: '', target_date: '', notes: '' });
+  const [goalSaving, setGoalSaving] = useState(false);
+  const [goalError, setGoalError] = useState('');
+
+  async function handleAddGoal() {
+    setGoalError('');
+    if (!goalForm.name || !goalForm.target_amount) { setGoalError('Name and target amount are required.'); return; }
+    setGoalSaving(true);
+    try {
+      const res = await fetch('/api/finance/savings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(goalForm) });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+      setShowAddGoal(false);
+      setGoalForm({ name: '', target_amount: '', current_amount: '', target_date: '', notes: '' });
+      setRefreshCount(c => c + 1);
+    } catch (e: any) { setGoalError(e.message); }
+    finally { setGoalSaving(false); }
+  }
+
   // ── Add Transaction modal ────────────────────────────────────────────────
   const [showAddTx, setShowAddTx] = useState(false);
   const [txType, setTxType] = useState<TxType>('expense');
@@ -1576,7 +1703,7 @@ function FinancePageInner() {
         ) : (
           <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
             <PullToRefresh onRefresh={handleRefresh}>
-              {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} />}
+              {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} onAddGoal={() => setShowAddGoal(true)} />}
               {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
               {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
               {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
@@ -1791,6 +1918,38 @@ function FinancePageInner() {
                 </div>
               </div>
               {subError && <p className="text-[#ef4444] text-xs px-1 font-mono">{subError}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Goal Modal ───────────────────────────────────────── */}
+      {showAddGoal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddGoal(false)}>
+          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
+              <button onClick={() => setShowAddGoal(false)} className="text-[#f0a050] text-sm">Cancel</button>
+              <h2 className="text-base font-semibold text-white">New Savings Goal</h2>
+              <button onClick={handleAddGoal} disabled={goalSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">{goalSaving ? 'Saving…' : 'Add'}</button>
+            </div>
+            <div className="px-4 pt-4 space-y-3">
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                {[
+                  { label: 'Goal Name', field: 'name', type: 'text', placeholder: 'Emergency Fund, Vacation…' },
+                  { label: 'Target ($)', field: 'target_amount', type: 'number', placeholder: '5000.00' },
+                  { label: 'Current ($)', field: 'current_amount', type: 'number', placeholder: '0.00' },
+                  { label: 'Target Date', field: 'target_date', type: 'date', placeholder: '' },
+                  { label: 'Notes', field: 'notes', type: 'text', placeholder: 'Optional' },
+                ].map(({ label, field, type, placeholder }) => (
+                  <div key={field} className="flex items-center px-4 py-3 border-b border-white/10 last:border-0">
+                    <span className="text-sm text-[#888] w-28 flex-shrink-0">{label}</span>
+                    <input type={type} placeholder={placeholder} value={(goalForm as any)[field]}
+                      onChange={e => setGoalForm(f => ({ ...f, [field]: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+                  </div>
+                ))}
+              </div>
+              {goalError && <p className="text-[#ef4444] text-xs px-1 font-mono">{goalError}</p>}
             </div>
           </div>
         </div>
