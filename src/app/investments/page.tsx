@@ -218,6 +218,11 @@ export default function InvestmentsPage() {
   const [historyRange, setHistoryRange] = useState('1Y');
   const [expandedTrades, setExpandedTrades] = useState<Set<string>>(new Set());
   const [tradeFilter, setTradeFilter] = useState('All');
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [snapshotForm, setSnapshotForm] = useState({ snapshot_date: '', total_value: '', roth_ira_value: '', hsa_value: '', notes: '' });
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [deleteSnapshotId, setDeleteSnapshotId] = useState<string | null>(null);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -258,6 +263,7 @@ export default function InvestmentsPage() {
         const parsed = JSON.parse(raw);
         if (parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000 && parsed.data?.length > 0) {
           setHistoryData(parsed.data);
+          if (parsed.snapshots) setSnapshots(parsed.snapshots);
           return;
         }
       }
@@ -266,8 +272,9 @@ export default function InvestmentsPage() {
       const json = await res.json();
       const pts: HistoryPoint[] = json.points || [];
       setHistoryData(pts);
+      setSnapshots(json.snapshots || []);
       if (pts.length > 0) {
-        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ data: pts, ts: Date.now() }));
+        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ data: pts, snapshots: json.snapshots || [], ts: Date.now() }));
       }
     } catch (e) {
       console.error('History fetch error:', e);
@@ -377,6 +384,47 @@ export default function InvestmentsPage() {
     }
   }
 
+  function openSnapshotModal() {
+    const t = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
+    // Pre-fill total from live data if available
+    const liveTotal = data?.totalPortfolioValue;
+    const rothVal = data?.accounts?.find(a => a.name === 'Roth IRA')?.totalValue;
+    const hsaVal = data?.accounts?.find(a => a.name === 'HSA')?.totalValue;
+    setSnapshotForm({
+      snapshot_date: t,
+      total_value: liveTotal ? liveTotal.toFixed(2) : '',
+      roth_ira_value: rothVal ? rothVal.toFixed(2) : '',
+      hsa_value: hsaVal ? hsaVal.toFixed(2) : '',
+      notes: '',
+    });
+    setShowSnapshotModal(true);
+  }
+
+  async function handleSaveSnapshot() {
+    if (!snapshotForm.snapshot_date || !snapshotForm.total_value) return;
+    setSavingSnapshot(true);
+    try {
+      const res = await fetch('/api/finance/investments/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshotForm),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      setShowSnapshotModal(false);
+      localStorage.removeItem(HISTORY_CACHE_KEY);
+      await fetchHistory();
+    } catch (e) { console.error(e); }
+    finally { setSavingSnapshot(false); }
+  }
+
+  async function handleDeleteSnapshot() {
+    if (!deleteSnapshotId) return;
+    await fetch(`/api/finance/investments/history?id=${deleteSnapshotId}`, { method: 'DELETE' });
+    setDeleteSnapshotId(null);
+    localStorage.removeItem(HISTORY_CACHE_KEY);
+    await fetchHistory();
+  }
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const hasHoldings = (data?.accounts || []).some(a => a.holdings.length > 0);
@@ -400,15 +448,25 @@ export default function InvestmentsPage() {
                 </h1>
                 <p className="text-[10px] text-[#555] mt-0.5">Live Portfolio Tracker</p>
               </div>
-              <button
-                onClick={() => {
-                  if (navigator.vibrate) navigator.vibrate(8);
-                  activeTab === 0 ? triggerRefresh() : openModal();
-                }}
-                className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
-              >
-                {activeTab === 0 ? 'Sync' : 'Log Trade'}
-              </button>
+              <div className="flex items-center gap-1">
+                {activeTab === 0 && (
+                  <button
+                    onClick={() => { if (navigator.vibrate) navigator.vibrate(8); openSnapshotModal(); }}
+                    className="text-sm font-semibold text-[#555] active:opacity-70 transition-opacity px-2 py-1"
+                  >
+                    Snapshot
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (navigator.vibrate) navigator.vibrate(8);
+                    activeTab === 0 ? triggerRefresh() : openModal();
+                  }}
+                  className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+                >
+                  {activeTab === 0 ? 'Sync' : 'Log Trade'}
+                </button>
+              </div>
             </div>
             <div className="flex border-t border-[#1a1a1a]">
               {TABS.map((tab, i) => (
@@ -460,6 +518,38 @@ export default function InvestmentsPage() {
                     </div>
                     <PortfolioChart points={historyData} range={historyRange} />
                   </div>
+
+                  {/* Snapshot log */}
+                  {snapshots.length > 0 && (
+                    <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between">
+                        <span className="text-xs font-semibold text-[#555] uppercase tracking-wider">Balance Snapshots</span>
+                        <span className="text-[10px] text-[#333]">{snapshots.length} logged · tap to delete</span>
+                      </div>
+                      {[...snapshots].reverse().map((s: any, idx: number) => (
+                        <div key={s.id}
+                          className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== snapshots.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
+                          onClick={() => setDeleteSnapshotId(s.id)}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-[#ccc]">
+                              {new Date(s.snapshot_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </p>
+                            {(s.roth_ira_value || s.hsa_value) && (
+                              <div className="flex gap-3 text-[10px] text-[#444] mt-0.5">
+                                {s.roth_ira_value && <span>Roth ${parseFloat(s.roth_ira_value).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}</span>}
+                                {s.hsa_value && <span>HSA ${parseFloat(s.hsa_value).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}</span>}
+                              </div>
+                            )}
+                            {s.notes && <p className="text-[10px] text-[#333] mt-0.5">{s.notes}</p>}
+                          </div>
+                          <p className="text-sm font-bold font-mono text-[#22c55e]">
+                            ${parseFloat(s.total_value).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     {[
@@ -743,6 +833,60 @@ export default function InvestmentsPage() {
               <button onClick={handleDelete} disabled={deleting} className="flex-1 bg-[#ef4444] rounded-xl text-sm font-bold text-white font-mono uppercase tracking-wide disabled:opacity-50 py-3">
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Snapshot Modal */}
+      {showSnapshotModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
+            <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
+              <span className="font-bold text-base text-white">Log Snapshot</span>
+              <button onClick={() => setShowSnapshotModal(false)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-4">
+              <p className="text-[11px] text-[#444]">Log your current portfolio balance from Fidelity. Each snapshot builds the growth chart over time.</p>
+              {[
+                { label: 'Date', field: 'snapshot_date', type: 'date', placeholder: '' },
+                { label: 'Total Portfolio Value', field: 'total_value', type: 'number', placeholder: '0.00' },
+                { label: 'Roth IRA Value (optional)', field: 'roth_ira_value', type: 'number', placeholder: '0.00' },
+                { label: 'HSA Value (optional)', field: 'hsa_value', type: 'number', placeholder: '0.00' },
+                { label: 'Notes (optional)', field: 'notes', type: 'text', placeholder: 'End of month…' },
+              ].map(({ label, field, type, placeholder }) => (
+                <div key={field}>
+                  <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">{label}</div>
+                  <input type={type} inputMode={type === 'number' ? 'decimal' : undefined} placeholder={placeholder}
+                    value={(snapshotForm as any)[field]}
+                    onChange={e => setSnapshotForm(f => ({ ...f, [field]: e.target.value }))}
+                    className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]" />
+                  {field === 'total_value' && data?.totalPortfolioValue && (
+                    <p className="text-[10px] text-[#444] mt-1">Live calc: ${data.totalPortfolioValue.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})} — verify against Fidelity</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3 px-5 pt-5">
+              <button onClick={() => setShowSnapshotModal(false)} className="flex-1 py-3 bg-black border border-[#1a1a1a] text-[#555] rounded-xl text-sm font-semibold">Cancel</button>
+              <button onClick={handleSaveSnapshot} disabled={savingSnapshot || !snapshotForm.total_value}
+                className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-bold text-black disabled:opacity-50">
+                {savingSnapshot ? 'Saving…' : 'Save Snapshot'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Snapshot delete confirm */}
+      {deleteSnapshotId && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#1a1a1a]">
+            <p className="text-base font-bold text-white text-center mb-1">Delete this snapshot?</p>
+            <p className="text-[11px] text-[#555] text-center mb-4">It will be removed from the growth chart.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteSnapshotId(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Keep</button>
+              <button onClick={handleDeleteSnapshot} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold">Delete</button>
             </div>
           </div>
         </div>
