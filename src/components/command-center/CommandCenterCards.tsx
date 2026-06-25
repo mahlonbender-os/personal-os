@@ -138,29 +138,47 @@ function ExpenseModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) 
   );
 }
 
-// ─── Quick Knox Weight Modal ──────────────────────────────────────────────────
+// ─── Quick Fuel Modal ─────────────────────────────────────────────────────────
 
-function KnoxWeightModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
-  const [form,setForm]=useState({date:today(),weight_lbs:'',notes:''});
+function FuelModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
+  const [form,setForm]=useState({date:today(),gallons:'',price_per_gallon:'',total_cost:'',odometer:'',station:''});
   const [saving,setSaving]=useState(false); const [error,setError]=useState('');
   function set(k:string,v:string){setForm(f=>({...f,[k]:v}));}
+
+  // Auto-calc total from gallons × price
+  useEffect(()=>{
+    if(!form.gallons||!form.price_per_gallon) return;
+    const total=parseFloat(form.gallons)*parseFloat(form.price_per_gallon);
+    if(!isNaN(total)) setForm(f=>({...f,total_cost:total.toFixed(2)}));
+  },[form.gallons,form.price_per_gallon]);
+
   async function handleSave(){
     setError('');
-    if(!form.weight_lbs){setError('Weight is required');return;}
+    if(!form.gallons||!form.total_cost){setError('Gallons and total are required');return;}
     setSaving(true);
     try {
-      const res=await fetch('/api/knox/weight',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({log_date:form.date,weight_lbs:parseFloat(form.weight_lbs),user_id:'b0572935-26c9-44b5-8645-229bf5b78743',notes:form.notes||null})});
+      const res=await fetch('/api/vehicle/fuel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        date:form.date,
+        gallons:parseFloat(form.gallons),
+        price_per_gallon:form.price_per_gallon?parseFloat(form.price_per_gallon):null,
+        total_cost:parseFloat(form.total_cost),
+        odometer:form.odometer?parseInt(form.odometer):null,
+        station:form.station||null,
+      })});
       if(!res.ok){const d=await res.json();throw new Error(d.error||'Failed');}
       onSaved(); onClose();
     } catch(e:any){setError(e.message);}
     finally{setSaving(false);}
   }
   return (
-    <MiniModal title="Log Knox Weight" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
+    <MiniModal title="Log Fuel" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
       <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
         <ModalRow label="Date"><ModalInput type="date" value={form.date} onChange={v=>set('date',v)}/></ModalRow>
-        <ModalRow label="Weight (lbs)"><ModalInput type="number" value={form.weight_lbs} onChange={v=>set('weight_lbs',v)} placeholder="0.0"/></ModalRow>
-        <ModalRow label="Notes"><ModalInput value={form.notes} onChange={v=>set('notes',v)} placeholder="Optional"/></ModalRow>
+        <ModalRow label="Gallons"><ModalInput type="number" value={form.gallons} onChange={v=>set('gallons',v)} placeholder="0.000"/></ModalRow>
+        <ModalRow label="Price/gal ($)"><ModalInput type="number" value={form.price_per_gallon} onChange={v=>set('price_per_gallon',v)} placeholder="3.499"/></ModalRow>
+        <ModalRow label="Total ($)"><ModalInput type="number" value={form.total_cost} onChange={v=>set('total_cost',v)} placeholder="Auto-calc"/></ModalRow>
+        <ModalRow label="Odometer"><ModalInput type="number" value={form.odometer} onChange={v=>set('odometer',v)} placeholder="Optional"/></ModalRow>
+        <ModalRow label="Station"><ModalInput value={form.station} onChange={v=>set('station',v)} placeholder="Optional"/></ModalRow>
       </div>
     </MiniModal>
   );
@@ -462,7 +480,7 @@ export default function CommandCenterCards() {
   const quickActions=[
     {label:'+ Transaction',modal:'expense'},
     {label:'📊 Trade',modal:'trade'},
-    {label:'🐺 Weight',modal:'weight'},
+    {label:'⛽ Fuel',modal:'fuel'},
     {label:'💪 Workout',modal:'workout'},
     {label:'🔄 Sync',modal:'sync'},
   ];
@@ -509,7 +527,7 @@ export default function CommandCenterCards() {
       </div>
 
       {modal==='expense'&&<ExpenseModal onClose={()=>setModal(null)} onSaved={()=>{setModal(null);handleRefresh();}}/>}
-      {modal==='weight'&&<KnoxWeightModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
+      {modal==='fuel'&&<FuelModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
       {modal==='workout'&&<WorkoutModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
     </>
   );
