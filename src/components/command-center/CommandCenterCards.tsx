@@ -481,7 +481,7 @@ export default function CommandCenterCards() {
           </div>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             {quickActions.map(({label,modal:m})=>(
-              <button key={label} onClick={()=>{if(navigator.vibrate)navigator.vibrate(8);if(m==='sync')handleRefresh();else setModal(m);}}
+              <button key={label} onClick={()=>{if(navigator.vibrate)navigator.vibrate(8);if(m==='sync')handleRefresh();else if(m==='trade'){window.location.href='/investments?openTrade=true';}else setModal(m);}}
                 className="flex-shrink-0 text-[11px] font-semibold text-[#f0a050] border border-[#f0a050]/30 bg-[#f0a050]/5 px-3 py-1.5 rounded-full active:bg-[#f0a050]/15 transition-colors">
                 {label}
               </button>
@@ -510,7 +510,6 @@ export default function CommandCenterCards() {
 
       {modal==='expense'&&<ExpenseModal onClose={()=>setModal(null)} onSaved={()=>{setModal(null);handleRefresh();}}/>}
       {modal==='weight'&&<KnoxWeightModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
-      {modal==='trade'&&<TradeModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
       {modal==='workout'&&<WorkoutModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
     </>
   );
