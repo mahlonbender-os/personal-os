@@ -312,11 +312,11 @@ function FinanceRow() {
   const dueTotal=dueSoon.reduce((s,b)=>s+Math.abs(b.amount||0),0);
   return (
     <div className="grid grid-cols-2 gap-3">
-      <div onClick={()=>{window.location.href='/finance';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer">
+      <div onClick={()=>{window.location.href='/finance?tab=budget';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer">
         <div className="text-[9px] font-semibold text-[#444] uppercase tracking-widest mb-2">Cash Flow</div>
         {cf?(<div className="space-y-1.5">{[{label:'Income',val:cf.income,color:'text-[#22c55e]'},{label:'Expenses',val:cf.expenses,color:'text-[#ef4444]'},{label:'Net',val:cf.net,color:cf.net>=0?'text-[#22c55e]':'text-[#ef4444]'}].map(({label,val,color})=>(<div key={label}><div className="flex justify-between items-center"><span className="text-[10px] text-[#555]">{label}</span><span className={`text-[11px] font-bold font-mono ${color}`}>{fmt(val)}</span></div>{label!=='Net'&&<div className="h-px bg-[#1a1a1a] mt-1.5"/>}</div>))}</div>):(<div className="text-[10px] text-[#333] pt-1">Syncing…</div>)}
       </div>
-      <div onClick={()=>{window.location.href='/finance';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer">
+      <div onClick={()=>{window.location.href='/finance?tab=bills';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer">
         <div className="text-[9px] font-semibold text-[#444] uppercase tracking-widest mb-2">Bills Due</div>
         <div className="text-[18px] font-extrabold text-[#f0a050] leading-none mb-1" style={{fontFamily:"'Syne',sans-serif"}}>{fmt(dueTotal)}</div>
         <div className="text-[9px] text-[#444] mb-2">{dueSoon.length} bills · 7 days</div>

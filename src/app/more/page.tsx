@@ -14,6 +14,13 @@ const GROUPS = [
     ],
   },
   {
+    label: 'Health',
+    items: [
+      { label: 'Health', href: '/health', icon: '❤️' },
+      { label: 'Workouts', href: '/workout', icon: '💪' },
+    ],
+  },
+  {
     label: 'Work',
     items: [
       { label: 'Work', href: '/work', icon: '🏭' },
@@ -34,7 +41,6 @@ const GROUPS = [
       { label: 'Warranties', href: '/warranties', icon: '📄' },
       { label: 'Investments', href: '/investments', icon: '📈' },
       { label: '401(k)', href: '/retirement', icon: '💼' },
-      { label: 'Workouts', href: '/workout', icon: '💪' },
       { label: 'Equity Optimizer', href: '/real-estate', icon: '📊' },
     ],
   },
