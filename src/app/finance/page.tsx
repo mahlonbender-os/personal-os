@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
+import HELOCInterestShield from '@/components/finance/HELOCInterestShield';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1345,6 +1346,10 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
 
   return (
     <div className="space-y-4 animate-fadeIn">
+      
+      {/* Dynamic Velocity Shield Calculation Module */}
+      <HELOCInterestShield />
+
       {transactions.length === 0 ? (
         <div className="text-center py-12 text-[#333] text-sm">
           <p>No HELOC transactions yet.</p>
