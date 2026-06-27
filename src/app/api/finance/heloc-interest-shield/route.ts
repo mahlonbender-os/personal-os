@@ -8,21 +8,19 @@ export const dynamic = 'force-dynamic';
 const USER_ID = 'b0572835-26c9-44b5-8645-229bf5b78743';
 
 export async function GET() {
-  // 1. Enforce authentication protection layers
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Set up safe baseline parameters to guarantee UI rendering stability
+  // Safe baseline fallback values to ensure UI stability under any state
   let helocRate = 8.25;
   let currentBalance = 45000.00;
   let creditLimit = 100000.00;
   let totalIncomeDeposited = 0;
-  let interestShieldedThisMonth = 142.50; // High-fidelity baseline representation
+  let interestShieldedThisMonth = 142.50; 
   let dataSource = 'engine_fallback_baseline';
 
-  // Determine current monthly cycle bounds via New York timezone context
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
   const currentYear = todayStr.substring(0, 4);
   const currentMonth = todayStr.substring(5, 7);
@@ -37,7 +35,6 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // 2. Fetch home profile variables inside a isolated block
     const { data: home, error: homeError } = await supabase
       .from('home_profile')
       .select('heloc_interest_rate, heloc_current_balance, heloc_credit_limit')
@@ -54,7 +51,6 @@ export async function GET() {
     const annualRate = helocRate > 1 ? helocRate / 100 : helocRate;
     const dailyRate = annualRate / 365;
 
-    // 3. Fetch transaction rows with fallback protection layers
     const { data: txs, error: txError } = await supabase
       .from('transactions')
       .select('date, amount, category')
@@ -78,7 +74,6 @@ export async function GET() {
           const absAmount = Math.abs(amountVal);
           totalIncomeDeposited += absAmount;
 
-          // Split array strings directly to bypass browser/server string format gaps
           const [ty, tm, td] = tx.date.split('-');
           const txDate = new Date(parseInt(ty), parseInt(tm) - 1, parseInt(td));
           
@@ -94,10 +89,9 @@ export async function GET() {
       }
     }
   } catch (innerError) {
-    console.error('Database connection exception captured safely:', innerError);
+    console.error('Handled database tracking edge-case securely:', innerError);
   }
 
-  // Calculate final dynamic metrics block values
   const finalAnnualRate = helocRate > 1 ? helocRate / 100 : helocRate;
   const estimatedDailyAccrual = currentBalance * (finalAnnualRate / 365);
 
