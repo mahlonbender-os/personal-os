@@ -10,12 +10,14 @@ interface ShieldMetrics {
   interestShieldedThisMonth: number;
   estimatedDailyAccrual: number;
   cycleDateRange: { start: string; end: string };
+  dataSource: string;
 }
 
 export default function HELOCInterestShield() {
   const [data, setData] = useState<ShieldMetrics | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchShieldData() {
@@ -24,9 +26,11 @@ export default function HELOCInterestShield() {
         if (res.ok) {
           const payload = await res.json();
           setData(payload);
+        } else {
+          setErrorMessage(`Pipeline Error response status code: ${res.status}`);
         }
       } catch (err) {
-        console.error('Failed processing velocity pipeline metrics read', err);
+        setErrorMessage('Network connection to banking engine timed out');
       } finally {
         setLoading(false);
       }
@@ -35,7 +39,6 @@ export default function HELOCInterestShield() {
   }, []);
 
   const handleToggleExpand = () => {
-    // Premium standardized micro-tick accordion haptic signature (5ms)
     if (navigator.vibrate) navigator.vibrate(5);
     setExpanded(!expanded);
   };
@@ -49,7 +52,14 @@ export default function HELOCInterestShield() {
     );
   }
 
-  if (!data) return null;
+  if (errorMessage || !data) {
+    return (
+      <div className="bg-[#111] border border-[#ef4444]/20 rounded-2xl p-4 text-center">
+        <span className="text-xs text-[#ef4444] font-mono block">⚠️ Engine Data Mismatch</span>
+        <span className="text-[10px] text-[#555] mt-1 block">{errorMessage || 'No data snapshot returned'}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden transition-all duration-300">
@@ -106,8 +116,9 @@ export default function HELOCInterestShield() {
           </div>
 
           {/* Bounds Date Window Label */}
-          <div className="text-[10px] font-mono text-[#333] text-center tracking-tight uppercase">
-            Active Cycle Ledger: {data.cycleDateRange.start} → {data.cycleDateRange.end}
+          <div className="text-[10px] font-mono text-[#333] text-center tracking-tight uppercase flex justify-between px-1">
+            <span>Mode: {data.dataSource === 'live_database' ? 'Live DB' : 'Baseline Engine'}</span>
+            <span>Ledger: {data.cycleDateRange.start} → {data.cycleDateRange.end}</span>
           </div>
           
         </div>
