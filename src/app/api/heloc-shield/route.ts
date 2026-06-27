@@ -14,15 +14,15 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 1. Core Financial Parameter Defaults
+    // 1. Establish strict structural defaults
     let helocRate = 8.25;
     let currentBalance = 45000.00;
     let creditLimit = 100000.00;
     let totalIncomeDeposited = 0;
-    let interestShieldedThisMonth = 142.50; 
-    let dataSource = 'engine_fallback_baseline';
+    let interestShieldedThisMonth = 0; 
+    let dataSource = 'live_database_calendar';
 
-    // Calculate current month boundaries
+    // Establish hard calendar-month boundaries based on local Eastern Time
     const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
     const currentYear = todayStr.substring(0, 4);
     const currentMonth = todayStr.substring(5, 7);
@@ -31,15 +31,12 @@ export async function GET() {
     const lastDayObj = new Date(parseInt(currentYear), parseInt(currentMonth), 0);
     const monthEnd = `${currentYear}-${currentMonth}-${String(lastDayObj.getDate()).padStart(2, '0')}`;
 
-    let queryStart = monthStart;
-    let queryEnd = monthEnd;
-
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // 2. Extract profile rates
+    // 2. Fetch active home profile metrics
     const { data: home } = await supabase
       .from('home_profile')
       .select('heloc_interest_rate, heloc_current_balance, heloc_credit_limit')
@@ -50,54 +47,34 @@ export async function GET() {
       if (home.heloc_current_balance) currentBalance = Math.abs(parseFloat(String(home.heloc_current_balance)));
       if (home.heloc_credit_limit) creditLimit = parseFloat(String(home.heloc_credit_limit));
       if (home.heloc_interest_rate) helocRate = parseFloat(String(home.heloc_interest_rate));
-      dataSource = 'live_database_calendar';
     }
 
     const annualRate = helocRate > 1 ? helocRate / 100 : helocRate;
     const dailyRate = annualRate / 365;
 
-    // 3. Primary Query: Try pulling current calendar month ledger rows
-    let { data: txs, error: txError } = await supabase
+    // 3. Query transactions strictly within this calendar month boundaries
+    const { data: txs, error: txError } = await supabase
       .from('transactions')
       .select('date, amount, category')
       .eq('user_id', USER_ID)
       .eq('account', 'Members 1st HELOC')
-      .gte('date', queryStart)
-      .lte('date', queryEnd);
+      .gte('date', monthStart)
+      .lte('date', monthEnd);
 
-    // 4. Smart Pivot: If current calendar month has no data, scan a rolling 30-day window
-    if (!txError && (!txs || txs.length === 0)) {
-      const rollingDate = new Date();
-      rollingDate.setDate(rollingDate.getDate() - 30);
-      queryStart = rollingDate.toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
-      queryEnd = todayStr;
-      dataSource = home ? 'live_database_rolling_30d' : 'engine_fallback_rolling_30d';
-
-      const { data: rollingTxs } = await supabase
-        .from('transactions')
-        .select('date, amount, category')
-        .eq('user_id', USER_ID)
-        .eq('account', 'Members 1st HELOC')
-        .gte('date', queryStart)
-        .lte('date', queryEnd);
-        
-      if (rollingTxs) txs = rollingTxs;
-    }
-
-    // 5. Execute Mathematical Processing Loop
-    if (txs && txs.length > 0) {
+    // 4. Calculate absolute interest shield metrics
+    if (!txError && txs && txs.length > 0) {
       let calculatedShield = 0;
       let calculatedInjections = 0;
       const incomeCategories = ['income', 'other inc.', 'roth ira', '401k', 'hsa', 'bree'];
       
-      const [ey, em, ed] = queryEnd.split('-');
+      const [ey, em, ed] = monthEnd.split('-');
       const targetEnd = new Date(parseInt(ey), parseInt(em) - 1, parseInt(ed));
 
       txs.forEach((tx) => {
         const amountVal = parseFloat(String(tx.amount || 0));
         const catNormalized = String(tx.category || '').toLowerCase().trim();
         
-        // Flag deposits based on income categories list or raw positive velocity signs
+        // Income categories or manual positive injections counted as debt paydown acceleration
         const isIncome = incomeCategories.includes(catNormalized) || amountVal > 0;
         
         if (isIncome && tx.date) {
@@ -114,11 +91,8 @@ export async function GET() {
         }
       });
 
-      if (calculatedInjections > 0) totalIncomeDeposited = calculatedInjections;
-      if (calculatedShield > 0) interestShieldedThisMonth = calculatedShield;
-    } else {
-      // Complete pristine fallback defaults if no rows exist anywhere in table history
-      if (totalIncomeDeposited === 0) totalIncomeDeposited = 5250.00;
+      totalIncomeDeposited = calculatedInjections;
+      interestShieldedThisMonth = calculatedShield;
     }
 
     return NextResponse.json(
@@ -129,13 +103,13 @@ export async function GET() {
         totalIncomeDeposited,
         interestShieldedThisMonth,
         estimatedDailyAccrual: currentBalance * (annualRate / 365),
-        cycleDateRange: { start: queryStart, end: queryEnd },
+        cycleDateRange: { start: monthStart, end: monthEnd },
         dataSource
       },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error) {
-    console.error('Critical velocity metric math loop failure:', error);
-    return NextResponse.json({ error: 'Internal pipeline mathematical failure' }, { status: 500 });
+    console.error('Critical velocity metric loop crash handler:', error);
+    return NextResponse.json({ error: 'Internal system calculation failure' }, { status: 500 });
   }
 }
