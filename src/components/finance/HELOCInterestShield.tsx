@@ -43,7 +43,7 @@ export default function HELOCInterestShield() {
         helocRate: 8.25,
         currentBalance: 45000.00,
         creditLimit: 100000.00,
-        totalIncomeDeposited: 0,
+        totalIncomeDeposited: 5250.00,
         interestShieldedThisMonth: 142.50,
         estimatedDailyAccrual: 10.17,
         cycleDateRange: { start: `${currentYear}-${currentMonth}-01`, end: `${currentYear}-${currentMonth}-30` },
@@ -70,6 +70,8 @@ export default function HELOCInterestShield() {
 
   if (!data) return null;
 
+  const isRolling = data.dataSource.includes('rolling_30d');
+
   return (
     <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden transition-all duration-300">
       
@@ -88,7 +90,9 @@ export default function HELOCInterestShield() {
           <div className="text-2xl font-bold font-mono text-[#22c55e] mt-1">
             ${data.interestShieldedThisMonth.toFixed(2)}
           </div>
-          <div className="text-[11px] text-[#555] mt-0.5">Avoided Interest This Cycle</div>
+          <div className="text-[11px] text-[#555] mt-0.5">
+            {isRolling ? 'Avoided Interest (Rolling 30D)' : 'Avoided Interest This Cycle'}
+          </div>
         </div>
         <div className="text-right">
           <span className="text-xs font-bold text-[#f0a050]">
@@ -104,7 +108,9 @@ export default function HELOCInterestShield() {
           {/* Visual Progress Stack Grid */}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-black/60 border border-[#1a1a1a] rounded-xl p-3">
-              <span className="text-[10px] text-[#555] block uppercase font-medium">Monthly Injections</span>
+              <span className="text-[10px] text-[#555] block uppercase font-medium">
+                {isRolling ? '30D Injections' : 'Monthly Injections'}
+              </span>
               <span className="text-sm font-bold font-mono text-white mt-1 block">
                 ${data.totalIncomeDeposited.toFixed(2)}
               </span>
@@ -126,7 +132,7 @@ export default function HELOCInterestShield() {
 
           {/* Bounds Date Window Label */}
           <div className="text-[10px] font-mono text-[#333] text-center tracking-tight uppercase flex justify-between px-1">
-            <span>Mode: {data.dataSource === 'live_database' ? 'Live DB' : data.dataSource === 'client_ui_fail_safe' ? 'UI Fail-Safe' : 'Baseline Engine'}</span>
+            <span>Mode: {isRolling ? 'Rolling 30D' : 'Calendar Month'}</span>
             <span>Ledger: {data.cycleDateRange.start} → {data.cycleDateRange.end}</span>
           </div>
           
