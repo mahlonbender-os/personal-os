@@ -8,28 +8,28 @@ export const dynamic = 'force-dynamic';
 const USER_ID = 'b0572835-26c9-44b5-8645-229bf5b78743';
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // Safe baseline fallback values to ensure UI stability under any state
-  let helocRate = 8.25;
-  let currentBalance = 45000.00;
-  let creditLimit = 100000.00;
-  let totalIncomeDeposited = 0;
-  let interestShieldedThisMonth = 142.50; 
-  let dataSource = 'engine_fallback_baseline';
-
-  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
-  const currentYear = todayStr.substring(0, 4);
-  const currentMonth = todayStr.substring(5, 7);
-  const monthStart = `${currentYear}-${currentMonth}-01`;
-  
-  const lastDayObj = new Date(parseInt(currentYear), parseInt(currentMonth), 0);
-  const monthEnd = `${currentYear}-${currentMonth}-${String(lastDayObj.getDate()).padStart(2, '0')}`;
-
   try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Set up robust baseline parameters to guarantee fallback rendering stability
+    let helocRate = 8.25;
+    let currentBalance = 45000.00;
+    let creditLimit = 100000.00;
+    let totalIncomeDeposited = 0;
+    let interestShieldedThisMonth = 142.50; 
+    let dataSource = 'engine_fallback_baseline';
+
+    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
+    const currentYear = todayStr.substring(0, 4);
+    const currentMonth = todayStr.substring(5, 7);
+    const monthStart = `${currentYear}-${currentMonth}-01`;
+    
+    const lastDayObj = new Date(parseInt(currentYear), parseInt(currentMonth), 0);
+    const monthEnd = `${currentYear}-${currentMonth}-${String(lastDayObj.getDate()).padStart(2, '0')}`;
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -42,7 +42,7 @@ export async function GET() {
       .maybeSingle();
 
     if (!homeError && home) {
-      if (home.heloc_current_balance) currentBalance = parseFloat(String(home.heloc_current_balance));
+      if (home.heloc_current_balance) currentBalance = Math.abs(parseFloat(String(home.heloc_current_balance)));
       if (home.heloc_credit_limit) creditLimit = parseFloat(String(home.heloc_credit_limit));
       if (home.heloc_interest_rate) helocRate = parseFloat(String(home.heloc_interest_rate));
       dataSource = 'live_database';
@@ -88,24 +88,22 @@ export async function GET() {
         interestShieldedThisMonth = calculatedShield;
       }
     }
-  } catch (innerError) {
-    console.error('Handled database tracking edge-case securely:', innerError);
+
+    return NextResponse.json(
+      {
+        helocRate: helocRate > 1 ? helocRate : helocRate * 100,
+        currentBalance,
+        creditLimit,
+        totalIncomeDeposited,
+        interestShieldedThisMonth,
+        estimatedDailyAccrual: currentBalance * (annualRate / 365),
+        cycleDateRange: { start: monthStart, end: monthEnd },
+        dataSource
+      },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
+  } catch (error) {
+    console.error('HELOC calculations crash managed safely:', error);
+    return NextResponse.json({ error: 'Internal server engine reset variance' }, { status: 500 });
   }
-
-  const finalAnnualRate = helocRate > 1 ? helocRate / 100 : helocRate;
-  const estimatedDailyAccrual = currentBalance * (finalAnnualRate / 365);
-
-  return NextResponse.json(
-    {
-      helocRate: helocRate > 1 ? helocRate : helocRate * 100,
-      currentBalance,
-      creditLimit,
-      totalIncomeDeposited,
-      interestShieldedThisMonth,
-      estimatedDailyAccrual,
-      cycleDateRange: { start: monthStart, end: monthEnd },
-      dataSource
-    },
-    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-  );
 }
