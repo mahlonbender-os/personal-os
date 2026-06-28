@@ -472,7 +472,7 @@ export default function CommandCenterCards() {
   const handleRefresh=useCallback(async()=>{
     setSyncing(true);
     await fetch('/api/sync/sheets',{method:'POST'});
-    try{['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));}catch{}
+    try{['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
     setSyncing(false);
     window.location.reload();
   },[]);
