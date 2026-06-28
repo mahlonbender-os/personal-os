@@ -16,6 +16,7 @@ export async function GET() {
     .select('id, name, category, amount, due_day, due_date, payment_account, status')
     .eq('user_id', USER_ID)
     .eq('status', 'Upcoming')
+.gte('due_date', new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }))
     .order('due_date', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
