@@ -679,20 +679,34 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
   }
 
   return (
-    <div className="space-y-3 h-full flex flex-col animate-fadeIn">
-      <div className="space-y-2 flex-shrink-0">
+    <div className="animate-fadeIn">
+      {/* Sticky search + category chips */}
+      <div className="sticky top-0 bg-black z-10 -mx-4 px-4 pt-1 pb-3 space-y-2">
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#333] text-sm">🔍</span>
           <input type="text" placeholder="Search transactions…" value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] placeholder-[#333] outline-none focus:ring-1 focus:ring-[#f0a050]" />
+            className="w-full pl-8 pr-9 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] placeholder-[#333] outline-none focus:border-[#f0a050]" />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555] text-sm active:text-white">✕</button>
+          )}
         </div>
-        <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
-          className="w-full px-3 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] outline-none focus:ring-1 focus:ring-[#f0a050]">
-          {categories.map(cat => <option key={cat} value={cat}>{cat || '(no category)'}</option>)}
-        </select>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+          {categories.map(cat => (
+            <button key={cat} onClick={() => setSelectedCategory(cat)}
+              className={`flex-shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                selectedCategory === cat
+                  ? 'bg-[#f0a050]/15 border-[#f0a050]/40 text-[#f0a050]'
+                  : 'bg-[#111] border-[#1a1a1a] text-[#555]'
+              }`}>
+              {cat || 'Transfer'}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto pb-16 space-y-4 pr-1 scrollbar-hide">
+
+      {/* Transaction list */}
+      <div className="space-y-4 pt-1">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : filtered.length === 0 ? (
@@ -1701,23 +1715,18 @@ function FinancePageInner() {
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden relative bg-black">
-        {activeTab === 'transactions' ? (
-          <div className="h-full px-4 pt-4">
-            <TransactionsTab onRefresh={refreshCount} />
-          </div>
-        ) : (
-          <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
-            <PullToRefresh onRefresh={handleRefresh}>
-              {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} onAddGoal={() => setShowAddGoal(true)} />}
-              {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
-              {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
-              {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
-              {activeTab === 'credit' && <CreditTab onRefresh={refreshCount} />}
-              {activeTab === 'heloc' && <HelocTab onRefresh={refreshCount} />}
-              {activeTab === 'subscriptions' && <SubscriptionsTab onRefresh={refreshCount} />}
-            </PullToRefresh>
-          </div>
-        )}
+        <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
+          <PullToRefresh onRefresh={handleRefresh}>
+            {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} onAddGoal={() => setShowAddGoal(true)} />}
+            {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
+            {activeTab === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
+            {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
+            {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
+            {activeTab === 'credit' && <CreditTab onRefresh={refreshCount} />}
+            {activeTab === 'heloc' && <HelocTab onRefresh={refreshCount} />}
+            {activeTab === 'subscriptions' && <SubscriptionsTab onRefresh={refreshCount} />}
+          </PullToRefresh>
+        </div>
       </div>
 
       {/* ── Add Transaction Modal ────────────────────────────────── */}
