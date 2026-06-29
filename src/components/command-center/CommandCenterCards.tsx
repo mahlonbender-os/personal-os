@@ -145,7 +145,6 @@ function FuelModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
   const [saving,setSaving]=useState(false); const [error,setError]=useState('');
   function set(k:string,v:string){setForm(f=>({...f,[k]:v}));}
 
-  // Auto-calc total from gallons × price
   useEffect(()=>{
     if(!form.gallons||!form.price_per_gallon) return;
     const total=parseFloat(form.gallons)*parseFloat(form.price_per_gallon);
@@ -243,7 +242,6 @@ function WorkoutModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) 
   }
   return (
     <MiniModal title="Log Workout" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
-      {/* Type toggle */}
       <div className="flex rounded-xl overflow-hidden border border-[#2a2a2a]">
         {(['cardio','strength'] as const).map(t=>(
           <button key={t} onClick={()=>setType(t)} className={`flex-1 py-2.5 text-sm font-semibold capitalize transition-colors ${type===t?'bg-[#f0a050]/10 text-[#f0a050]':'text-[#444]'}`}>{t==='cardio'?'🏃 Cardio':'🏋 Strength'}</button>
@@ -269,12 +267,12 @@ function WorkoutModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) 
 
 // ─── Health Card ──────────────────────────────────────────────────────────────
 
-function HealthCard() {
+function HealthCard({ refreshCount }: { refreshCount: number }) {
   const [data,setData]=useState<any>(null);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_health_v1');if(c)setData(JSON.parse(c));}catch{}
     fetch('/api/health/latest').then(r=>r.json()).then(d=>{setData(d.log||null);try{localStorage.setItem('cc_health_v1',JSON.stringify(d.log||null));}catch{}}).catch(()=>{});
-  },[]);
+  },[refreshCount]);
   const steps=data?.steps??0;
   const cal=data?.active_calories??0;
   const active=data?.exercise_minutes??data?.activity_minutes??0;
@@ -313,7 +311,7 @@ function HealthCard() {
 
 // ─── Finance Row ──────────────────────────────────────────────────────────────
 
-function FinanceRow() {
+function FinanceRow({ refreshCount }: { refreshCount: number }) {
   const [cf,setCf]=useState<any>(null); const [bills,setBills]=useState<any[]>([]);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_finance_v1');if(c){const p=JSON.parse(c);setCf(p.cf);setBills(p.bills);}}catch{}
@@ -324,7 +322,7 @@ function FinanceRow() {
       setCf(newCf);setBills(newBills);
       try{localStorage.setItem('cc_finance_v1',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
     }).catch(()=>{});
-  },[]);
+  },[refreshCount]);
   const t=new Date();t.setHours(0,0,0,0);const in7=new Date(t);in7.setDate(t.getDate()+7);
   const dueSoon=bills.filter(b=>b.due_date&&new Date(b.due_date+'T00:00:00')<=in7);
   const dueTotal=dueSoon.reduce((s,b)=>s+Math.abs(b.amount||0),0);
@@ -346,12 +344,12 @@ function FinanceRow() {
 
 // ─── Investments Card ─────────────────────────────────────────────────────────
 
-function InvestmentsCard() {
+function InvestmentsCard({ refreshCount }: { refreshCount: number }) {
   const [data,setData]=useState<any>(null); const [loading,setLoading]=useState(true);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_investments_v1');if(c){setData(JSON.parse(c));setLoading(false);}}catch{}
     fetch('/api/cc/investments').then(r=>r.json()).then(d=>{setData(d);setLoading(false);try{localStorage.setItem('cc_investments_v1',JSON.stringify(d));}catch{}}).catch(()=>setLoading(false));
-  },[]);
+  },[refreshCount]);
   const totalValue=data?.totalValue??0; const dailyChange=data?.dailyChange??null; const dailyChangePct=data?.dailyChangePct??null; const totalGain=data?.totalGain??null; const totalGainPct=data?.totalGainPct??null; const accounts:any[]=data?.accounts??[]; const hasPrices=data?.hasPrices??false;
   return (
     <div onClick={()=>{window.location.href='/investments';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer">
@@ -371,12 +369,12 @@ function InvestmentsCard() {
 
 // ─── Calendar Card ────────────────────────────────────────────────────────────
 
-function CalendarCard() {
+function CalendarCard({ refreshCount }: { refreshCount: number }) {
   const [events,setEvents]=useState<any[]>([]);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_calendar_v1');if(c)setEvents(JSON.parse(c));}catch{}
     fetch('/api/calendar/events?days=7').then(r=>r.json()).then(d=>{const e=(d.events||[]).slice(0,5);setEvents(e);try{localStorage.setItem('cc_calendar_v1',JSON.stringify(e));}catch{}}).catch(()=>{});
-  },[]);
+  },[refreshCount]);
   function fmtEvt(e:any){const d=new Date(e.start),now=new Date();now.setHours(0,0,0,0);const diff=Math.floor((d.getTime()-now.getTime())/86400000);const pre=diff===0?'Today':diff===1?'Tomorrow':d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});return e.allDay?pre:`${pre} · ${d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`;}
   return (
     <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] overflow-hidden">
@@ -388,12 +386,12 @@ function CalendarCard() {
 
 // ─── Tasks Card ───────────────────────────────────────────────────────────────
 
-function TasksCard() {
+function TasksCard({ refreshCount }: { refreshCount: number }) {
   const [tasks,setTasks]=useState<any[]>([]);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_tasks_v1');if(c)setTasks(JSON.parse(c));}catch{}
     fetch('/api/tasks/lists').then(r=>r.json()).then(async d=>{const lists=d.lists||[];if(!lists.length)return;const preferred=lists.find((l:any)=>l.title==='Personal OS');const listId=(preferred||lists[0]).id;const res=await fetch(`/api/tasks/items?listId=${listId}&showCompleted=false`);const data=await res.json();const t=(data.tasks||[]).slice(0,4);setTasks(t);try{localStorage.setItem('cc_tasks_v1',JSON.stringify(t));}catch{}}).catch(()=>{});
-  },[]);
+  },[refreshCount]);
   return (
     <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] overflow-hidden">
       <div onClick={()=>{window.location.href='/tasks';}} className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] active:bg-[#161616] cursor-pointer"><div className="flex items-center gap-2"><span className="text-sm">☑</span><span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Tasks</span></div><span className="text-[9px] text-[#f0a050]">{tasks.length} pending →</span></div>
@@ -404,12 +402,12 @@ function TasksCard() {
 
 // ─── Knox Card ────────────────────────────────────────────────────────────────
 
-function KnoxCard() {
+function KnoxCard({ refreshCount }: { refreshCount: number }) {
   const [data,setData]=useState<any>(null);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_knox_v2');if(c)setData(JSON.parse(c));}catch{}
     fetch('/api/knox/summary').then(r=>r.json()).then(d=>{setData(d);try{localStorage.setItem('cc_knox_v2',JSON.stringify(d));}catch{}}).catch(()=>{});
-  },[]);
+  },[refreshCount]);
   function vetLabel(d: string|null|undefined): string {if(!d)return'—';const days=daysUntil(d);if(days===null)return fmtShort(d);if(days<0)return`Overdue ${Math.abs(days)}d`;if(days===0)return'Today';if(days<=7)return`In ${days}d`;return fmtShort(d);}
   function sc(d: string|null|undefined){return dueDateColor(daysUntil(d??null));}
   return (
@@ -430,12 +428,12 @@ function KnoxCard() {
 
 // ─── Vehicle Card ─────────────────────────────────────────────────────────────
 
-function VehicleCard() {
+function VehicleCard({ refreshCount }: { refreshCount: number }) {
   const [vehicle,setVehicle]=useState<any>(null); const [lastService,setLastService]=useState<any>(null);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_vehicle_v1');if(c){const p=JSON.parse(c);setVehicle(p.v);setLastService(p.s);}}catch{}
     Promise.all([fetch('/api/vehicle/info').then(r=>r.json()).catch(()=>({})),fetch('/api/vehicle/maintenance').then(r=>r.json()).catch(()=>({}))]).then(([info,maint])=>{const v=info.vehicle||info||null;const records:any[]=maint.records||maint.maintenance||maint||[];const s=[...records].sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime())[0]||null;setVehicle(v);setLastService(s);try{localStorage.setItem('cc_vehicle_v1',JSON.stringify({v,s}));}catch{}});
-  },[]);
+  },[refreshCount]);
   function dLabel(d:string|null|undefined):string{const days=daysUntil(d??null);if(!d||days===null)return'—';if(days<0)return`Overdue ${Math.abs(days)}d`;if(days===0)return'Today';if(days<=90)return`${days} days`;return fmtShort(d);}
   return (
     <div onClick={()=>{window.location.href='/vehicle';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer">
@@ -452,13 +450,13 @@ function VehicleCard() {
 
 // ─── Weather Widget ───────────────────────────────────────────────────────────
 
-function WeatherWidget() {
+function WeatherWidget({ refreshCount }: { refreshCount: number }) {
   const [weather,setWeather]=useState<{temp:number;icon:string}|null>(null);
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_weather_v1');if(c)setWeather(JSON.parse(c));}catch{}
     if(!('geolocation'in navigator))return;
     navigator.geolocation.getCurrentPosition(pos=>{fetch(`https://wttr.in/${pos.coords.latitude},${pos.coords.longitude}?format=j1`).then(r=>r.json()).then(d=>{const cond=d.current_condition?.[0];if(!cond)return;const code=parseInt(cond.weatherCode||'113');const w={temp:Math.round(parseFloat(cond.temp_F)),icon:weatherIcon(code,new Date().getHours())};setWeather(w);try{localStorage.setItem('cc_weather_v1',JSON.stringify(w));}catch{}}).catch(()=>{});});
-  },[]);
+  },[refreshCount]);
   if(!weather)return<div className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 text-[11px] text-[#333]">—°</div>;
   return<div className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 flex items-center gap-1.5"><span className="text-sm">{weather.icon}</span><span className="text-[12px] font-semibold text-[#888]">{weather.temp}°</span></div>;
 }
@@ -468,13 +466,14 @@ function WeatherWidget() {
 export default function CommandCenterCards() {
   const [syncing,setSyncing]=useState(false);
   const [modal,setModal]=useState<string|null>(null);
+  const [refreshCount,setRefreshCount]=useState(0);
 
   const handleRefresh=useCallback(async()=>{
     setSyncing(true);
     await fetch('/api/sync/sheets',{method:'POST'});
     try{['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
     setSyncing(false);
-    window.location.reload();
+    setRefreshCount(c=>c+1);
   },[]);
 
   const quickActions=[
@@ -495,7 +494,7 @@ export default function CommandCenterCards() {
               <div className="text-[22px] font-extrabold text-white leading-tight" style={{fontFamily:"'Syne',sans-serif"}}>{getGreeting()}, Mahlon</div>
               {syncing&&<div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono"><div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin"/>Syncing…</div>}
             </div>
-            <WeatherWidget/>
+            <WeatherWidget refreshCount={refreshCount}/>
           </div>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             {quickActions.map(({label,modal:m})=>(
@@ -510,15 +509,15 @@ export default function CommandCenterCards() {
           <PullToRefresh onRefresh={handleRefresh}>
             <div className="px-4 pt-4 pb-24 space-y-3">
               <SectionLabel>Health</SectionLabel>
-              <HealthCard/>
+              <HealthCard refreshCount={refreshCount}/>
               <SectionLabel>Finance</SectionLabel>
-              <FinanceRow/>
-              <InvestmentsCard/>
+              <FinanceRow refreshCount={refreshCount}/>
+              <InvestmentsCard refreshCount={refreshCount}/>
               <SectionLabel>My Life</SectionLabel>
-              <CalendarCard/>
-              <TasksCard/>
-              <KnoxCard/>
-              <VehicleCard/>
+              <CalendarCard refreshCount={refreshCount}/>
+              <TasksCard refreshCount={refreshCount}/>
+              <KnoxCard refreshCount={refreshCount}/>
+              <VehicleCard refreshCount={refreshCount}/>
               <SectionLabel>News</SectionLabel>
               <NewsCard/>
             </div>
