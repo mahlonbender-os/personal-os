@@ -641,7 +641,7 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── Transactions Tab ─────────────────────────────────────────────────────────
 
-function TransactionsTab({ onRefresh }: { onRefresh: number }) {
+function TransactionsTab({ onRefresh, onEditTx }: { onRefresh: number; onEditTx: (tx: Transaction) => void }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -726,7 +726,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
                 </div>
                 <Card className="overflow-hidden">
                   {monthTxs.map((tx, idx) => (
-                    <div key={tx.id} className={`flex items-center px-4 py-3 gap-3 ${idx !== monthTxs.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                    <div key={tx.id} onClick={() => onEditTx(tx)} className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== monthTxs.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor(tx.category) }} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-[#e0e0e0] truncate">{tx.merchant}</p>
@@ -1549,6 +1549,59 @@ function FinancePageInner() {
   const [subSaving, setSubSaving] = useState(false);
   const [subError, setSubError] = useState('');
 
+  // ── Edit Transaction modal ───────────────────────────────────────────────
+  const [editTx, setEditTx] = useState<Transaction | null>(null);
+  const [editForm, setEditForm] = useState({ date: '', merchant: '', account: '', amount: '', category: '' });
+  const [editTxType, setEditTxType] = useState<TxType>('expense');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  function openEditTx(tx: Transaction) {
+    const derivedType: TxType = INCOME_CATEGORIES.includes(tx.category) ? 'income' : tx.category === 'Transfer' ? 'transfer' : 'expense';
+    setEditTxType(derivedType);
+    setEditForm({
+      date: tx.date,
+      merchant: tx.merchant,
+      account: tx.account,
+      amount: Math.abs(parseFloat(String(tx.amount))).toString(),
+      category: tx.category,
+    });
+    setEditError('');
+    setEditTx(tx);
+  }
+
+  async function handleEditTransaction() {
+    setEditError('');
+    if (!editForm.date || !editForm.account || !editForm.amount) { setEditError('Date, account, and amount are required.'); return; }
+    if (editTxType !== 'transfer' && !editForm.category) { setEditError('Category is required.'); return; }
+    setEditSaving(true);
+    try {
+      const raw = Math.abs(parseFloat(editForm.amount));
+      let signed: number;
+      if (editTxType === 'transfer') signed = raw;
+      else if (INCOME_CATEGORIES.includes(editForm.category)) signed = raw;
+      else signed = editTxType === 'expense' ? -raw : raw;
+
+      const res = await fetch('/api/finance/transactions/edit', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editTx!.id,
+          date: editForm.date,
+          merchant: editForm.merchant,
+          account: editForm.account,
+          amount: signed,
+          category: editTxType === 'transfer' ? 'Transfer' : editForm.category,
+        }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({ error: 'Failed' })); throw new Error(d.error || 'Failed'); }
+      setEditTx(null);
+      try { Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k)); } catch {}
+      setRefreshCount(c => c + 1);
+    } catch (e: unknown) { setEditError(e instanceof Error ? e.message : 'Something went wrong.'); }
+    finally { setEditSaving(false); }
+  }
+
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
 
   function resetTxModal() {
@@ -1719,7 +1772,7 @@ function FinancePageInner() {
           <PullToRefresh onRefresh={handleRefresh}>
             {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} onAddGoal={() => setShowAddGoal(true)} />}
             {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
-            {activeTab === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
+            {activeTab === 'transactions' && <TransactionsTab onRefresh={refreshCount} onEditTx={openEditTx} />}
             {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
             {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
             {activeTab === 'credit' && <CreditTab onRefresh={refreshCount} />}
@@ -1964,6 +2017,78 @@ function FinancePageInner() {
                 ))}
               </div>
               {goalError && <p className="text-[#ef4444] text-xs px-1 font-mono">{goalError}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Transaction Modal ───────────────────────────────── */}
+      {editTx && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setEditTx(null)}>
+          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+              <button onClick={() => setEditTx(null)} className="text-[#f0a050] text-sm">Cancel</button>
+              <h2 className="text-base font-semibold text-white">Edit Transaction</h2>
+              <button onClick={handleEditTransaction} disabled={editSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
+                {editSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            <div className="px-4 pt-4 space-y-3">
+              {editTx.source === 'google_sheets' && (
+                <p className="text-[10px] text-[#555] px-1">Synced from Sheets — this edit will update both Supabase and the sheet row.</p>
+              )}
+              {editTxType === 'transfer' && (
+                <p className="text-[10px] text-[#f59e0b] px-1">Transfer — only this row will be updated, not the paired entry.</p>
+              )}
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center px-4 py-3 border-b border-white/10">
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
+                  <input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
+                </div>
+                <div className="flex items-center px-4 py-3">
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Merchant</span>
+                  <input type="text" value={editForm.merchant} onChange={e => setEditForm(f => ({ ...f, merchant: e.target.value }))}
+                    placeholder="Name" className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+                </div>
+              </div>
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center px-4 py-3">
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
+                  <div className="flex items-center gap-2 flex-1 justify-end">
+                    {editTxType !== 'transfer' && (
+                      <button onClick={() => setEditTxType(t => t === 'expense' ? 'income' : 'expense')}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-lg flex-shrink-0 ${editTxType === 'expense' ? 'bg-[#ef4444]/20 text-[#ef4444]' : 'bg-[#22c55e]/20 text-[#22c55e]'}`}>
+                        {editTxType === 'expense' ? '− Expense' : '+ Income'}
+                      </button>
+                    )}
+                    <input type="number" placeholder="0.00" step="0.01" value={editForm.amount}
+                      onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))}
+                      className="w-28 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+                <div className="flex items-center px-4 py-3 border-b border-white/10">
+                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Account</span>
+                  <select value={editForm.account} onChange={e => setEditForm(f => ({ ...f, account: e.target.value }))}
+                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                    <option value="" className="bg-[#2c2c2e]">Select…</option>
+                    {ACCOUNTS.map(a => <option key={a} value={a} className="bg-[#2c2c2e]">{a}</option>)}
+                  </select>
+                </div>
+                {editTxType !== 'transfer' && (
+                  <div className="flex items-center px-4 py-3">
+                    <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
+                    <select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                      className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                      <option value="" className="bg-[#2c2c2e]">Select…</option>
+                      {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+              {editError && <p className="text-[#ef4444] text-xs px-1 font-mono">{editError}</p>}
             </div>
           </div>
         </div>
