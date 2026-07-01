@@ -343,6 +343,24 @@ export async function DELETE(req: Request) {
       .eq('account', trade.account)
       .eq('security', trade.security);
 
+    // Reverse the cash impact of the deleted trade
+    const tradeAmount = parseFloat(String(trade.amount));
+    const cashDelta = (trade.action === 'BUY' || trade.action === 'REINVEST') ? tradeAmount : -tradeAmount;
+    const { data: cashRow } = await supabase
+      .from('investment_cash')
+      .select('cash_balance')
+      .eq('user_id', USER_ID)
+      .eq('account', trade.account)
+      .single();
+    if (cashRow) {
+      const newCash = parseFloat(String(cashRow.cash_balance)) + cashDelta;
+      await supabase
+        .from('investment_cash')
+        .update({ cash_balance: newCash, updated_at: new Date().toISOString() })
+        .eq('user_id', USER_ID)
+        .eq('account', trade.account);
+    }
+
     return NextResponse.json({ success: true }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
