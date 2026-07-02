@@ -251,6 +251,18 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
   const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
   const [goalUpdateAmt, setGoalUpdateAmt] = useState('');
   const [loading, setLoading] = useState(true);
+  const [trendData, setTrendData] = useState<{ month: string; income: number; expenses: number; net: number }[]>([]);
+  const [merchantData, setMerchantData] = useState<{ merchant: string; total: number }[]>([]);
+  const [merchantMonth, setMerchantMonth] = useState('');
+  const [merchantTotal, setMerchantTotal] = useState(0);
+
+  const loadMerchants = useCallback(async (month: string) => {
+    const res = await fetch(`/api/finance/merchants?month=${month}`);
+    const json = await res.json();
+    setMerchantData(json.merchants || []);
+    setMerchantMonth(json.month || month);
+    setMerchantTotal(json.grandTotal || 0);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -265,12 +277,16 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
       }
     } catch {}
     try {
-      const [cfRes, nwRes, txRes, blRes, goalsRes] = await Promise.all([
+      const [cfRes, nwRes, txRes, blRes, goalsRes, trendRes, merchantRes] = await Promise.all([
         fetch('/api/finance/cash-flow'), fetch('/api/finance/net-worth'),
         fetch('/api/finance/transactions?limit=5'), fetch('/api/finance/bills'),
         fetch('/api/finance/savings'),
+        fetch('/api/finance/cashflow-trend'),
+        fetch('/api/finance/merchants'),
       ]);
-      const [cfData, nwData, txData, blData, goalsData] = await Promise.all([cfRes.json(), nwRes.json(), txRes.json(), blRes.json(), goalsRes.json()]);
+      const [cfData, nwData, txData, blData, goalsData, trendJson, merchantJson] = await Promise.all([
+        cfRes.json(), nwRes.json(), txRes.json(), blRes.json(), goalsRes.json(), trendRes.json(), merchantRes.json(),
+      ]);
       const now = new Date();
       const monthName = now.toLocaleString('default', { month: 'long' });
       const cur = cfData.months?.find((m: { month: string }) => m.month.toLowerCase().includes(monthName.toLowerCase()));
@@ -280,6 +296,10 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
       setRecentTx(txData.transactions || []);
       setBills(blData.bills || []);
       setGoals(goalsData.goals || []);
+      setTrendData(trendJson.months || []);
+      setMerchantData(merchantJson.merchants || []);
+      setMerchantMonth(merchantJson.month || '');
+      setMerchantTotal(merchantJson.grandTotal || 0);
       try { localStorage.setItem(`finance_overview_${CACHE_VERSION}`, JSON.stringify({ cf, nw: nwData, tx: txData.transactions || [], bl: blData.bills || [] })); } catch {}
     } finally { setLoading(false); }
   }, []);
@@ -343,6 +363,79 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
             <p className="text-xl font-bold text-[#f0a050] font-mono">{fmt(dueTotal)}</p>
             <p className="text-[10px] text-[#444]">{dueSoon.length} bill{dueSoon.length !== 1 ? 's' : ''} in next 7 days</p>
           </Card>
+        </div>
+      )}
+
+      {/* ── 6-Month Cash Flow Trend ──────────────────────────── */}
+      {trendData.length > 0 && (
+        <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">6-Month Cash Flow</p>
+          <div className="flex items-end justify-between gap-1.5 h-24 mb-2">
+            {trendData.map((m, i) => {
+              const maxVal = Math.max(...trendData.map(d => Math.max(d.income, d.expenses)), 1);
+              const incH = Math.max((m.income / maxVal) * 100, 3);
+              const expH = Math.max((m.expenses / maxVal) * 100, 3);
+              const label = new Date(m.month + '-15').toLocaleDateString('en-US', { month: 'short' });
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                  <div className="w-full flex items-end justify-center gap-0.5 flex-1 pb-1">
+                    <div className="w-[6px] rounded-t-sm bg-[#22c55e]" style={{ height: `${incH}%` }} />
+                    <div className="w-[6px] rounded-t-sm bg-[#ef4444]" style={{ height: `${expH}%` }} />
+                  </div>
+                  <span className="text-[8px] text-[#444] font-semibold uppercase">{label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-6 gap-1 border-t border-[#1a1a1a] pt-2 mb-3">
+            {trendData.map((m, i) => (
+              <div key={i} className="text-center">
+                <p className={`text-[8px] font-mono font-bold leading-tight ${m.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                  {m.net >= 0 ? '+' : '-'}{Math.abs(m.net) >= 1000 ? `${(Math.abs(m.net) / 1000).toFixed(1)}k` : Math.abs(m.net).toFixed(0)}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 text-[10px] text-[#555]">
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#22c55e]" /><span>Income</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#ef4444]" /><span>Expenses</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#888]" /><span>Net</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Top Merchants ─────────────────────────────────────── */}
+      {merchantData.length > 0 && (
+        <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
+            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Top Merchants</p>
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide max-w-[55%]">
+              {trendData.map(m => (
+                <button key={m.month} onClick={() => loadMerchants(m.month)}
+                  className={`flex-shrink-0 text-[9px] font-semibold px-2 py-1 rounded-full border transition-colors ${
+                    merchantMonth === m.month
+                      ? 'bg-[#f0a050]/15 border-[#f0a050]/40 text-[#f0a050]'
+                      : 'border-[#2a2a2a] text-[#444]'
+                  }`}>
+                  {new Date(m.month + '-15').toLocaleDateString('en-US', { month: 'short' })}
+                </button>
+              ))}
+            </div>
+          </div>
+          {merchantData.map((m, idx) => {
+            const barPct = merchantTotal > 0 ? (m.total / merchantTotal) * 100 : 0;
+            return (
+              <div key={idx} className={`px-4 py-2.5 ${idx !== merchantData.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm text-[#ccc] truncate flex-1 mr-3">{m.merchant}</p>
+                  <p className="text-sm font-mono font-semibold text-[#f0a050] flex-shrink-0">{fmt(m.total)}</p>
+                </div>
+                <div className="h-[2px] bg-[#1a1a1a] rounded-full overflow-hidden">
+                  <div className="h-full bg-[#f0a050]/40 rounded-full" style={{ width: `${barPct}%` }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
