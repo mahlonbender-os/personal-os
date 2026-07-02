@@ -277,15 +277,13 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
       }
     } catch {}
     try {
-      const [cfRes, nwRes, txRes, blRes, goalsRes, trendRes, merchantRes] = await Promise.all([
+      const [cfRes, nwRes, txRes, blRes, goalsRes] = await Promise.all([
         fetch('/api/finance/cash-flow'), fetch('/api/finance/net-worth'),
         fetch('/api/finance/transactions?limit=5'), fetch('/api/finance/bills'),
         fetch('/api/finance/savings'),
-        fetch('/api/finance/cashflow-trend'),
-        fetch('/api/finance/merchants'),
       ]);
-      const [cfData, nwData, txData, blData, goalsData, trendJson, merchantJson] = await Promise.all([
-        cfRes.json(), nwRes.json(), txRes.json(), blRes.json(), goalsRes.json(), trendRes.json(), merchantRes.json(),
+      const [cfData, nwData, txData, blData, goalsData] = await Promise.all([
+        cfRes.json(), nwRes.json(), txRes.json(), blRes.json(), goalsRes.json(),
       ]);
       const now = new Date();
       const monthName = now.toLocaleString('default', { month: 'long' });
@@ -296,11 +294,22 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
       setRecentTx(txData.transactions || []);
       setBills(blData.bills || []);
       setGoals(goalsData.goals || []);
-      setTrendData(trendJson.months || []);
-      setMerchantData(merchantJson.merchants || []);
-      setMerchantMonth(merchantJson.month || '');
-      setMerchantTotal(merchantJson.grandTotal || 0);
       try { localStorage.setItem(`finance_overview_${CACHE_VERSION}`, JSON.stringify({ cf, nw: nwData, tx: txData.transactions || [], bl: blData.bills || [] })); } catch {}
+
+      // Trend + merchant cards — isolated so failures don't break the rest
+      try {
+        const [trendRes, merchantRes] = await Promise.all([
+          fetch('/api/finance/cashflow-trend'),
+          fetch('/api/finance/merchants'),
+        ]);
+        const [trendJson, merchantJson] = await Promise.all([trendRes.json(), merchantRes.json()]);
+        setTrendData(trendJson.months || []);
+        setMerchantData(merchantJson.merchants || []);
+        setMerchantMonth(merchantJson.month || '');
+        setMerchantTotal(merchantJson.grandTotal || 0);
+      } catch (e) {
+        console.error('Trend/merchant fetch error:', e);
+      }
     } finally { setLoading(false); }
   }, []);
 

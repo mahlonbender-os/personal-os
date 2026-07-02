@@ -35,9 +35,9 @@ export async function GET(req: Request) {
     for (const r of (rows || [])) {
       if (INCOME_CATEGORIES.includes(r.category)) continue;
       const amt = parseFloat(String(r.amount));
-      if (amt <= 0) continue;
+      if (amt >= 0) continue; // expenses are negative
       const name = (r.merchant || 'Unknown').trim();
-      merchantMap[name] = (merchantMap[name] || 0) + amt;
+      merchantMap[name] = (merchantMap[name] || 0) + Math.abs(amt);
     }
 
     const top10 = Object.entries(merchantMap)
