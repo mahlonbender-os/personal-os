@@ -47,7 +47,7 @@ const GROUPS = [
   {
     label: 'Lifestyle',
     items: [
-      { label: 'Journal', href: '/journal', icon: '📝' },
+      { label: 'Notes', href: '/notes', icon: '📝' },
       { label: 'Alerts', href: '/alerts', icon: '🔔' },
     ],
   },
