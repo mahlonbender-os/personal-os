@@ -104,7 +104,7 @@ export async function POST() {
       .filter((r) => r.id && !r.id.startsWith('manual-') && r.rawDate)
       .map((r) => {
         const date = sheetDateToISO(r.rawDate);
-        const month = r.rawMonth || date.substring(0, 7);
+        const month = (r.rawMonth || date).substring(0, 7);
         return {
           id: r.id,
           date,
