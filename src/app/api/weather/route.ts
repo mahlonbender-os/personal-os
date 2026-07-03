@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
       longitude: String(lon),
       current: 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,uv_index,is_day,dew_point_2m',
       hourly: 'temperature_2m,precipitation_probability,weather_code,apparent_temperature,is_day,dew_point_2m,visibility',
-      daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max,precipitation_sum,rain_sum,snowfall_sum,moon_phase,moonrise,moonset',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max,precipitation_sum,rain_sum,snowfall_sum',
       temperature_unit: 'fahrenheit',
       wind_speed_unit: 'mph',
       precipitation_unit: 'inch',
@@ -282,22 +282,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const moonPhaseVal = d.daily.moon_phase?.[0];
-    const moon = moonPhaseVal != null ? {
-      phase: moonPhaseVal,
-      label: moonPhaseLabel(moonPhaseVal),
-      icon: moonPhaseIcon(moonPhaseVal),
-      moonrise: fmtClock(d.daily.moonrise?.[0]),
-      moonset: fmtClock(d.daily.moonset?.[0]),
-    } : null;
-
     return NextResponse.json({
       current,
       hourly,
       daily,
       alerts,
       airQuality,
-      moon,
       todaySunrise: daily[0]?.sunrise,
       todaySunset: daily[0]?.sunset,
       updatedAt: new Date().toISOString(),

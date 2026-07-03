@@ -35,16 +35,12 @@ interface AirQuality {
   aqi: number; pm25: number; pm10: number; ozone: number;
   label: string; color: string; advice: string;
 }
-interface Moon {
-  phase: number; label: string; icon: string; moonrise: string; moonset: string;
-}
 interface WeatherData {
   current: CurrentWeather;
   hourly: HourlyEntry[];
   daily: DailyEntry[];
   alerts: WxAlert[];
   airQuality: AirQuality | null;
-  moon: Moon | null;
   todaySunrise: string;
   todaySunset: string;
   updatedAt: string;
@@ -52,7 +48,8 @@ interface WeatherData {
 interface LocResult { name: string; lat: number; lon: number; }
 interface SelectedLocation { lat: number; lon: number; label: string; }
 
-const CACHE_KEY = 'weather_page_v1';
+// Bumped from v1 — v1 cached responses don't have alerts/airQuality and will crash on read
+const CACHE_KEY = 'weather_page_v2';
 const DEFAULT_LAT = 40.3356;
 const DEFAULT_LON = -75.9269;
 
@@ -429,8 +426,18 @@ export default function WeatherPage() {
   useEffect(() => {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) { setData(JSON.parse(cached)); setLoading(false); }
-    } catch {}
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.current && Array.isArray(parsed.daily) && Array.isArray(parsed.hourly)) {
+          setData(parsed);
+          setLoading(false);
+        } else {
+          localStorage.removeItem(CACHE_KEY);
+        }
+      }
+    } catch {
+      try { localStorage.removeItem(CACHE_KEY); } catch {}
+    }
     detectAndLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -482,7 +489,7 @@ export default function WeatherPage() {
             <div className="px-4 pt-2 space-y-3">
 
               {/* NWS alerts */}
-              {data.alerts.length > 0 && (
+              {data.alerts && data.alerts.length > 0 && (
                 <AlertsBanner alerts={data.alerts} onTap={setExpandedAlert} />
               )}
 
@@ -641,17 +648,6 @@ export default function WeatherPage() {
                       {data.daily[0].snowSumIn > 0 ? `${data.daily[0].snowSumIn}"` : `${data.daily[0].precipSumIn}"`}
                     </p>
                     <p className="text-[#555] text-[11px] mt-1">{data.daily[0].snowSumIn > 0 ? 'Snow expected' : 'Rain expected'}</p>
-                  </div>
-                )}
-
-                {data.moon && (
-                  <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                    <p className="text-[10px] font-bold text-[#333] uppercase tracking-widest mb-2">Moon</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">{data.moon.icon}</span>
-                      <p className="text-white text-sm font-semibold">{data.moon.label}</p>
-                    </div>
-                    <p className="text-[#555] text-[11px] mt-1.5">Rise {data.moon.moonrise} · Set {data.moon.moonset}</p>
                   </div>
                 )}
 
