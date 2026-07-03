@@ -197,17 +197,6 @@ export default function VehiclePage() {
   const [editMaint, setEditMaint] = useState({ date: '', service_type: 'Oil Change', mileage: '', cost: '', shop: '', notes: '' });
   const [editMaintSaving, setEditMaintSaving] = useState(false);
 
-  // Screenshot import modal
-  const [showImport, setShowImport] = useState(false);
-  const [importType, setImportType] = useState<'fuel' | 'maintenance'>('fuel');
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [imageType, setImageType] = useState('image/jpeg');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [extracting, setExtracting] = useState(false);
-  const [importRecords, setImportRecords] = useState<any[]>([]);
-  const [importSaving, setImportSaving] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
   // ─── Data fetching ─────────────────────────────────────────────────────────
   async function fetchAll() {
     try {
@@ -437,48 +426,6 @@ export default function VehiclePage() {
     } catch {} finally { setEditMaintSaving(false); }
   }
 
-  // ─── Screenshot import ─────────────────────────────────────────────────────
-  function openImport(type: 'fuel' | 'maintenance') {
-    setImportType(type);
-    setImageBase64(null); setImagePreview(null); setImportRecords([]);
-    setShowImport(true);
-  }
-
-  async function extractRecords() {
-    if (!imageBase64) return;
-    setExtracting(true); setImportRecords([]);
-    try {
-      const res = await fetch('/api/vehicle/import-screenshot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, imageType, importType }),
-      });
-      const data = await res.json();
-      if (data.records) {
-        setImportRecords(data.records.map((r: any, i: number) => ({ ...r, _idx: i, _keep: true })));
-      } else { alert(data.error || 'No records found in the image'); }
-    } catch (e: any) { alert('Error extracting records: ' + e.message); }
-    setExtracting(false);
-  }
-
-  async function saveImported() {
-    const toSave = importRecords.filter(r => r._keep);
-    if (toSave.length === 0) return;
-    setImportSaving(true);
-    try {
-      const url = importType === 'fuel' ? '/api/vehicle/fuel' : '/api/vehicle/maintenance';
-      for (const r of toSave) {
-        const { _idx, _keep, ...body } = r;
-        await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      }
-      await fetchAll();
-      setShowImport(false);
-      setActiveTab(importType === 'fuel' ? 1 : 2);
-      window.scrollTo(0, 0);
-    } catch (e: any) { alert('Error saving records: ' + e.message); }
-    setImportSaving(false);
-  }
-
   return (
     <>
       <PullToRefresh onRefresh={fetchAll}>
@@ -673,16 +620,6 @@ export default function VehiclePage() {
           {activeTab === 1 && (
             <div className="px-4 pt-4 space-y-3">
 
-              <button
-                onClick={() => openImport('fuel')}
-                className="w-full py-3 rounded-xl border border-[#1a1a1a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 bg-[#111] active:bg-[#161616]"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                Import Fill-Up History from Screenshot
-              </button>
-
               {fuelEntries.length >= 2 && lifetimeMPG && (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
                   <div className="flex justify-between">
@@ -791,16 +728,6 @@ export default function VehiclePage() {
           {/* ─── MAINTENANCE TAB ─── */}
           {activeTab === 2 && (
             <div className="px-4 pt-4 space-y-3">
-
-              <button
-                onClick={() => openImport('maintenance')}
-                className="w-full py-3 rounded-xl border border-[#1a1a1a] text-[#f0a050] text-sm font-medium flex items-center justify-center gap-2 bg-[#111] active:bg-[#161616]"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                Import Service History from Screenshot
-              </button>
 
               {maintEntries.length === 0 ? (
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center">
@@ -1156,105 +1083,6 @@ export default function VehiclePage() {
                   {editMaintSaving ? 'Saving...' : 'Save Modifications'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Screenshot Import Modal */}
-      {showImport && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
-            <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
-              <p className="text-white font-semibold text-lg">Import {importType === 'fuel' ? 'Fuel Receipts' : 'Maintenance Slips'}</p>
-              <button onClick={() => setShowImport(false)} className="text-[#555] text-lg p-1">✕</button>
-            </div>
-            <div className="px-5 pt-4 space-y-4">
-              <p className="text-[#888] text-sm leading-relaxed font-sans">
-                {importType === 'fuel'
-                  ? 'Upload a phone history screenshot from GasBuddy, your digital receipts, or credit records. Personal OS AI will parse it out natively.'
-                  : 'Upload an invoice screenshot from Carfax, ACME shop slips, or commercial mechanics logs to parse items cleanly.'}
-              </p>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setImageType(file.type || 'image/jpeg');
-                  const reader = new FileReader();
-                  reader.onload = ev => {
-                    const result = ev.target?.result as string;
-                    setImagePreview(result);
-                    setImageBase64(result.split(',')[1]);
-                    setImportRecords([]);
-                  };
-                  reader.readAsDataURL(file);
-                }}
-              />
-              <button onClick={() => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } }}
-                className="w-full rounded-2xl border-2 border-dashed border-[#333] overflow-hidden bg-black/30 active:bg-black/50">
-                {imagePreview ? (
-                  <div className="relative">
-                    <img src={imagePreview} alt="Target file viewport preview" className="w-full max-h-48 object-contain bg-[#0a0a0a]" />
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-2 text-center">
-                      <p className="text-[#f0a050] text-xs font-medium font-mono">Tap to swap uploaded asset file</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-12 flex flex-col items-center justify-center gap-2">
-                    <span className="text-3xl text-[#555]">📷</span>
-                    <p className="text-[#555] text-sm font-medium font-sans">Select photo image asset file</p>
-                    <p className="text-[#333] text-xs font-mono">Camera capture roll or storage media</p>
-                  </div>
-                )}
-              </button>
-
-              {imageBase64 && importRecords.length === 0 && (
-                <button onClick={extractRecords} disabled={extracting}
-                  className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-60 flex items-center justify-center gap-2 font-mono text-sm">
-                  {extracting ? 'Processing Extraction Framework AI...' : 'Parse Screenshot Records with AI'}
-                </button>
-              )}
-
-              {importRecords.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-white font-semibold text-sm">{importRecords.filter(r => r._keep).length} selected</p>
-                    <button onClick={() => { setImportRecords([]); setImagePreview(null); setImageBase64(null); }} className="text-[#555] text-xs font-semibold font-mono">Clear file</button>
-                  </div>
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {importRecords.map(rec => (
-                      <div key={rec._idx} className={`rounded-xl p-3 border transition-opacity ${rec._keep ? 'bg-[#1a1a1a] border-[#333]' : 'bg-[#111] border-[#1a1a1a] opacity-30'}`}>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0 text-xs">
-                            {importType === 'fuel' ? (
-                              <>
-                                <p className="text-white text-sm font-semibold font-mono">{rec.total_cost != null ? fmt(rec.total_cost) : '—'}</p>
-                                <p className="text-[#ccc] mt-0.5 font-mono">{rec.gallons != null ? `${rec.gallons} gal` : ''}{rec.price_per_gallon != null ? ` @ $${rec.price_per_gallon}/gal` : ''}</p>
-                                <p className="text-[#555] mt-0.5 font-mono">{rec.date || ''}{rec.odometer != null ? ` · ${rec.odometer.toLocaleString()} mi` : ''}</p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-white text-sm font-semibold">{rec.service_type}</p>
-                                <p className="text-[#ccc] mt-0.5 font-mono">{rec.date || ''}{rec.mileage != null ? ` · ${rec.mileage.toLocaleString()} mi` : ''}{rec.cost != null ? ` · ${fmt(rec.cost)}` : ''}</p>
-                              </>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => setImportRecords(recs => recs.map(r => r._idx === rec._idx ? { ...r, _keep: !r._keep } : r))}
-                            className={`text-[10px] font-bold tracking-wider uppercase shrink-0 px-2 py-1 rounded-md font-mono ${rec._keep ? 'text-[#ef4444] bg-[#ef4444]/10' : 'text-[#22c55e] bg-[#22c55e]/10'}`}
-                          >
-                            {rec._keep ? 'Skip' : 'Include'}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={saveImported} disabled={importSaving || importRecords.filter(r => r._keep).length === 0}
-                    className="w-full bg-[#f0a050] text-black font-semibold rounded-xl py-3.5 disabled:opacity-50 font-mono text-sm">
-                    {importSaving ? 'Committing records up...' : `Ingest ${importRecords.filter(r => r._keep).length} Parsed Records`}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>
