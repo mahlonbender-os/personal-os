@@ -455,7 +455,7 @@ function WeatherWidget({ refreshCount }: { refreshCount: number }) {
   useEffect(()=>{
     try{const c=localStorage.getItem('cc_weather_v1');if(c)setWeather(JSON.parse(c));}catch{}
     if(!('geolocation'in navigator))return;
-    navigator.geolocation.getCurrentPosition(pos=>{fetch(`https://wttr.in/${pos.coords.latitude},${pos.coords.longitude}?format=j1`).then(r=>r.json()).then(d=>{const cond=d.current_condition?.[0];if(!cond)return;const code=parseInt(cond.weatherCode||'113');const w={temp:Math.round(parseFloat(cond.temp_F)),icon:weatherIcon(code,new Date().getHours())};setWeather(w);try{localStorage.setItem('cc_weather_v1',JSON.stringify(w));}catch{}}).catch(()=>{});});
+    navigator.geolocation.getCurrentPosition(pos=>{fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`).then(r=>r.json()).then(d=>{if(!d.current)return;const w={temp:d.current.tempF,icon:d.current.icon};setWeather(w);try{localStorage.setItem('cc_weather_v1',JSON.stringify(w));}catch{}}).catch(()=>{});});
   },[refreshCount]);
   if(!weather)return<div className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 text-[11px] text-[#333]">—°</div>;
   return<div onClick={()=>{window.location.href='/weather';}} className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 flex items-center gap-1.5 active:opacity-70 transition-opacity cursor-pointer"><span className="text-sm">{weather.icon}</span><span className="text-[12px] font-semibold text-[#888]">{weather.temp}°</span></div>;
