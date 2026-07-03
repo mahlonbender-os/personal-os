@@ -36,18 +36,38 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // 2. Fetch active home profile metrics
+    // 2. Fetch home profile for rate, limit, and anchor balance
     const { data: home } = await supabase
       .from('home_profile')
-      .select('heloc_interest_rate, heloc_current_balance, heloc_credit_limit')
+      .select('heloc_interest_rate, heloc_current_balance, heloc_credit_limit, updated_at')
       .eq('user_id', USER_ID)
       .maybeSingle();
 
+    let anchorBalance = 45000;
+    let anchorDate = '2026-06-21';
+
     if (home) {
-      if (home.heloc_current_balance) currentBalance = Math.abs(parseFloat(String(home.heloc_current_balance)));
       if (home.heloc_credit_limit) creditLimit = parseFloat(String(home.heloc_credit_limit));
       if (home.heloc_interest_rate) helocRate = parseFloat(String(home.heloc_interest_rate));
+      if (home.heloc_current_balance) anchorBalance = Math.abs(parseFloat(String(home.heloc_current_balance)));
+      if (home.updated_at) anchorDate = home.updated_at.substring(0, 10);
     }
+
+    // 3. Derive current balance from transactions since anchor date
+    // Positive transactions (income deposits) reduce HELOC balance
+    // Negative transactions (draws) increase HELOC balance
+    // current_balance = anchor_balance - sum(all transactions since anchor)
+    const { data: allHeloc } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('user_id', USER_ID)
+      .eq('account', 'Members 1st HELOC')
+      .gt('date', anchorDate);
+
+    const netChange = (allHeloc || []).reduce(
+      (sum, t) => sum + parseFloat(String(t.amount)), 0
+    );
+    currentBalance = Math.max(0, anchorBalance - netChange);
 
     const annualRate = helocRate > 1 ? helocRate / 100 : helocRate;
     const dailyRate = annualRate / 365;
