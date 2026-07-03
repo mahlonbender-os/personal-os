@@ -481,7 +481,6 @@ export default function CommandCenterCards() {
     {label:'📊 Trade',modal:'trade'},
     {label:'⛽ Fuel',modal:'fuel'},
     {label:'💪 Workout',modal:'workout'},
-    {label:'🔄 Sync',modal:'sync'},
   ];
 
   return (
