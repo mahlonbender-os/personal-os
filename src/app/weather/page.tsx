@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
 
@@ -17,10 +16,14 @@ interface HourlyEntry {
   time: string; tempF: number; feelsLikeF: number;
   precipProb: number; weatherCode: number; icon: string;
 }
+interface PeriodDetail {
+  icon: string; desc: string; precipProb: number; feelsF: number;
+}
 interface DailyEntry {
   date: string; dayLabel: string; maxF: number; minF: number;
   weatherCode: number; icon: string; desc: string;
   precipProbMax: number; uvIndexMax: number; sunrise: string; sunset: string;
+  day: PeriodDetail; night: PeriodDetail;
 }
 interface WeatherData {
   current: CurrentWeather;
@@ -30,6 +33,8 @@ interface WeatherData {
   todaySunset: string;
   updatedAt: string;
 }
+interface LocResult { name: string; lat: number; lon: number; }
+interface SelectedLocation { lat: number; lon: number; label: string; }
 
 const CACHE_KEY = 'weather_page_v1';
 const DEFAULT_LAT = 40.3356;
@@ -50,6 +55,18 @@ function uvColor(uv: number): string {
   return '#a855f7';
 }
 
+async function reverseGeocode(lat: number, lon: number): Promise<string> {
+  try {
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+    const d = await res.json();
+    const city = d.city || d.locality || d.principalSubdivision || 'Current Location';
+    const stateCode = d.principalSubdivisionCode?.includes('-') ? d.principalSubdivisionCode.split('-')[1] : d.principalSubdivision;
+    return stateCode ? `${city}, ${stateCode}` : city;
+  } catch {
+    return 'Current Location';
+  }
+}
+
 function Spinner() {
   return (
     <div className="flex justify-center py-16">
@@ -58,54 +75,224 @@ function Spinner() {
   );
 }
 
-// ─── Precip Chance Chart ────────────────────────────────────────────────────
+// ─── Rain Chance Scroll (mirrors the 24-hour forecast strip) ──────────────────
 
-function PrecipChart({ hourly }: { hourly: HourlyEntry[] }) {
-  const points = hourly.slice(0, 12);
-  const w = 700, h = 90, pad = 4;
-  const barW = (w - pad * 2) / points.length;
-  const maxVal = 100;
-
+function RainScroll({ hourly }: { hourly: HourlyEntry[] }) {
+  const maxBarH = 46;
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-[70px]">
-      {points.map((p, i) => {
-        const barH = Math.max((p.precipProb / maxVal) * (h - 24), p.precipProb > 0 ? 3 : 0);
-        const x = pad + i * barW;
+    <div className="flex gap-4 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+      {hourly.map((h, i) => {
+        const barH = Math.max((h.precipProb / 100) * maxBarH, h.precipProb > 0 ? 3 : 0);
         return (
-          <g key={i}>
-            <rect
-              x={x + barW * 0.15}
-              y={h - 20 - barH}
-              width={barW * 0.7}
-              height={barH}
-              rx={2}
-              fill={p.precipProb >= 50 ? '#3b82f6' : p.precipProb > 0 ? '#3b82f680' : '#1a1a1a'}
-            />
-            {p.precipProb > 0 && (
-              <text x={x + barW / 2} y={h - 20 - barH - 4} textAnchor="middle" fontSize="10" fill="#3b82f6" fontFamily="monospace">
-                {p.precipProb}%
-              </text>
-            )}
-            <text x={x + barW / 2} y={h - 6} textAnchor="middle" fontSize="9" fill="#555" fontFamily="monospace">
-              {i === 0 ? 'Now' : p.time.replace(' ', '')}
-            </text>
-          </g>
+          <div key={i} className="flex flex-col items-center gap-1.5 shrink-0 w-11">
+            <p className="text-[10px] text-[#3b82f6] font-mono h-3">{h.precipProb > 0 ? `${h.precipProb}%` : ''}</p>
+            <div className="flex items-end" style={{ height: maxBarH }}>
+              <div
+                className="w-2.5 rounded-full"
+                style={{
+                  height: barH || 2,
+                  background: h.precipProb >= 50 ? '#3b82f6' : h.precipProb > 0 ? '#3b82f680' : '#1a1a1a',
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-[#555] font-mono">{h.time}</p>
+          </div>
         );
       })}
-    </svg>
+    </div>
+  );
+}
+
+// ─── Day/Night Detail Modal ────────────────────────────────────────────────────
+
+function DayDetailModal({ day, onClose }: { day: DailyEntry; onClose: () => void }) {
+  const dateLabel = day.dayLabel === 'Today'
+    ? 'Today'
+    : new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+          <button onClick={onClose} className="text-[#f0a050] text-sm">Close</button>
+          <h2 className="text-base font-semibold text-white">{dateLabel}</h2>
+          <div className="w-10" />
+        </div>
+
+        <div className="px-5 pt-4 space-y-3">
+          {/* Day */}
+          <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{day.day.icon}</span>
+              <div>
+                <p className="text-[10px] font-bold text-[#f0a050] uppercase tracking-widest">Day</p>
+                <p className="text-white text-lg font-semibold leading-tight">{day.day.desc}</p>
+              </div>
+              <p className="ml-auto text-white text-2xl font-mono font-bold">{day.maxF}°</p>
+            </div>
+            <div className="flex justify-between text-[12px] text-[#888] font-mono pt-3 mt-3 border-t border-[#1a1a1a]">
+              <span>Feels {day.day.feelsF}°</span>
+              <span>{day.day.precipProb > 0 ? `${day.day.precipProb}% chance of rain` : 'No rain expected'}</span>
+            </div>
+          </div>
+
+          {/* Night */}
+          <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{day.night.icon}</span>
+              <div>
+                <p className="text-[10px] font-bold text-[#60a5fa] uppercase tracking-widest">Night</p>
+                <p className="text-white text-lg font-semibold leading-tight">{day.night.desc}</p>
+              </div>
+              <p className="ml-auto text-white text-2xl font-mono font-bold">{day.minF}°</p>
+            </div>
+            <div className="flex justify-between text-[12px] text-[#888] font-mono pt-3 mt-3 border-t border-[#1a1a1a]">
+              <span>Feels {day.night.feelsF}°</span>
+              <span>{day.night.precipProb > 0 ? `${day.night.precipProb}% chance of rain` : 'No rain expected'}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-3">
+              <p className="text-[10px] text-[#555] uppercase tracking-wide">Sunrise</p>
+              <p className="text-white font-mono font-semibold mt-0.5">{day.sunrise}</p>
+            </div>
+            <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-3">
+              <p className="text-[10px] text-[#555] uppercase tracking-wide">Sunset</p>
+              <p className="text-white font-mono font-semibold mt-0.5">{day.sunset}</p>
+            </div>
+          </div>
+
+          <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-3 flex items-center justify-between">
+            <p className="text-[10px] text-[#555] uppercase tracking-wide">Max UV Index</p>
+            <p className="font-mono font-semibold" style={{ color: uvColor(day.uvIndexMax) }}>
+              {day.uvIndexMax} · {uvLabel(day.uvIndexMax)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Location Search Modal ─────────────────────────────────────────────────────
+
+function LocationModal({
+  onClose, onSelect, onUseCurrent,
+}: {
+  onClose: () => void;
+  onSelect: (r: LocResult) => void;
+  onUseCurrent: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<LocResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function runSearch() {
+    const q = query.trim();
+    if (!q) return;
+    setSearching(true); setErr(''); setResults([]);
+    try {
+      if (/^\d{5}$/.test(q)) {
+        const res = await fetch(`https://api.zippopotam.us/us/${q}`);
+        if (!res.ok) throw new Error('ZIP code not found');
+        const d = await res.json();
+        setResults(
+          d.places.map((p: { 'place name': string; 'state abbreviation': string; latitude: string; longitude: string }) => ({
+            name: `${p['place name']}, ${p['state abbreviation']} ${d['post code']}`,
+            lat: parseFloat(p.latitude),
+            lon: parseFloat(p.longitude),
+          }))
+        );
+      } else {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json`);
+        const d = await res.json();
+        if (!d.results || d.results.length === 0) throw new Error('No matches found');
+        setResults(
+          d.results.map((r: { name: string; admin1?: string; country_code?: string; latitude: number; longitude: number }) => ({
+            name: `${r.name}${r.admin1 ? ', ' + r.admin1 : ''}${r.country_code ? ' ' + r.country_code : ''}`,
+            lat: r.latitude,
+            lon: r.longitude,
+          }))
+        );
+      }
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Search failed');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
+          <button onClick={onClose} className="text-[#f0a050] text-sm">Cancel</button>
+          <h2 className="text-base font-semibold text-white">Search Location</h2>
+          <div className="w-10" />
+        </div>
+
+        <div className="px-5 pt-4 space-y-3">
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') runSearch(); }}
+              placeholder="City or ZIP code"
+              className="flex-1 bg-[#111] border border-[#1a1a1a] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-[#f0a050]"
+            />
+            <button
+              onClick={runSearch}
+              disabled={searching}
+              className="bg-[#f0a050] text-black text-sm font-semibold px-4 rounded-xl disabled:opacity-40"
+            >
+              {searching ? '···' : 'Go'}
+            </button>
+          </div>
+
+          <div
+            onClick={onUseCurrent}
+            className="flex items-center gap-2 bg-[#111] border border-[#1a1a1a] rounded-xl px-3 py-3 active:opacity-70 cursor-pointer"
+          >
+            <span>📍</span>
+            <span className="text-[#f0a050] text-sm font-semibold">Use My Current Location</span>
+          </div>
+
+          {err && <p className="text-[#ef4444] text-xs text-center py-2">{err}</p>}
+
+          {results.length > 0 && (
+            <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+              {results.map((r, i) => (
+                <div
+                  key={i}
+                  onClick={() => onSelect(r)}
+                  className={`px-4 py-3 active:bg-[#1a1a1a] cursor-pointer ${i < results.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
+                >
+                  <p className="text-white text-sm">{r.name}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function WeatherPage() {
-  const router = useRouter();
   const [data, setData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [locLabel, setLocLabel] = useState('Reading, PA');
+  const [locLabel, setLocLabel] = useState('Locating…');
   const [error, setError] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [expandedDay, setExpandedDay] = useState<DailyEntry | null>(null);
 
-  const fetchWeather = useCallback((lat: number, lon: number) => {
+  const fetchForCoords = useCallback((lat: number, lon: number) => {
+    setLoading(true);
     fetch(`/api/weather?lat=${lat}&lon=${lon}`)
       .then(r => r.json())
       .then(d => {
@@ -118,46 +305,75 @@ export default function WeatherPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const loadAll = useCallback(() => {
-    setLoading(true);
+  const detectAndLoad = useCallback(() => {
+    setLocLabel('Locating…');
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        pos => {
-          setLocLabel('Current Location');
-          fetchWeather(pos.coords.latitude, pos.coords.longitude);
+        async pos => {
+          const { latitude, longitude } = pos.coords;
+          fetchForCoords(latitude, longitude);
+          const label = await reverseGeocode(latitude, longitude);
+          setLocLabel(label);
         },
         () => {
           setLocLabel('Reading, PA');
-          fetchWeather(DEFAULT_LAT, DEFAULT_LON);
+          fetchForCoords(DEFAULT_LAT, DEFAULT_LON);
         },
         { timeout: 8000 }
       );
     } else {
-      fetchWeather(DEFAULT_LAT, DEFAULT_LON);
+      setLocLabel('Reading, PA');
+      fetchForCoords(DEFAULT_LAT, DEFAULT_LON);
     }
-  }, [fetchWeather]);
+  }, [fetchForCoords]);
+
+  const refresh = useCallback(() => {
+    if (selectedLocation) fetchForCoords(selectedLocation.lat, selectedLocation.lon);
+    else detectAndLoad();
+  }, [selectedLocation, fetchForCoords, detectAndLoad]);
 
   useEffect(() => {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) { setData(JSON.parse(cached)); setLoading(false); }
     } catch {}
-    loadAll();
+    detectAndLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function handleSelectLocation(r: LocResult) {
+    setSelectedLocation({ lat: r.lat, lon: r.lon, label: r.name });
+    setLocLabel(r.name);
+    setShowLocationModal(false);
+    fetchForCoords(r.lat, r.lon);
+  }
+
+  function handleUseCurrent() {
+    setSelectedLocation(null);
+    setShowLocationModal(false);
+    detectAndLoad();
+  }
 
   const c = data?.current;
 
   return (
     <>
-      <PullToRefresh onRefresh={async () => loadAll()}>
+      <PullToRefresh onRefresh={async () => refresh()}>
         <div className="min-h-screen bg-black pb-24">
           {/* Header */}
-          <div className="px-4 pt-6 pb-2">
-            <p className="text-[#555] text-xs font-semibold uppercase tracking-wider">{locLabel}</p>
-            <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
-              Weather
-            </h1>
+          <div className="px-4 pt-6 pb-2 flex items-center justify-between">
+            <div>
+              <p className="text-[#555] text-xs font-semibold uppercase tracking-wider">{locLabel}</p>
+              <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
+                Weather
+              </h1>
+            </div>
+            <div
+              onClick={() => setShowLocationModal(true)}
+              className="w-9 h-9 rounded-full bg-[#111] border border-[#1a1a1a] flex items-center justify-center active:opacity-70 cursor-pointer"
+            >
+              <span className="text-base">🔍</span>
+            </div>
           </div>
 
           {loading && !data && <Spinner />}
@@ -200,13 +416,13 @@ export default function WeatherPage() {
                 </div>
               </div>
 
-              {/* Precip chance chart */}
+              {/* Rain chance — scrollable, full 24h */}
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                <p className="text-[10px] font-bold text-[#333] uppercase tracking-widest mb-2">Chance of Rain — Next 12h</p>
-                <PrecipChart hourly={data.hourly} />
+                <p className="text-[10px] font-bold text-[#333] uppercase tracking-widest mb-3">Chance of Rain — Next 24h</p>
+                <RainScroll hourly={data.hourly} />
               </div>
 
-              {/* 8-day forecast */}
+              {/* 8-day forecast — tap a row for day/night detail */}
               <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
                 <p className="text-[10px] font-bold text-[#333] uppercase tracking-widest px-4 pt-4 pb-2">8-Day Forecast</p>
                 <div className="px-4 pb-2">
@@ -219,7 +435,8 @@ export default function WeatherPage() {
                     return (
                       <div
                         key={d.date}
-                        className={`flex items-center gap-3 py-2.5 ${i < data.daily.length - 1 ? 'border-b border-[#1a1a1a]/60' : ''}`}
+                        onClick={() => setExpandedDay(d)}
+                        className={`flex items-center gap-3 py-2.5 active:opacity-60 cursor-pointer ${i < data.daily.length - 1 ? 'border-b border-[#1a1a1a]/60' : ''}`}
                       >
                         <p className="text-[13px] text-white font-medium w-10 shrink-0">{d.dayLabel}</p>
                         <div className="flex items-center gap-1 w-11 shrink-0">
@@ -240,6 +457,9 @@ export default function WeatherPage() {
                           />
                         </div>
                         <p className="text-[12px] text-white font-mono font-semibold w-7 shrink-0">{d.maxF}°</p>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2.5" className="shrink-0 ml-0.5">
+                          <path d="M9 6l6 6-6 6" />
+                        </svg>
                       </div>
                     );
                   })}
@@ -304,7 +524,17 @@ export default function WeatherPage() {
           )}
         </div>
       </PullToRefresh>
+
       <BottomNav active="more" />
+
+      {expandedDay && <DayDetailModal day={expandedDay} onClose={() => setExpandedDay(null)} />}
+      {showLocationModal && (
+        <LocationModal
+          onClose={() => setShowLocationModal(false)}
+          onSelect={handleSelectLocation}
+          onUseCurrent={handleUseCurrent}
+        />
+      )}
     </>
   );
 }

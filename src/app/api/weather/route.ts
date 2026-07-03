@@ -40,6 +40,20 @@ function wmoDesc(code: number): string {
   return map[code] || 'Unknown';
 }
 
+function hourOf(t: string): number { return parseInt(t.substring(11, 13), 10); }
+function dateOf(t: string): string { return t.substring(0, 10); }
+
+function mode(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const counts: Record<number, number> = {};
+  let best = arr[0], bestCount = 0;
+  for (const v of arr) {
+    counts[v] = (counts[v] || 0) + 1;
+    if (counts[v] > bestCount) { bestCount = counts[v]; best = v; }
+  }
+  return best;
+}
+
 function fmtHour(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
@@ -98,40 +112,67 @@ export async function GET(request: NextRequest) {
       isDay: isDayNow,
     };
 
-    // Hourly — next 24 hours starting from current hour
-    const nowTs = new Date(cur.time).getTime();
     const hourlyTimes: string[] = d.hourly.time;
+    const hourlyCodes: number[] = d.hourly.weather_code;
+    const hourlyFeels: number[] = d.hourly.apparent_temperature;
+    const hourlyPrecip: number[] = d.hourly.precipitation_probability;
+    const hourlyIsDay: number[] = d.hourly.is_day;
+    const hourlyTemp: number[] = d.hourly.temperature_2m;
+
+    // Hourly — next 24 hours starting from current hour (for the scroll strip + rain chance strip)
+    const nowTs = new Date(cur.time).getTime();
     let startIdx = hourlyTimes.findIndex((t: string) => new Date(t).getTime() >= nowTs);
     if (startIdx < 0) startIdx = 0;
 
     const hourly = hourlyTimes.slice(startIdx, startIdx + 24).map((t: string, i: number) => {
       const idx = startIdx + i;
-      const isDay = d.hourly.is_day[idx] === 1;
-      const code = d.hourly.weather_code[idx];
+      const isDay = hourlyIsDay[idx] === 1;
+      const code = hourlyCodes[idx];
       return {
         time: i === 0 ? 'Now' : fmtHour(t),
-        tempF: Math.round(d.hourly.temperature_2m[idx]),
-        feelsLikeF: Math.round(d.hourly.apparent_temperature[idx]),
-        precipProb: d.hourly.precipitation_probability[idx],
+        tempF: Math.round(hourlyTemp[idx]),
+        feelsLikeF: Math.round(hourlyFeels[idx]),
+        precipProb: hourlyPrecip[idx],
         weatherCode: code,
         icon: wmoIcon(code, isDay),
       };
     });
 
-    // Daily — 8 days
-    const daily = d.daily.time.map((date: string, i: number) => ({
-      date,
-      dayLabel: fmtDayLabel(date, i),
-      maxF: Math.round(d.daily.temperature_2m_max[i]),
-      minF: Math.round(d.daily.temperature_2m_min[i]),
-      weatherCode: d.daily.weather_code[i],
-      icon: wmoIcon(d.daily.weather_code[i], true),
-      desc: wmoDesc(d.daily.weather_code[i]),
-      precipProbMax: d.daily.precipitation_probability_max[i],
-      uvIndexMax: Math.round(d.daily.uv_index_max[i]),
-      sunrise: fmtClock(d.daily.sunrise[i]),
-      sunset: fmtClock(d.daily.sunset[i]),
-    }));
+    // Daily — 8 days, with day/night breakdown computed from the full hourly set
+    const daily = d.daily.time.map((date: string, i: number) => {
+      const dayIdxs: number[] = [];
+      const nightIdxs: number[] = [];
+      hourlyTimes.forEach((t, idx) => {
+        if (dateOf(t) !== date) return;
+        const h = hourOf(t);
+        if (h >= 6 && h <= 17) dayIdxs.push(idx);
+        else if (h >= 18 && h <= 23) nightIdxs.push(idx);
+      });
+
+      const dCode = dayIdxs.length ? mode(dayIdxs.map(idx => hourlyCodes[idx])) : d.daily.weather_code[i];
+      const dPrecip = dayIdxs.length ? Math.max(...dayIdxs.map(idx => hourlyPrecip[idx])) : d.daily.precipitation_probability_max[i];
+      const dFeels = dayIdxs.length ? Math.round(dayIdxs.reduce((s, idx) => s + hourlyFeels[idx], 0) / dayIdxs.length) : Math.round(d.daily.temperature_2m_max[i]);
+
+      const nCode = nightIdxs.length ? mode(nightIdxs.map(idx => hourlyCodes[idx])) : dCode;
+      const nPrecip = nightIdxs.length ? Math.max(...nightIdxs.map(idx => hourlyPrecip[idx])) : dPrecip;
+      const nFeels = nightIdxs.length ? Math.round(nightIdxs.reduce((s, idx) => s + hourlyFeels[idx], 0) / nightIdxs.length) : Math.round(d.daily.temperature_2m_min[i]);
+
+      return {
+        date,
+        dayLabel: fmtDayLabel(date, i),
+        maxF: Math.round(d.daily.temperature_2m_max[i]),
+        minF: Math.round(d.daily.temperature_2m_min[i]),
+        weatherCode: d.daily.weather_code[i],
+        icon: wmoIcon(d.daily.weather_code[i], true),
+        desc: wmoDesc(d.daily.weather_code[i]),
+        precipProbMax: d.daily.precipitation_probability_max[i],
+        uvIndexMax: Math.round(d.daily.uv_index_max[i]),
+        sunrise: fmtClock(d.daily.sunrise[i]),
+        sunset: fmtClock(d.daily.sunset[i]),
+        day: { icon: wmoIcon(dCode, true), desc: wmoDesc(dCode), precipProb: dPrecip, feelsF: dFeels },
+        night: { icon: wmoIcon(nCode, false), desc: wmoDesc(nCode), precipProb: nPrecip, feelsF: nFeels },
+      };
+    });
 
     return NextResponse.json({
       current,
