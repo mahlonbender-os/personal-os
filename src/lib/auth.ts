@@ -1,5 +1,25 @@
 import { AuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+async function persistRefreshToken(refreshToken: string | undefined) {
+  if (!refreshToken) return;
+  try {
+    await supabase
+      .from('google_oauth_tokens')
+      .upsert(
+        { user_id: 'b0572935-26c9-44b5-8645-229bf5b78743', refresh_token: refreshToken, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      );
+  } catch (e) {
+    console.error('[auth] persist_refresh_token_failed', e);
+  }
+}
 
 async function refreshAccessToken(refreshToken: string) {
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -55,6 +75,7 @@ export const authOptions: AuthOptions = {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
+        await persistRefreshToken(account.refresh_token);
         return token;
       }
 
