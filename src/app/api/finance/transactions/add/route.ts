@@ -20,6 +20,33 @@ function isoToSheetDate(iso: string): string {
   return `${parseInt(m)}/${parseInt(d)}/${y}`;
 }
 
+// ─── Bill auto-advance helpers ────────────────────────────────────────────────
+function normalizeName(s: string): string {
+  return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function billNameMatches(billName: string, merchant: string): boolean {
+  const a = normalizeName(billName);
+  const b = normalizeName(merchant);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+// Rolls a YYYY-MM-DD due date forward exactly one month, landing on due_day if known
+function advanceDueDate(currentDueDateISO: string, dueDay: number | null): string {
+  const [y, m, d] = currentDueDateISO.split('-').map((n) => parseInt(n, 10));
+  let newMonth = m + 1;
+  let newYear = y;
+  if (newMonth > 12) {
+    newMonth = 1;
+    newYear += 1;
+  }
+  const targetDay = dueDay && dueDay > 0 ? dueDay : d;
+  const daysInNewMonth = new Date(newYear, newMonth, 0).getDate();
+  const clampedDay = Math.min(targetDay, daysInNewMonth);
+  return `${newYear}-${String(newMonth).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -51,7 +78,6 @@ export async function POST(req: Request) {
       const toId   = `manual-${ts}-to`;
       const label  = merchant || 'Transfer';
 
-      // Insert both rows to Supabase
       const { error: insertErr } = await supabase.from('transactions').insert([
         {
           id: fromId,
@@ -82,7 +108,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: insertErr.message }, { status: 500 });
       }
 
-      // Append both rows to Sheets
       try {
         const appendRes = await fetch(
           `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Transactions!A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
@@ -158,43 +183,79 @@ export async function POST(req: Request) {
       );
       if (!appendRes.ok) {
         const errBody = await appendRes.text();
-        console.error(`[transactions/add] sheets_append_failed status=${appendRes.status} body=${errBody}`);
+        console.error(`[transactions/add] single_sheets_append_failed status=${appendRes.status} body=${errBody}`);
       } else {
-        console.error(`[transactions/add] sheets_append_ok id=${id} merchant=${merchant}`);
+        console.error(`[transactions/add] single_sheets_append_ok id=${id}`);
       }
     } catch (sheetsErr: any) {
-      console.error(`[transactions/add] sheets_exception=${sheetsErr.message}`);
+      console.error(`[transactions/add] single_sheets_exception=${sheetsErr.message}`);
     }
 
-    // Auto-update investment_cash for Roth IRA / HSA contributions
-    const investmentAccount = INVESTMENT_CONTRIBUTION_CATEGORIES[category];
-    if (investmentAccount && numericAmount > 0) {
+    // ── Bill auto-advance — instant, independent of the daily sync ─────────
+    // Only expenses can be a bill payment. Requires ALL THREE to match:
+    // same category, same payment account, AND a fuzzy name match against
+    // the bill name — reduces the odds of advancing the wrong bill.
+    if (numericAmount < 0) {
       try {
-        const { data: cashRow, error: fetchErr } = await supabase
-          .from('investment_cash')
-          .select('cash_balance')
+        const { data: candidateBills } = await supabase
+          .from('bills')
+          .select('id, name, category, due_date, due_day, payment_account')
           .eq('user_id', USER_ID)
-          .eq('account', investmentAccount)
-          .single();
+          .eq('status', 'Upcoming')
+          .eq('category', category)
+          .eq('payment_account', account);
 
-        if (fetchErr) {
-          console.error(`[transactions/add] cash_fetch_error=${fetchErr.message} account=${investmentAccount}`);
-        } else if (cashRow) {
-          const newBalance = parseFloat(String(cashRow.cash_balance)) + numericAmount;
-          const { error: updateErr } = await supabase
-            .from('investment_cash')
-            .update({ cash_balance: newBalance, updated_at: new Date().toISOString() })
-            .eq('user_id', USER_ID)
-            .eq('account', investmentAccount);
+        const match = (candidateBills || []).find((b: any) => billNameMatches(b.name, merchant));
 
-          if (updateErr) {
-            console.error(`[transactions/add] cash_update_error=${updateErr.message}`);
+        if (match && match.due_date) {
+          const newDueDate = advanceDueDate(match.due_date, match.due_day);
+
+          const { error: billUpdateErr } = await supabase
+            .from('bills')
+            .update({ due_date: newDueDate })
+            .eq('id', match.id)
+            .eq('user_id', USER_ID);
+
+          if (billUpdateErr) {
+            console.error(`[transactions/add] bill_update_error=${billUpdateErr.message}`);
           } else {
-            console.error(`[transactions/add] cash_updated account=${investmentAccount} delta=+${numericAmount} new=${newBalance}`);
+            console.error(`[transactions/add] bill_advanced name=${match.name} old_due=${match.due_date} new_due=${newDueDate}`);
+          }
+
+          // Write the new due date back to the Recurring tab too, so the
+          // next automatic daily sync doesn't overwrite this with the old value.
+          try {
+            const recurRes = await fetch(
+              `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Recurring!A:A`,
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            if (recurRes.ok) {
+              const recurData = await recurRes.json();
+              const recurRows: string[][] = recurData.values || [];
+              const rowIndex = recurRows.findIndex(
+                (r) => (r[0] || '').toString().trim().toLowerCase() === match.name.trim().toLowerCase()
+              );
+              if (rowIndex !== -1) {
+                const sheetRow = rowIndex + 1;
+                await fetch(
+                  `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Recurring!E${sheetRow}?valueInputOption=USER_ENTERED`,
+                  {
+                    method: 'PUT',
+                    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ values: [[isoToSheetDate(newDueDate)]] }),
+                  }
+                );
+                console.error(`[transactions/add] recurring_sheet_updated row=${sheetRow} new_due=${newDueDate}`);
+              } else {
+                console.error(`[transactions/add] recurring_row_not_found name=${match.name}`);
+              }
+            }
+          } catch (sheetsErr: any) {
+            console.error(`[transactions/add] bill_sheets_writeback_exception=${sheetsErr.message}`);
           }
         }
-      } catch (cashErr: any) {
-        console.error(`[transactions/add] cash_exception=${cashErr.message}`);
+      } catch (billErr: any) {
+        console.error(`[transactions/add] bill_match_exception=${billErr.message}`);
       }
     }
 
