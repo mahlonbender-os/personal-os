@@ -11,6 +11,9 @@ interface ShieldMetrics {
   estimatedDailyAccrual: number;
   cycleDateRange: { start: string; end: string };
   dataSource: string;
+  breeHelocShare?: number;
+  mahlonHelocShare?: number;
+  asOf?: string;
 }
 
 export default function HELOCInterestShield() {
@@ -26,29 +29,13 @@ export default function HELOCInterestShield() {
           const payload = await res.json();
           setData(payload);
         } else {
-          generateBaselineFallback();
+          setData(null);
         }
       } catch (err) {
-        generateBaselineFallback();
+        setData(null);
       } finally {
         setLoading(false);
       }
-    }
-
-    function generateBaselineFallback() {
-      const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
-      const currentYear = todayStr.substring(0, 4);
-      const currentMonth = todayStr.substring(5, 7);
-      setData({
-        helocRate: 8.25,
-        currentBalance: 45000.00,
-        creditLimit: 100000.00,
-        totalIncomeDeposited: 0,
-        interestShieldedThisMonth: 0,
-        estimatedDailyAccrual: 10.17,
-        cycleDateRange: { start: `${currentYear}-${currentMonth}-01`, end: `${currentYear}-${currentMonth}-30` },
-        dataSource: 'client_ui_fail_safe'
-      });
     }
 
     fetchShieldData();
@@ -68,7 +55,13 @@ export default function HELOCInterestShield() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-5">
+        <p className="text-[11px] text-[#555]">HELOC numbers are unavailable until the Finance sheet can be read.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden transition-all duration-300">
@@ -89,6 +82,7 @@ export default function HELOCInterestShield() {
             ${data.interestShieldedThisMonth.toFixed(2)}
           </div>
           <div className="text-[11px] text-[#555] mt-0.5">Avoided Interest This Cycle</div>
+          <div className="text-[11px] text-[#ef4444] font-mono mt-1">Balance {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(data.currentBalance))}</div>
         </div>
         <div className="text-right">
           <span className="text-xs font-bold text-[#f0a050]">

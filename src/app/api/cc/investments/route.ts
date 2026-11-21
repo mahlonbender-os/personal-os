@@ -42,6 +42,7 @@ export async function GET() {
 
   for (const pos of (positions || [])) {
     const shares = parseFloat(String(pos.shares));
+    if (!(shares > 0)) continue;
     const avgCost = parseFloat(String(pos.avg_cost));
     const price = prices[pos.security]?.price ?? avgCost;
     const change = prices[pos.security]?.change ?? 0;

@@ -6,9 +6,6 @@ import NewsCard from '@/components/command-center/NewsCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ACCOUNTS = ['1stFinancial','401K','AidVantage','American Express Blue Cash Preferred','Apple',"Capital One BJ's",'Capital One Savor','Chase Sapphire Preferred','Fidelity','Home — Zestimate','HSA','Members 1st Checking','Members 1st HELOC','Roth IRA','Wells Fargo'];
-const CATEGORIES = ['401K','Bree','Car Insurance','Dining Out','Electric','Entertainment','Groceries','Gym','Housing','HSA','Income','Internet','Knox','Other Exp.','Other Inc.','Personal','Phone','Roth IRA','Student Loan','Subscriptions','Transfer','Transportation','UGI Gas','Water'];
-const INCOME_CATS = ['Income','Other Inc.','Roth IRA','401K','HSA','Bree'];
 const CARDIO_TYPES = ['Run','Walk','Bike','Swim','Rowing','Elliptical','HIIT','Other'];
 const INV_ACCOUNTS = ['Roth IRA','HSA'];
 const INV_SECURITIES = ['VOO','TSLA'];
@@ -16,6 +13,17 @@ const INV_SECURITIES = ['VOO','TSLA'];
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n)); }
+function readCcFinance(): {cf:{income:number;expenses:number;net:number}|null;bills:any[]}|null {
+  try {
+    const raw=localStorage.getItem('cc_finance_v2');
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    if(!parsed||typeof parsed!=='object'||!Array.isArray(parsed.bills)) return null;
+    if(parsed.cf!=null && (!Number.isFinite(parsed.cf.income)||!Number.isFinite(parsed.cf.expenses)||!Number.isFinite(parsed.cf.net))) return null;
+    if(!parsed.bills.every((b:any)=>b&&typeof b.name==='string'&&Number.isFinite(Number(b.amount)))) return null;
+    return parsed;
+  } catch { return null; }
+}
 function getGreeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
 function formatDay() { return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
 function today() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }); }
@@ -93,48 +101,6 @@ function ModalSelect({value, onChange, options}: {value:string; onChange:(v:stri
       <option value="" className="bg-[#2c2c2e]">Select…</option>
       {options.map(o=><option key={o} value={o} className="bg-[#2c2c2e]">{o}</option>)}
     </select>
-  );
-}
-
-// ─── Quick Expense Modal ──────────────────────────────────────────────────────
-
-function ExpenseModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
-  const [form, setForm]=useState({date:today(),merchant:'',amount:'',account:'',category:'',txType:'expense'});
-  const [saving,setSaving]=useState(false); const [error,setError]=useState('');
-  function set(k:string,v:string){setForm(f=>({...f,[k]:v}));}
-  function cycleTxType(){setForm(f=>({...f,txType:f.txType==='expense'?'transfer':f.txType==='transfer'?'income':'expense'}));}
-  const meta: Record<string,{label:string;bg:string;text:string}> = {expense:{label:'− Expense',bg:'bg-[#ef4444]/20',text:'text-[#ef4444]'},transfer:{label:'⇄ Transfer',bg:'bg-[#888]/20',text:'text-[#888]'},income:{label:'+ Income',bg:'bg-[#22c55e]/20',text:'text-[#22c55e]'}};
-  const m=meta[form.txType];
-  async function handleSave(){
-    setError('');
-    if(!form.date||!form.merchant||!form.amount||!form.account||(form.txType!=='transfer'&&!form.category)){setError('All fields required');return;}
-    setSaving(true);
-    try {
-      const raw=Math.abs(parseFloat(form.amount));
-      const signed=form.txType==='transfer'?raw:INCOME_CATS.includes(form.category)?raw:form.txType==='expense'?-raw:raw;
-      const body: any={...form,amount:signed};
-      if(form.txType==='transfer') body.category='Transfer';
-      const res=await fetch('/api/finance/transactions/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!res.ok){const d=await res.json();throw new Error(d.error||'Failed');}
-      onSaved(); onClose();
-    } catch(e:any){setError(e.message);}
-    finally{setSaving(false);}
-  }
-  return (
-    <MiniModal title="New Transaction" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
-      <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-        <ModalRow label="Date"><ModalInput type="date" value={form.date} onChange={v=>set('date',v)}/></ModalRow>
-        <ModalRow label="Merchant"><ModalInput value={form.merchant} onChange={v=>set('merchant',v)} placeholder="Where"/></ModalRow>
-        <ModalRow label="Amount">
-          <div className="flex items-center gap-2 w-full justify-end">
-            <button onClick={cycleTxType} className={`text-xs font-bold px-2.5 py-1 rounded-lg flex-shrink-0 ${m.bg} ${m.text}`}>{m.label}</button>
-            <ModalInput type="number" value={form.amount} onChange={v=>set('amount',v)} placeholder="0.00"/>
-          </div>
-        </ModalRow>
-        <ModalRow label={form.txType==='transfer'?'From':'Account'}><ModalSelect value={form.account} onChange={v=>set('account',v)} options={ACCOUNTS}/></ModalRow>
-        {form.txType!=='transfer'&&<ModalRow label="Category"><ModalSelect value={form.category} onChange={v=>set('category',v)} options={CATEGORIES}/></ModalRow>}
-      </div>
-    </MiniModal>
   );
 }
 
@@ -314,17 +280,23 @@ function HealthCard({ refreshCount }: { refreshCount: number }) {
 function FinanceRow({ refreshCount }: { refreshCount: number }) {
   const [cf,setCf]=useState<any>(null); const [bills,setBills]=useState<any[]>([]);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_finance_v1');if(c){const p=JSON.parse(c);setCf(p.cf);setBills(p.bills);}}catch{}
+    const cached=readCcFinance();
+    if(cached){setCf(cached.cf);setBills(cached.bills);}
+    else{try{localStorage.removeItem('cc_finance_v2');}catch{}}
     Promise.all([fetch('/api/finance/cash-flow').then(r=>r.json()),fetch('/api/finance/bills').then(r=>r.json())]).then(([cfData,blData])=>{
-      const cur=cfData.months?.find((m:any)=>m.month?.toLowerCase().includes(new Date().toLocaleString('default',{month:'long'}).toLowerCase()));
-      const newCf=cur?{income:cur.income,expenses:cur.essentials+cur.discretionary,net:cur.net}:null;
-      const newBills=(blData.bills||[]).slice(0,6);
+      const ym=new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'}).slice(0,7);
+      const cur=cfData.months?.find((m:any)=>m.rawHeader===ym);
+      const newCf=cur&&Number.isFinite(cur.income)&&Number.isFinite(cur.net)?{income:cur.income,expenses:(cur.essentials||0)+(cur.discretionary||0),net:cur.net}:null;
+      const newBills=(Array.isArray(blData.bills)?blData.bills:[]).filter((b:any)=>b&&typeof b.name==='string'&&Number.isFinite(Number(b.amount)));
       setCf(newCf);setBills(newBills);
-      try{localStorage.setItem('cc_finance_v1',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
+      try{localStorage.setItem('cc_finance_v2',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
     }).catch(()=>{});
   },[refreshCount]);
-  const t=new Date();t.setHours(0,0,0,0);const in7=new Date(t);in7.setDate(t.getDate()+7);
-  const dueSoon=bills.filter(b=>b.due_date&&new Date(b.due_date+'T00:00:00')<=in7);
+  const today=new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'});
+  const [y,m,d]=today.split('-').map(Number);
+  const endUtc=new Date(Date.UTC(y,m-1,d+7));
+  const in7=`${endUtc.getUTCFullYear()}-${String(endUtc.getUTCMonth()+1).padStart(2,'0')}-${String(endUtc.getUTCDate()).padStart(2,'0')}`;
+  const dueSoon=bills.filter(b=>b.due_date&&b.due_date>=today&&b.due_date<=in7);
   const dueTotal=dueSoon.reduce((s,b)=>s+Math.abs(b.amount||0),0);
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -334,9 +306,9 @@ function FinanceRow({ refreshCount }: { refreshCount: number }) {
       </div>
       <div onClick={()=>{window.location.href='/finance?tab=bills';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer">
         <div className="text-[9px] font-semibold text-[#444] uppercase tracking-widest mb-2">Bills Due</div>
-        <div className="text-[18px] font-extrabold text-[#f0a050] leading-none mb-1" style={{fontFamily:"'Syne',sans-serif"}}>{fmt(dueTotal)}</div>
+        <div className="text-[18px] font-extrabold text-[#f0a050] leading-none mb-1 font-display">{fmt(dueTotal)}</div>
         <div className="text-[9px] text-[#444] mb-2">{dueSoon.length} bills · 7 days</div>
-        <div className="space-y-1">{dueSoon.slice(0,3).map((b,i)=>(<div key={i} className="flex justify-between items-center"><span className="text-[9px] text-[#555] truncate">{b.name}</span><span className="text-[9px] text-[#444] font-mono ml-1 flex-shrink-0">{fmt(b.amount)}</span></div>))}{dueSoon.length>3&&<div className="text-[9px] text-[#f0a050]">+{dueSoon.length-3} more</div>}</div>
+        <div className="space-y-1">{dueSoon.slice(0,3).map((b,i)=>(<div key={i} className="flex justify-between items-center"><span className="text-[9px] text-[#555] truncate">{b.name}</span><span className="text-[9px] text-[#444] font-mono ml-1 flex-shrink-0">{(b.amount_type||'').toLowerCase().startsWith('var')||!b.amount?'Varies':fmt(b.amount)}</span></div>))}{dueSoon.length>3&&<div className="text-[9px] text-[#f0a050]">+{dueSoon.length-3} more</div>}</div>
       </div>
     </div>
   );
@@ -471,13 +443,12 @@ export default function CommandCenterCards() {
   const handleRefresh=useCallback(async()=>{
     setSyncing(true);
     await fetch('/api/sync/sheets',{method:'POST'});
-    try{['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
+    try{['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
     setSyncing(false);
     setRefreshCount(c=>c+1);
   },[]);
 
   const quickActions=[
-    {label:'+ Transaction',modal:'expense'},
     {label:'📊 Trade',modal:'trade'},
     {label:'⛽ Fuel',modal:'fuel'},
     {label:'💪 Workout',modal:'workout'},
@@ -490,7 +461,7 @@ export default function CommandCenterCards() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
-              <div className="text-[22px] font-extrabold text-white leading-tight" style={{fontFamily:"'Syne',sans-serif"}}>{getGreeting()}, Mahlon</div>
+              <div className="text-[22px] font-extrabold text-white leading-tight font-display">{getGreeting()}, Mahlon</div>
               {syncing&&<div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono"><div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin"/>Syncing…</div>}
             </div>
             <WeatherWidget refreshCount={refreshCount}/>
@@ -524,7 +495,6 @@ export default function CommandCenterCards() {
         </div>
       </div>
 
-      {modal==='expense'&&<ExpenseModal onClose={()=>setModal(null)} onSaved={()=>{setModal(null);handleRefresh();}}/>}
       {modal==='fuel'&&<FuelModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
       {modal==='workout'&&<WorkoutModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
     </>

@@ -2,16 +2,12 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
+import { easternStamp, normName } from '@/lib/financeSheet';
+import { readWorkbook } from '@/lib/financeRead';
 
 export const dynamic = 'force-dynamic';
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
-const SHEET_ID = '14R8qfqvV_1ikRvKgPeXhfnqIPol7Xg6IJN8kdxUkP5g';
-
-function parseDollar(val: any): number {
-  if (!val) return 0;
-  return Math.abs(parseFloat(val.toString().replace(/[$,()]/g, '')) || 0);
-}
 
 async function fetchQuote(symbol: string): Promise<{ price: number; d: number; dp: number }> {
   try {
@@ -93,20 +89,12 @@ export async function GET() {
     let sheetRoth = 0;
     let sheetHsa = 0;
     try {
-      const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Accounts!B9:E15')}`;
-      const sheetsRes = await fetch(sheetsUrl, {
-        headers: { Authorization: `Bearer ${session.accessToken}` },
-        cache: 'no-store',
-      });
-      if (sheetsRes.ok) {
-        const sheetsData = await sheetsRes.json();
-        const rows: string[][] = sheetsData.values || [];
-        rows.forEach(row => {
-          const name = (row[0] || '').toLowerCase().trim();
-          const val = parseDollar(row[3]);
-          if (name.includes('roth ira')) sheetRoth = val;
-          if (name.includes('hsa')) sheetHsa = val;
-        });
+      const book = await readWorkbook(session.accessToken);
+      const accounts = book?.latestBalance?.accounts || [];
+      for (const account of accounts) {
+        const name = normName(account.name);
+        if (name.includes('roth')) sheetRoth = account.value;
+        if (name.includes('hsa')) sheetHsa = account.value;
       }
     } catch {
       // non-fatal
@@ -143,6 +131,7 @@ export async function GET() {
       const cash = cashMap[accountName] ?? 0;
 
       const holdings = accountPositions
+        .filter(p => parseFloat(String(p.shares)) > 0)
         .map(p => {
           const shares = parseFloat(String(p.shares));
           const avgCost = parseFloat(String(p.avg_cost));
@@ -165,8 +154,7 @@ export async function GET() {
             dailyGainLoss,
             dailyGainLossPct: dc.dp,
           };
-        })
-        .filter(h => h.shares > 0);
+        });
 
       const stockValue = holdings.reduce((s, h) => s + h.marketValue, 0);
 
@@ -193,7 +181,7 @@ export async function GET() {
       trades: trades || [],
       totalPortfolioValue,
       totalDailyGainLoss,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: easternStamp(),
     }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
 
   } catch (err: any) {
