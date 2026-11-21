@@ -16,6 +16,17 @@ const INV_SECURITIES = ['VOO','TSLA'];
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n)); }
+function readCcFinance(): {cf:{income:number;expenses:number;net:number}|null;bills:any[]}|null {
+  try {
+    const raw=localStorage.getItem('cc_finance_v2');
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    if(!parsed||typeof parsed!=='object'||!Array.isArray(parsed.bills)) return null;
+    if(parsed.cf!=null && (!Number.isFinite(parsed.cf.income)||!Number.isFinite(parsed.cf.expenses)||!Number.isFinite(parsed.cf.net))) return null;
+    if(!parsed.bills.every((b:any)=>b&&typeof b.name==='string'&&Number.isFinite(Number(b.amount)))) return null;
+    return parsed;
+  } catch { return null; }
+}
 function getGreeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
 function formatDay() { return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
 function today() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }); }
@@ -108,20 +119,12 @@ function ExpenseModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) 
   async function handleSave(){
     setError('');
     if(!form.date||!form.merchant||!form.amount||!form.account||(form.txType!=='transfer'&&!form.category)){setError('All fields required');return;}
-    setSaving(true);
-    try {
-      const raw=Math.abs(parseFloat(form.amount));
-      const signed=form.txType==='transfer'?raw:INCOME_CATS.includes(form.category)?raw:form.txType==='expense'?-raw:raw;
-      const body: any={...form,amount:signed};
-      if(form.txType==='transfer') body.category='Transfer';
-      const res=await fetch('/api/finance/transactions/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!res.ok){const d=await res.json();throw new Error(d.error||'Failed');}
-      onSaved(); onClose();
-    } catch(e:any){setError(e.message);}
-    finally{setSaving(false);}
+    setError('Transactions are added on the Finance sheet. Personal OS only reads it.');
+    setSaving(false);
   }
   return (
     <MiniModal title="New Transaction" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
+      <p className="text-[11px] text-[#f0a050] px-1">The Finance sheet is the source of truth. This app does not write to it.</p>
       <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
         <ModalRow label="Date"><ModalInput type="date" value={form.date} onChange={v=>set('date',v)}/></ModalRow>
         <ModalRow label="Merchant"><ModalInput value={form.merchant} onChange={v=>set('merchant',v)} placeholder="Where"/></ModalRow>
@@ -314,17 +317,23 @@ function HealthCard({ refreshCount }: { refreshCount: number }) {
 function FinanceRow({ refreshCount }: { refreshCount: number }) {
   const [cf,setCf]=useState<any>(null); const [bills,setBills]=useState<any[]>([]);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_finance_v1');if(c){const p=JSON.parse(c);setCf(p.cf);setBills(p.bills);}}catch{}
+    const cached=readCcFinance();
+    if(cached){setCf(cached.cf);setBills(cached.bills);}
+    else{try{localStorage.removeItem('cc_finance_v2');}catch{}}
     Promise.all([fetch('/api/finance/cash-flow').then(r=>r.json()),fetch('/api/finance/bills').then(r=>r.json())]).then(([cfData,blData])=>{
-      const cur=cfData.months?.find((m:any)=>m.month?.toLowerCase().includes(new Date().toLocaleString('default',{month:'long'}).toLowerCase()));
-      const newCf=cur?{income:cur.income,expenses:cur.essentials+cur.discretionary,net:cur.net}:null;
-      const newBills=(blData.bills||[]).slice(0,6);
+      const ym=new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'}).slice(0,7);
+      const cur=cfData.months?.find((m:any)=>m.rawHeader===ym);
+      const newCf=cur&&Number.isFinite(cur.income)&&Number.isFinite(cur.net)?{income:cur.income,expenses:(cur.essentials||0)+(cur.discretionary||0),net:cur.net}:null;
+      const newBills=(Array.isArray(blData.bills)?blData.bills:[]).filter((b:any)=>b&&typeof b.name==='string'&&Number.isFinite(Number(b.amount)));
       setCf(newCf);setBills(newBills);
-      try{localStorage.setItem('cc_finance_v1',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
+      try{localStorage.setItem('cc_finance_v2',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
     }).catch(()=>{});
   },[refreshCount]);
-  const t=new Date();t.setHours(0,0,0,0);const in7=new Date(t);in7.setDate(t.getDate()+7);
-  const dueSoon=bills.filter(b=>b.due_date&&new Date(b.due_date+'T00:00:00')<=in7);
+  const today=new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'});
+  const [y,m,d]=today.split('-').map(Number);
+  const endUtc=new Date(Date.UTC(y,m-1,d+7));
+  const in7=`${endUtc.getUTCFullYear()}-${String(endUtc.getUTCMonth()+1).padStart(2,'0')}-${String(endUtc.getUTCDate()).padStart(2,'0')}`;
+  const dueSoon=bills.filter(b=>b.due_date&&b.due_date>=today&&b.due_date<=in7);
   const dueTotal=dueSoon.reduce((s,b)=>s+Math.abs(b.amount||0),0);
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -334,9 +343,9 @@ function FinanceRow({ refreshCount }: { refreshCount: number }) {
       </div>
       <div onClick={()=>{window.location.href='/finance?tab=bills';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-3 active:opacity-70 transition-opacity cursor-pointer">
         <div className="text-[9px] font-semibold text-[#444] uppercase tracking-widest mb-2">Bills Due</div>
-        <div className="text-[18px] font-extrabold text-[#f0a050] leading-none mb-1" style={{fontFamily:"'Syne',sans-serif"}}>{fmt(dueTotal)}</div>
+        <div className="text-[18px] font-extrabold text-[#f0a050] leading-none mb-1 font-display">{fmt(dueTotal)}</div>
         <div className="text-[9px] text-[#444] mb-2">{dueSoon.length} bills · 7 days</div>
-        <div className="space-y-1">{dueSoon.slice(0,3).map((b,i)=>(<div key={i} className="flex justify-between items-center"><span className="text-[9px] text-[#555] truncate">{b.name}</span><span className="text-[9px] text-[#444] font-mono ml-1 flex-shrink-0">{fmt(b.amount)}</span></div>))}{dueSoon.length>3&&<div className="text-[9px] text-[#f0a050]">+{dueSoon.length-3} more</div>}</div>
+        <div className="space-y-1">{dueSoon.slice(0,3).map((b,i)=>(<div key={i} className="flex justify-between items-center"><span className="text-[9px] text-[#555] truncate">{b.name}</span><span className="text-[9px] text-[#444] font-mono ml-1 flex-shrink-0">{(b.amount_type||'').toLowerCase().startsWith('var')||!b.amount?'Varies':fmt(b.amount)}</span></div>))}{dueSoon.length>3&&<div className="text-[9px] text-[#f0a050]">+{dueSoon.length-3} more</div>}</div>
       </div>
     </div>
   );
@@ -471,7 +480,7 @@ export default function CommandCenterCards() {
   const handleRefresh=useCallback(async()=>{
     setSyncing(true);
     await fetch('/api/sync/sheets',{method:'POST'});
-    try{['cc_health_v1','cc_finance_v1','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
+    try{['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
     setSyncing(false);
     setRefreshCount(c=>c+1);
   },[]);
@@ -490,7 +499,7 @@ export default function CommandCenterCards() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
-              <div className="text-[22px] font-extrabold text-white leading-tight" style={{fontFamily:"'Syne',sans-serif"}}>{getGreeting()}, Mahlon</div>
+              <div className="text-[22px] font-extrabold text-white leading-tight font-display">{getGreeting()}, Mahlon</div>
               {syncing&&<div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono"><div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin"/>Syncing…</div>}
             </div>
             <WeatherWidget refreshCount={refreshCount}/>

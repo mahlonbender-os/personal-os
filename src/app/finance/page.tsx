@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
 import HELOCInterestShield from '@/components/finance/HELOCInterestShield';
+import { MonthlyFlowTrend, NetWorthTrend, type FlowMonth, type NetWorthPoint } from '@/components/finance/NetWorthTrend';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,10 @@ interface Transaction {
   amount: number;
   category: string;
   month: string;
+  owner?: string;
+  type?: string;
+  status?: string;
+  source?: string;
 }
 
 interface Bill {
@@ -28,6 +33,8 @@ interface Bill {
   due_date: string | null;
   payment_account: string;
   status: string;
+  amount_type?: string;
+  owner?: string;
 }
 
 interface NetWorthAccount {
@@ -61,6 +68,7 @@ interface NetWorthSnapshot {
   net_worth: number;
   assets: number;
   liabilities: number;
+  mahlon_net_worth?: number;
 }
 
 interface CreditScore {
@@ -107,7 +115,7 @@ type TxType = 'expense' | 'transfer' | 'income';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Knox 🐾': '#f59e0b',
@@ -136,20 +144,21 @@ const CATEGORY_COLORS: Record<string, string> = {
   Transfer: '#94a3b8',
 };
 
-const INCOME_CATEGORIES = ['Income', 'Other Inc.', 'Roth IRA', '401K', 'HSA', 'Bree', 'Bonus'];
+const INCOME_CATEGORIES = ['Income'];
 
 const ACCOUNTS = [
-  '1stFinancial', '401K', 'AidVantage', 'American Express Blue Cash Preferred',
-  'Apple', "Capital One BJ's", 'Capital One Savor', 'Chase Sapphire Preferred',
-  'Fidelity', 'Home — Zestimate', 'HSA', 'Members 1st Checking',
-  'Members 1st HELOC', 'Roth IRA', 'Wells Fargo',
+  'Fidelity 401K', 'Fidelity Roth IRA', 'Fidelity HSA', 'Fidelity Cash Mgmt',
+  'Members 1st Checking', 'Members 1st Savings', 'Capital One 360 Checking',
+  'Fundrise', 'Home Value (Zillow)', 'Wells Fargo Mortgage', 'Members 1st HELOC',
+  'Amex BCP', 'Chase Sapphire Preferred', 'Capital One Savor', "Capital One BJ's",
+  'Apple Card', 'Aidvantage Student Loans',
 ];
 
 const CATEGORIES_LIST = [
-  '401K', 'Bree', 'Car Insurance', 'Dining Out', 'Electric', 'Entertainment',
-  'Groceries', 'Gym', 'Housing', 'HSA', 'Income', 'Internet', 'Knox 🐾',
-  'Other Exp.', 'Other Inc.', 'Personal', 'Phone', 'Roth IRA', 'Student Loan',
-  'Subscriptions', 'Transfer', 'Transportation', 'UGI Gas', 'Water',
+  'Income', 'Dining', 'Entertainment', 'Clothing', 'Personal Care', 'Hobbies & Tech',
+  'Transportation', 'Groceries', 'Knox', 'Housing', 'Utilities', 'Insurance',
+  'Subscriptions', 'Health/Gym', 'Debt Interest', 'Travel', 'Gifts', 'Home',
+  'Shopping', 'Alcohol', 'Other', 'Transfer',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -163,6 +172,19 @@ function fmt(n: number) {
 function fmtDate(s: string) {
   if (!s) return '';
   return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function easternDay(offset = 0): string {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
+  const [y, m, d] = today.split('-').map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d + offset));
+  return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, '0')}-${String(utc.getUTCDate()).padStart(2, '0')}`;
+}
+
+function dueWithinDays(due: string | null | undefined, days: number): boolean {
+  if (!due) return false;
+  const today = easternDay(0);
+  return due >= today && due <= easternDay(days);
 }
 
 function monthLabel(key: string) {
@@ -190,10 +212,57 @@ function cycleLabel(cycle: string): string {
   }
 }
 
-function txColor(category: string): string {
-  if (INCOME_CATEGORIES.includes(category)) return 'text-[#22c55e]';
-  if (category === 'Transfer' || !category) return 'text-[#888]';
-  return 'text-[#ef4444]';
+function txColor(tx: { category?: string; amount?: number; type?: string }): string {
+  const type = (tx.type || '').toLowerCase();
+  const category = tx.category || '';
+  if (type.includes('transfer') || category === 'Transfer') return 'text-[#888]';
+  const amount = typeof tx.amount === 'number' ? tx.amount : 0;
+  if (amount > 0 || INCOME_CATEGORIES.includes(category)) return 'text-[#22c55e]';
+  if (amount < 0) return 'text-[#ef4444]';
+  return 'text-[#888]';
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function readOverviewCache() {
+  try {
+    const raw = localStorage.getItem(`finance_overview_${CACHE_VERSION}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (parsed.cf != null && (!isFiniteNumber(parsed.cf.income) || !isFiniteNumber(parsed.cf.expenses) || !isFiniteNumber(parsed.cf.net))) return null;
+    if (parsed.nw != null && (!isFiniteNumber(parsed.nw.netWorth) || !isFiniteNumber(parsed.nw.totalAssets) || !isFiniteNumber(parsed.nw.totalLiabilities) || !isFiniteNumber(parsed.nw.mahlonNetWorth))) return null;
+    if (!Array.isArray(parsed.tx) || !parsed.tx.every((tx: Transaction) => tx && typeof tx.id === 'string' && typeof tx.merchant === 'string' && isFiniteNumber(Number(tx.amount)) && typeof tx.date === 'string')) return null;
+    if (!Array.isArray(parsed.bl) || !parsed.bl.every((bill: Bill) => bill && typeof bill.id === 'string' && typeof bill.name === 'string' && isFiniteNumber(Number(bill.amount)))) return null;
+    if (!Array.isArray(parsed.trend) || !Array.isArray(parsed.nwHistory)) return null;
+    if (parsed.historySource !== 'daily' && parsed.historySource !== 'balances') return null;
+    return parsed as {
+      cf: { income: number; expenses: number; net: number; savingsRate: number | null } | null;
+      nw: { netWorth: number; totalAssets: number; totalLiabilities: number; mahlonNetWorth: number; asOf?: string } | null;
+      tx: Transaction[];
+      bl: Bill[];
+      trend: FlowMonth[];
+      nwHistory: NetWorthPoint[];
+      historySource: 'daily' | 'balances';
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readBillsCache(): Bill[] | null {
+  try {
+    const raw = localStorage.getItem(`finance_bills_${CACHE_VERSION}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    if (!parsed.every((bill) => bill && typeof bill.id === 'string' && typeof bill.name === 'string' && isFiniteNumber(Number(bill.amount)))) return null;
+    return parsed as Bill[];
+  } catch {
+    return null;
+  }
 }
 
 async function syncSheets() {
@@ -242,8 +311,10 @@ function DeleteSheet({ onCancel, onConfirm, deleting, message }: { onCancel: () 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
 function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: number; onNavigateRow: (tab: Tab) => void; onAddGoal: () => void }) {
-  const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number } | null>(null);
-  const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number } | null>(null);
+  const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number; savingsRate: number | null } | null>(null);
+  const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number; mahlonNetWorth: number; asOf?: string } | null>(null);
+  const [nwHistory, setNwHistory] = useState<NetWorthPoint[]>([]);
+  const [historySource, setHistorySource] = useState<'daily' | 'balances'>('balances');
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
@@ -251,7 +322,7 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
   const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
   const [goalUpdateAmt, setGoalUpdateAmt] = useState('');
   const [loading, setLoading] = useState(true);
-  const [trendData, setTrendData] = useState<{ month: string; income: number; expenses: number; net: number }[]>([]);
+  const [trendData, setTrendData] = useState<FlowMonth[]>([]);
   const [merchantData, setMerchantData] = useState<{ merchant: string; total: number }[]>([]);
   const [merchantMonth, setMerchantMonth] = useState('');
   const [merchantTotal, setMerchantTotal] = useState(0);
@@ -265,17 +336,19 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
   }, []);
 
   const load = useCallback(async () => {
-    try {
-      const cached = localStorage.getItem(`finance_overview_${CACHE_VERSION}`);
-      if (cached) {
-        const { cf, nw, tx, bl } = JSON.parse(cached);
-        if (cf) setCashFlow(cf);
-        if (nw) setNetWorth(nw);
-        if (tx) setRecentTx(tx);
-        if (bl) setBills(bl);
-        setLoading(false);
-      }
-    } catch {}
+    const cached = readOverviewCache();
+    if (cached) {
+      if (cached.cf) setCashFlow(cached.cf);
+      if (cached.nw) setNetWorth(cached.nw);
+      setRecentTx(cached.tx);
+      setBills(cached.bl);
+      setTrendData(cached.trend);
+      setNwHistory(cached.nwHistory);
+      setHistorySource(cached.historySource);
+      setLoading(false);
+    } else {
+      try { localStorage.removeItem(`finance_overview_${CACHE_VERSION}`); } catch {}
+    }
     try {
       const [cfRes, nwRes, txRes, blRes, goalsRes] = await Promise.all([
         fetch('/api/finance/cash-flow'), fetch('/api/finance/net-worth'),
@@ -285,39 +358,52 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
       const [cfData, nwData, txData, blData, goalsData] = await Promise.all([
         cfRes.json(), nwRes.json(), txRes.json(), blRes.json(), goalsRes.json(),
       ]);
-      const now = new Date();
-      const monthName = now.toLocaleString('default', { month: 'long' });
-      const cur = cfData.months?.find((m: { month: string }) => m.month.toLowerCase().includes(monthName.toLowerCase()));
-      const cf = cur ? { income: cur.income, expenses: cur.essentials + cur.discretionary, net: cur.net } : null;
+      const ym = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }).slice(0, 7);
+      const cur = cfData.months?.find((m: { rawHeader?: string }) => m.rawHeader === ym);
+      const cf = cur ? { income: cur.income, expenses: cur.essentials + cur.discretionary, net: cur.net, savingsRate: cur.savingsRate ?? null } : null;
+      const nw = nwData && isFiniteNumber(nwData.netWorth) ? {
+        netWorth: nwData.netWorth,
+        totalAssets: nwData.totalAssets,
+        totalLiabilities: nwData.totalLiabilities,
+        mahlonNetWorth: nwData.mahlonNetWorth,
+        asOf: nwData.asOf,
+      } : null;
+      const historySourceNext = nwData.historySource === 'daily' ? 'daily' : 'balances';
+      const history = Array.isArray(nwData.history) ? nwData.history : [];
       if (cf) setCashFlow(cf);
-      setNetWorth(nwData);
+      if (nw) setNetWorth(nw);
+      setNwHistory(history);
+      setHistorySource(historySourceNext);
       setRecentTx(txData.transactions || []);
       setBills(blData.bills || []);
       setGoals(goalsData.goals || []);
-      try { localStorage.setItem(`finance_overview_${CACHE_VERSION}`, JSON.stringify({ cf, nw: nwData, tx: txData.transactions || [], bl: blData.bills || [] })); } catch {}
 
-      // Trend + merchant cards — isolated so failures don't break the rest
+      let trend: FlowMonth[] = [];
       try {
         const [trendRes, merchantRes] = await Promise.all([
           fetch('/api/finance/cashflow-trend'),
           fetch('/api/finance/merchants'),
         ]);
         const [trendJson, merchantJson] = await Promise.all([trendRes.json(), merchantRes.json()]);
-        setTrendData(trendJson.months || []);
+        trend = trendJson.months || [];
+        setTrendData(trend);
         setMerchantData(merchantJson.merchants || []);
         setMerchantMonth(merchantJson.month || '');
         setMerchantTotal(merchantJson.grandTotal || 0);
       } catch (e) {
         console.error('Trend/merchant fetch error:', e);
       }
+      try {
+        localStorage.setItem(`finance_overview_${CACHE_VERSION}`, JSON.stringify({
+          cf, nw, tx: txData.transactions || [], bl: blData.bills || [], trend, nwHistory: history, historySource: historySourceNext,
+        }));
+      } catch {}
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load, onRefresh]);
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const in7 = new Date(today); in7.setDate(today.getDate() + 7);
-  const dueSoon = bills.filter(b => { if (!b.due_date) return false; return new Date(b.due_date + 'T00:00:00') <= in7; });
+  const dueSoon = bills.filter(b => dueWithinDays(b.due_date, 7));
   const dueTotal = dueSoon.reduce((s, b) => s + Math.abs(b.amount), 0);
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
@@ -327,35 +413,51 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
       <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('networth')}>
         <Card className="p-5">
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-1">Net Worth</p>
-          <p className="text-[32px] font-extrabold text-white leading-none" style={{ fontFamily: 'system-ui' }}>
+          <p className="text-[32px] font-extrabold text-white leading-none font-display">
             {netWorth ? fmt(netWorth.netWorth) : '—'}
           </p>
+          {netWorth?.asOf && <p className="text-[10px] text-[#555] mt-1 font-mono">As of {netWorth.asOf}</p>}
           {netWorth && (
-            <div className="flex gap-4 mt-2 text-[11px] text-[#555]">
-              <span>Assets {fmt(netWorth.totalAssets)}</span>
+            <div className="flex gap-4 mt-2 text-[11px] text-[#555] font-mono">
+              <span className="text-[#22c55e]">Assets {fmt(netWorth.totalAssets)}</span>
               <span>·</span>
-              <span>Liabilities {fmt(netWorth.totalLiabilities)}</span>
+              <span className="text-[#ef4444]">Liabilities {fmt(netWorth.totalLiabilities)}</span>
+            </div>
+          )}
+          {netWorth && (
+            <div className="mt-3 pt-3 border-t border-[#1a1a1a]">
+              <p className="text-[10px] font-semibold text-[#888] uppercase tracking-widest">Mahlon only</p>
+              <p className="text-lg font-bold text-[#22c55e] font-mono mt-0.5">{fmt(netWorth.mahlonNetWorth)}</p>
+              <p className="text-[10px] text-[#555] mt-1">Sheet net worth plus Capital One BJ&apos;s and Bree&apos;s HELOC share</p>
             </div>
           )}
         </Card>
       </div>
 
+      <NetWorthTrend points={nwHistory} source={historySource} />
+
       {cashFlow && (
         <div className="w-full text-left active:opacity-70 transition-opacity cursor-pointer" onClick={() => onNavigateRow('budget')}>
           <Card className="p-4">
             <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">This Month</p>
-            <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="grid grid-cols-4 gap-2 text-center">
               <div>
                 <p className="text-[10px] text-[#444] mb-0.5">Income</p>
-                <p className="text-base font-bold text-[#22c55e] font-mono">{fmt(cashFlow.income)}</p>
+                <p className="text-sm font-bold text-[#22c55e] font-mono">{fmt(cashFlow.income)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-[#444] mb-0.5">Expenses</p>
-                <p className="text-base font-bold text-[#ef4444] font-mono">{fmt(cashFlow.expenses)}</p>
+                <p className="text-[10px] text-[#444] mb-0.5">Spending</p>
+                <p className="text-sm font-bold text-[#ef4444] font-mono">{fmt(cashFlow.expenses)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-[#444] mb-0.5">Net</p>
-                <p className={`text-base font-bold font-mono ${cashFlow.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(Math.abs(cashFlow.net))}</p>
+                <p className={`text-sm font-bold font-mono ${cashFlow.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{fmt(Math.abs(cashFlow.net))}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-[#444] mb-0.5">Saved</p>
+                <p className={`text-sm font-bold font-mono ${cashFlow.savingsRate == null ? 'text-[#555]' : cashFlow.savingsRate >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                  {cashFlow.savingsRate == null ? '—' : `${Math.abs(cashFlow.savingsRate).toFixed(1)}%`}
+                </p>
               </div>
             </div>
           </Card>
@@ -375,43 +477,7 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
         </div>
       )}
 
-      {/* ── 6-Month Cash Flow Trend ──────────────────────────── */}
-      {trendData.length > 0 && (
-        <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">6-Month Cash Flow</p>
-          <div className="flex items-end justify-between gap-1.5 h-24 mb-2">
-            {trendData.map((m, i) => {
-              const maxVal = Math.max(...trendData.map(d => Math.max(d.income, d.expenses)), 1);
-              const incH = Math.max((m.income / maxVal) * 100, 3);
-              const expH = Math.max((m.expenses / maxVal) * 100, 3);
-              const label = new Date(m.month + '-15').toLocaleDateString('en-US', { month: 'short' });
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
-                  <div className="w-full flex items-end justify-center gap-0.5 flex-1 pb-1">
-                    <div className="w-[6px] rounded-t-sm bg-[#22c55e]" style={{ height: `${incH}%` }} />
-                    <div className="w-[6px] rounded-t-sm bg-[#ef4444]" style={{ height: `${expH}%` }} />
-                  </div>
-                  <span className="text-[8px] text-[#444] font-semibold uppercase">{label}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="grid grid-cols-6 gap-1 border-t border-[#1a1a1a] pt-2 mb-3">
-            {trendData.map((m, i) => (
-              <div key={i} className="text-center">
-                <p className={`text-[8px] font-mono font-bold leading-tight ${m.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                  {m.net >= 0 ? '+' : '-'}{Math.abs(m.net) >= 1000 ? `${(Math.abs(m.net) / 1000).toFixed(1)}k` : Math.abs(m.net).toFixed(0)}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-4 text-[10px] text-[#555]">
-            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#22c55e]" /><span>Income</span></div>
-            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#ef4444]" /><span>Expenses</span></div>
-            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#888]" /><span>Net</span></div>
-          </div>
-        </div>
-      )}
+      <MonthlyFlowTrend months={trendData} />
 
       {/* ── Top Merchants ─────────────────────────────────────── */}
       {merchantData.length > 0 && (
@@ -426,7 +492,7 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
                       ? 'bg-[#f0a050]/15 border-[#f0a050]/40 text-[#f0a050]'
                       : 'border-[#2a2a2a] text-[#444]'
                   }`}>
-                  {new Date(m.month + '-15').toLocaleDateString('en-US', { month: 'short' })}
+                  {monthLabel(m.month).slice(0, 3)}
                 </button>
               ))}
             </div>
@@ -555,7 +621,7 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
                   <p className="text-sm font-medium text-[#e0e0e0] truncate">{tx.merchant}</p>
                   <p className="text-[10px] text-[#444]">{tx.category} · {fmtDate(tx.date)}</p>
                 </div>
-                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${txColor(tx.category)}`}>{fmt(tx.amount)}</p>
+                <p className={`text-sm font-semibold flex-shrink-0 font-mono ${txColor(tx)}`}>{fmt(tx.amount)}</p>
               </div>
             ))}
           </div>
@@ -575,6 +641,8 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
   const [totalExpenseActual, setTotalExpenseActual] = useState(0);
   const [projectedCashFlow, setProjectedCashFlow] = useState(0);
   const [actualCashFlow, setActualCashFlow] = useState(0);
+  const [savingsRate, setSavingsRate] = useState<number | null>(null);
+  const [breeSpending, setBreeSpending] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [currentMonth, setCurrentMonth] = useState('');
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
@@ -595,6 +663,8 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
       setTotalExpenseActual(data.totalExpenseActual || 0);
       setProjectedCashFlow(data.projectedCashFlow || 0);
       setActualCashFlow(data.actualCashFlow || 0);
+      setSavingsRate(typeof data.savingsRate === 'number' ? data.savingsRate : null);
+      setBreeSpending(data.breeSpending || 0);
       setSelectedMonth(data.month);
       setCurrentMonth(data.currentMonth);
       setAvailableMonths(data.availableMonths || []);
@@ -724,6 +794,14 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
             <p className="text-[9px] text-[#333] font-mono">/ {fmt(Math.abs(projectedCashFlow))}</p>
           </div>
         </div>
+        {savingsRate != null && (
+          <p className={`text-[11px] font-mono mt-3 ${savingsRate >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+            Savings rate {Math.abs(savingsRate).toFixed(1)}%
+          </p>
+        )}
+        {breeSpending > 0 && (
+          <p className="text-[11px] text-[#888] font-mono mt-1">Bree spending, excluded {fmt(breeSpending)}</p>
+        )}
       </Card>
       {loading ? (
         <div className="flex justify-center py-8"><Spinner /></div>
@@ -732,9 +810,9 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
       ) : (
         <>
           <CashFlowTrendChart />
-          <BudgetSection title="Income" rows={incomeItems} totalBudget={totalIncomeBudget} totalActual={totalIncomeActual} />
-          <BudgetSection title="Essentials" rows={essentialItems} totalBudget={essentialItems.reduce((s, i) => s + i.budget, 0)} totalActual={essentialItems.reduce((s, i) => s + i.actual, 0)} />
-          <BudgetSection title="Discretionary" rows={discretionaryItems} totalBudget={discretionaryItems.reduce((s, i) => s + i.budget, 0)} totalActual={discretionaryItems.reduce((s, i) => s + i.actual, 0)} />
+          {incomeItems.length > 0 && <BudgetSection title="Income" rows={incomeItems} totalBudget={totalIncomeBudget} totalActual={totalIncomeActual} />}
+          {essentialItems.length > 0 && <BudgetSection title="Essentials" rows={essentialItems} totalBudget={essentialItems.reduce((s, i) => s + i.budget, 0)} totalActual={essentialItems.reduce((s, i) => s + i.actual, 0)} />}
+          {discretionaryItems.length > 0 && <BudgetSection title="Discretionary" rows={discretionaryItems} totalBudget={discretionaryItems.reduce((s, i) => s + i.budget, 0)} totalActual={discretionaryItems.reduce((s, i) => s + i.actual, 0)} />}
         </>
       )}
     </div>
@@ -752,7 +830,7 @@ function TransactionsTab({ onRefresh, onEditTx }: { onRefresh: number; onEditTx:
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetch(`/api/finance/transactions?limit=300&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
+      const data = await fetch(`/api/finance/transactions?limit=2000&owner=all&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
       setTransactions(data.transactions || []);
     } catch (e) { console.error('Failed to load transactions:', e); }
     finally { setLoading(false); }
@@ -760,8 +838,10 @@ function TransactionsTab({ onRefresh, onEditTx }: { onRefresh: number; onEditTx:
 
   useEffect(() => { setSearchQuery(''); setSelectedCategory('All'); load(); }, [load, onRefresh]);
 
-  const categories = ['All', ...Array.from(new Set(transactions.map(t => t.category))).sort()];
-  const filtered = transactions.filter(tx => {
+  const mine = transactions.filter(tx => (tx.owner || '').toLowerCase() !== 'bree');
+  const breeTx = transactions.filter(tx => (tx.owner || '').toLowerCase() === 'bree');
+  const categories = ['All', ...Array.from(new Set(mine.map(t => t.category))).sort()];
+  const filtered = mine.filter(tx => {
     const matchCat = selectedCategory === 'All' || tx.category === selectedCategory;
     const matchSearch = !searchQuery || tx.merchant.toLowerCase().includes(searchQuery.toLowerCase());
     return matchCat && matchSearch;
@@ -777,7 +857,11 @@ function TransactionsTab({ onRefresh, onEditTx }: { onRefresh: number; onEditTx:
   const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
   function monthTotal(txs: Transaction[]) {
-    return txs.reduce((sum, tx) => INCOME_CATEGORIES.includes(tx.category) ? sum + tx.amount : sum - tx.amount, 0);
+    return txs.reduce((sum, tx) => {
+      const type = (tx.type || '').toLowerCase();
+      if (type.includes('transfer') || tx.category === 'Transfer') return sum;
+      return sum + (Number(tx.amount) || 0);
+    }, 0);
   }
 
   return (
@@ -812,7 +896,7 @@ function TransactionsTab({ onRefresh, onEditTx }: { onRefresh: number; onEditTx:
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-[#333] text-sm">{transactions.length === 0 ? 'Pull down to sync data' : 'No results'}</div>
+          <div className="text-center py-12 text-[#333] text-sm">{mine.length === 0 ? 'Pull down to sync data' : 'No results'}</div>
         ) : (
           sortedMonths.map(monthKey => {
             const monthTxs = grouped[monthKey];
@@ -838,16 +922,37 @@ function TransactionsTab({ onRefresh, onEditTx }: { onRefresh: number; onEditTx:
                             {tx.category || 'Transfer'}
                           </span>
                           <span className="text-[10px] text-[#444] flex-shrink-0">{fmtDate(tx.date)}</span>
+                          {tx.status && tx.status.toLowerCase() === 'pending' && <span className="text-[10px] text-[#f0a050] flex-shrink-0">Pending</span>}
+                          {tx.owner && tx.owner.toLowerCase() === 'shared' && <span className="text-[10px] text-[#888] flex-shrink-0">Shared</span>}
                           {tx.account && <span className="text-[10px] text-[#333] truncate min-w-0">{tx.account}</span>}
                         </div>
                       </div>
-                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 font-mono ${txColor(tx.category)}`}>{fmt(tx.amount)}</p>
+                      <p className={`text-sm font-semibold flex-shrink-0 ml-2 font-mono ${txColor(tx)}`}>{fmt(tx.amount)}</p>
                     </div>
                   ))}
                 </Card>
               </div>
             );
           })
+        )}
+        {breeTx.length > 0 && (
+          <div>
+            <div className="flex justify-between items-baseline mb-2 px-1">
+              <p className="text-[10px] font-bold text-[#444] uppercase tracking-widest">Bree, excluded from spending</p>
+              <p className="text-[10px] text-[#333]">{breeTx.length}</p>
+            </div>
+            <Card className="overflow-hidden">
+              {breeTx.slice(0, 12).map((tx, idx) => (
+                <div key={tx.id} className={`flex items-center px-4 py-3 gap-3 ${idx !== Math.min(breeTx.length, 12) - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[#888] truncate">{tx.merchant}</p>
+                    <p className="text-[10px] text-[#444]">{tx.category} · {fmtDate(tx.date)}</p>
+                  </div>
+                  <p className="text-sm font-mono text-[#888]">{fmt(tx.amount)}</p>
+                </div>
+              ))}
+            </Card>
+          </div>
         )}
       </div>
     </div>
@@ -858,27 +963,30 @@ function TransactionsTab({ onRefresh, onEditTx }: { onRefresh: number; onEditTx:
 
 function BillsTab({ onRefresh }: { onRefresh: number }) {
   const [bills, setBills] = useState<Bill[]>([]);
+  const [breeBills, setBreeBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    try {
-      const cached = localStorage.getItem(`finance_bills_${CACHE_VERSION}`);
-      if (cached) { setBills(JSON.parse(cached)); setLoading(false); }
-    } catch {}
+    const cached = readBillsCache();
+    if (cached) { setBills(cached); setLoading(false); }
+    else { try { localStorage.removeItem(`finance_bills_${CACHE_VERSION}`); } catch {} }
     try {
       const data = await fetch('/api/finance/bills').then(r => r.json());
-      setBills(data.bills || []);
-      try { localStorage.setItem(`finance_bills_${CACHE_VERSION}`, JSON.stringify(data.bills || [])); } catch {}
+      const next = Array.isArray(data.bills) ? data.bills : [];
+      setBills(next);
+      setBreeBills(Array.isArray(data.breeBills) ? data.breeBills : []);
+      if (readBillsCache() || next.every((bill: Bill) => bill && typeof bill.id === 'string' && typeof bill.name === 'string')) {
+        try { localStorage.setItem(`finance_bills_${CACHE_VERSION}`, JSON.stringify(next)); } catch {}
+      }
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load, onRefresh]);
 
   const totalMonthly = bills.reduce((s, b) => s + Math.abs(b.amount || 0), 0);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const in7 = new Date(today); in7.setDate(today.getDate() + 7);
-  const dueSoon = bills.filter(b => b.due_date && new Date(b.due_date + 'T00:00:00') <= in7);
-  const dueLater = bills.filter(b => b.due_date && new Date(b.due_date + 'T00:00:00') > in7);
+  const weekEnd = easternDay(7);
+  const dueSoon = bills.filter(b => dueWithinDays(b.due_date, 7));
+  const dueLater = bills.filter(b => b.due_date && b.due_date > weekEnd);
 
   function BillRow({ bill, idx, total }: { bill: Bill; idx: number; total: number }) {
     return (
@@ -890,7 +998,9 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
           <p className="text-sm font-medium text-[#e0e0e0]">{bill.name}</p>
           <p className="text-[10px] text-[#444]">{bill.payment_account || bill.category}</p>
         </div>
-        <p className="text-sm font-semibold text-[#f0a050] flex-shrink-0 font-mono">{fmt(Math.abs(bill.amount))}</p>
+        <p className="text-sm font-semibold text-[#f0a050] flex-shrink-0 font-mono">
+          {(bill.amount_type || '').toLowerCase().startsWith('var') || !bill.amount ? 'Varies' : fmt(Math.abs(bill.amount))}
+        </p>
       </div>
     );
   }
@@ -923,6 +1033,14 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
             </div>
           )}
         </>
+      )}
+      {breeBills.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-[#444] uppercase tracking-widest mb-2 px-1">Bree, not in your bills</p>
+          <Card className="overflow-hidden">
+            {breeBills.map((bill, idx) => <BillRow key={bill.id} bill={bill} idx={idx} total={breeBills.length} />)}
+          </Card>
+        </div>
       )}
     </div>
   );
@@ -1016,7 +1134,9 @@ function getAcctMeta(name: string, isLiability: boolean, limit: number): {
   if (n.includes('fidelity'))  return { typeLabel: 'Brokerage Account',          emoji: '📊', isRevolving: false, isInvestment: true,  isLoan: false, isChecking: false, isHome: false };
   if (n.includes('aidvantage'))return { typeLabel: 'Student Loan',               emoji: '🎓', isRevolving: false, isInvestment: false, isLoan: true,  isChecking: false, isHome: false };
   if (n.includes('wells'))     return { typeLabel: 'Mortgage / Loan',            emoji: '🏦', isRevolving: false, isInvestment: false, isLoan: true,  isChecking: false, isHome: false };
-  if (n.includes('checking'))  return { typeLabel: 'Checking Account',           emoji: '🏦', isRevolving: false, isInvestment: false, isLoan: false, isChecking: true,  isHome: false };
+  if (n.includes('checking') || n.includes('cash mgmt')) return { typeLabel: 'Cash', emoji: '🏦', isRevolving: false, isInvestment: false, isLoan: false, isChecking: true, isHome: false };
+  if (n.includes('savings')) return { typeLabel: 'Savings Account', emoji: '🏦', isRevolving: false, isInvestment: false, isLoan: false, isChecking: true, isHome: false };
+  if (n.includes('fundrise')) return { typeLabel: 'Fundrise', emoji: '📈', isRevolving: false, isInvestment: true, isLoan: false, isChecking: false, isHome: false };
   if (n.includes('zestimate') || (n.includes('home') && !isLiability))
                                return { typeLabel: 'Home Value (Zillow)',         emoji: '🏡', isRevolving: false, isInvestment: false, isLoan: false, isChecking: false, isHome: true  };
   // Liability with a credit limit = credit card
@@ -1025,7 +1145,7 @@ function getAcctMeta(name: string, isLiability: boolean, limit: number): {
 }
 
 function NetWorthTab({ onRefresh }: { onRefresh: number }) {
-  const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; history?: NetWorthSnapshot[] } | null>(null);
+  const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; mahlonNetWorth?: number; asOf?: string; history?: NetWorthSnapshot[]; historySource?: 'daily' | 'balances' } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
@@ -1076,36 +1196,15 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   }
 
   function NetWorthSparkline() {
-    if (historyList.length < 2) return null;
-    const values = historyList.map(h => h.net_worth);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = max - min === 0 ? 1 : max - min;
-    const width = 340; const height = 80; const padding = 10;
-    const points = historyList.map((h, i) => {
-      const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
-      const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
-      return `${x},${y}`;
-    }).join(' ');
     return (
-      <div>
-        <SectionLabel>Net Worth Trajectory</SectionLabel>
-        <Card className="p-4 flex flex-col items-center">
-          <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-            <polyline fill="none" stroke="#f0a050" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
-            {historyList.map((h, i) => {
-              if (i !== 0 && i !== historyList.length - 1) return null;
-              const x = padding + (i / (historyList.length - 1)) * (width - padding * 2);
-              const y = (height - padding) - ((h.net_worth - min) / range) * (height - padding * 2);
-              return <circle key={i} cx={x} cy={y} r="4" fill="#111" stroke="#f0a050" strokeWidth="2" />;
-            })}
-          </svg>
-          <div className="w-full flex justify-between text-[9px] text-[#444] font-semibold uppercase mt-2 px-1">
-            <span>{monthLabel(historyList[0].date.substring(0, 7)).split(' ')[0]}</span>
-            <span>{monthLabel(historyList[historyList.length - 1].date.substring(0, 7)).split(' ')[0]}</span>
-          </div>
-        </Card>
-      </div>
+      <NetWorthTrend
+        points={historyList.map((point) => ({
+          date: point.date,
+          net_worth: Number(point.net_worth),
+          mahlon_net_worth: point.mahlon_net_worth,
+        }))}
+        source={data?.historySource}
+      />
     );
   }
 
@@ -1251,7 +1350,14 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
     <div className="space-y-4 animate-fadeIn">
       <div className="rounded-2xl bg-gradient-to-br from-[#1a1000] to-[#111] border border-[#f0a050]/20 p-5">
         <p className="text-[#f0a050]/60 text-sm mb-1">Net Worth</p>
-        <p className="text-4xl font-bold text-white font-mono tracking-tight">{fmt(data.netWorth)}</p>
+        <p className="text-4xl font-bold text-white font-display tracking-tight">{fmt(data.netWorth)}</p>
+        {data.asOf && <p className="text-[10px] text-[#555] mt-1 font-mono">As of {data.asOf}</p>}
+        {isFiniteNumber(data.mahlonNetWorth) && (
+          <div className="mt-3">
+            <p className="text-[10px] uppercase tracking-widest text-[#888]">Mahlon only</p>
+            <p className="text-lg font-bold text-[#22c55e] font-mono">{fmt(data.mahlonNetWorth)}</p>
+          </div>
+        )}
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="bg-white/5 rounded-xl p-3">
             <p className="text-[#555] text-[10px]">Total Assets</p>
@@ -1445,6 +1551,7 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
 
 function HelocTab({ onRefresh }: { onRefresh: number }) {
   const [transactions, setTransactions] = useState<HelocTransaction[]>([]);
+  const [summary, setSummary] = useState<{ balance: number; creditLimit: number; apr: number | null; breeHelocShare: number; mahlonHelocShare: number; asOf: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -1452,6 +1559,14 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
     try {
       const data = await fetch('/api/finance/heloc').then(r => r.json());
       setTransactions(data.transactions || []);
+      setSummary({
+        balance: Number(data.balance) || 0,
+        creditLimit: Number(data.creditLimit) || 0,
+        apr: typeof data.apr === 'number' ? data.apr : null,
+        breeHelocShare: Number(data.breeHelocShare) || 0,
+        mahlonHelocShare: Number(data.mahlonHelocShare) || 0,
+        asOf: data.asOf || null,
+      });
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -1463,7 +1578,28 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
   return (
     <div className="space-y-4 animate-fadeIn">
       
-      {/* Dynamic Velocity Shield Calculation Module */}
+      {summary && (
+        <Card className="p-4">
+          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Members 1st HELOC</p>
+          <p className="text-2xl font-bold text-[#ef4444] font-mono mt-1">{fmt(summary.balance)}</p>
+          <p className="text-[10px] text-[#555] mt-1 font-mono">
+            {summary.apr != null ? `${summary.apr.toFixed(2)}% APR` : 'APR unavailable'}
+            {summary.creditLimit ? ` · limit ${fmt(summary.creditLimit)}` : ''}
+            {summary.asOf ? ` · ${summary.asOf}` : ''}
+          </p>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <p className="text-[10px] text-[#555]">Mahlon share</p>
+              <p className="text-sm font-mono text-white">{fmt(summary.mahlonHelocShare)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-[#555]">Bree share</p>
+              <p className="text-sm font-mono text-[#888]">{fmt(summary.breeHelocShare)}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <HELOCInterestShield />
 
       {transactions.length === 0 ? (
@@ -1831,13 +1967,13 @@ function FinancePageInner() {
   const meta = txTypeMeta[txType];
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
+    <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none" style={{ fontFamily: 'var(--font-dm), sans-serif' }}>
 
       {/* Header */}
       <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h1 className="text-xl font-bold text-white">Finance</h1>
+            <h1 className="text-xl font-bold text-white font-display">Finance</h1>
             {syncing && (
               <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
                 <div className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
@@ -1896,6 +2032,7 @@ function FinancePageInner() {
               </button>
             </div>
             <div className="px-4 pt-4 space-y-3">
+              <p className="text-[11px] text-[#f0a050] px-1">Transactions are added on the Finance sheet. This app only reads it, so this form cannot save.</p>
 
               {/* Date + Description/Merchant */}
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
@@ -2131,17 +2268,10 @@ function FinancePageInner() {
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
               <button onClick={() => setEditTx(null)} className="text-[#f0a050] text-sm">Cancel</button>
               <h2 className="text-base font-semibold text-white">Edit Transaction</h2>
-              <button onClick={handleEditTransaction} disabled={editSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
-                {editSaving ? 'Saving…' : 'Save'}
-              </button>
+              <button onClick={() => setEditTx(null)} className="text-[#f0a050] text-sm font-semibold">Close</button>
             </div>
             <div className="px-4 pt-4 space-y-3">
-              {editTx.source === 'google_sheets' && (
-                <p className="text-[10px] text-[#555] px-1">Synced from Sheets — this edit will update both Supabase and the sheet row.</p>
-              )}
-              {editTxType === 'transfer' && (
-                <p className="text-[10px] text-[#f59e0b] px-1">Transfer — only this row will be updated, not the paired entry.</p>
-              )}
+              <p className="text-[11px] text-[#888] px-1">This row is read from the Finance sheet. Personal OS does not change that sheet.</p>
               <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
                 <div className="flex items-center px-4 py-3 border-b border-white/10">
                   <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>

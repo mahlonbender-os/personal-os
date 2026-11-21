@@ -427,7 +427,7 @@ export default function InvestmentsPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const hasHoldings = (data?.accounts || []).some(a => a.holdings.length > 0);
+  const hasHoldings = (data?.accounts || []).some(a => a.holdings.some(h => parseFloat(String(h.shares)) > 0));
   const filteredTrades = tradeFilter === 'All'
     ? (data?.trades || [])
     : (data?.trades || []).filter(t => t.account === tradeFilter);
@@ -599,9 +599,9 @@ export default function InvestmentsPage() {
                           <div className="font-mono text-white text-sm font-bold">{fmt(acc.stockValue)}</div>
                         </div>
                       </div>
-                      {acc.holdings.length > 0 ? (
+                      {acc.holdings.some(h => parseFloat(String(h.shares)) > 0) ? (
                         <div className="space-y-2">
-                          {acc.holdings.map((h, j) => {
+                          {acc.holdings.filter(h => parseFloat(String(h.shares)) > 0).map((h, j) => {
                             const gl = showDaily ? h.dailyGainLoss : h.gainLoss;
                             const glPct = showDaily ? h.dailyGainLossPct : h.gainLossPct;
                             return (

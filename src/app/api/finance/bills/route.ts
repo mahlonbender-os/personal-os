@@ -1,16 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
+import { num, readWorkbook, serviceClient, upcomingBills } from '@/lib/financeRead';
+import { FINANCE_SHEET_SOURCE, FINANCE_USER_ID, easternToday } from '@/lib/financeSheet';
 
 export const dynamic = 'force-dynamic';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -18,14 +12,36 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const today = easternToday();
+  const book = await readWorkbook(session.accessToken);
+  if (book) {
+    const bills = upcomingBills(book, today);
+    const mine = bills.filter((bill) => bill.owner.trim().toLowerCase() !== 'bree');
+    const bree = bills.filter((bill) => bill.owner.trim().toLowerCase() === 'bree');
+    return NextResponse.json(
+      { bills: mine, breeBills: bree },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
+  }
+
+  const supabase = serviceClient();
   const { data, error } = await supabase
     .from('bills')
     .select('id, name, category, amount, due_day, due_date, payment_account, status')
-    .eq('user_id', USER_ID)
+    .eq('user_id', FINANCE_USER_ID)
+    .eq('source', FINANCE_SHEET_SOURCE)
     .eq('status', 'Upcoming')
-.gte('due_date', new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }))
     .order('due_date', { ascending: true });
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ bills: data || [] });
+
+  const bills = (data || []).map((bill) => ({
+    ...bill,
+    amount: num(bill.amount),
+    amount_type: num(bill.amount) > 0 ? 'Fixed' : 'Varies',
+    owner: '',
+  }));
+  return NextResponse.json(
+    { bills, breeBills: [] },
+    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+  );
 }

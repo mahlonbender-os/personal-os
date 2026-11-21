@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { performSheetsSync } from '@/lib/syncSheets';
 
+// Re-reads the new Finance sheet into Supabase. It never calls the abandoned
+// sheet and never writes to Google. Only rows tagged source = finance_sheet
+// are replaced, so this cron cannot put the old July data back.
+
 export const dynamic = 'force-dynamic';
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';

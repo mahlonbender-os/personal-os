@@ -6,6 +6,10 @@ module.exports = {
       padding: {
         safe: 'env(safe-area-inset-bottom)',
       },
+      fontFamily: {
+        display: ['var(--font-syne)', 'sans-serif'],
+        mono: ['var(--font-plex)', 'ui-monospace', 'monospace'],
+      },
     },
   },
   plugins: [],

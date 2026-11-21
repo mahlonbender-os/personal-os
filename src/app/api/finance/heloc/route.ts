@@ -1,42 +1,46 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
+import { firstApr, helocBalance, helocDebt, normName } from '@/lib/financeSheet';
+import { readTransactions, readWorkbook } from '@/lib/financeRead';
 
 export const dynamic = 'force-dynamic';
-const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
+
+function isHelocAccount(account: string): boolean {
+  return normName(account).includes('heloc');
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const [book, transactions] = await Promise.all([
+    readWorkbook(session.accessToken),
+    readTransactions(session.accessToken),
+  ]);
 
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('id, date, merchant, amount, category')
-    .eq('user_id', USER_ID)
-    .eq('account', 'Members 1st HELOC')
-    .order('date', { ascending: false })
-    .order('id', { ascending: false });
+  const rows = transactions
+    .filter((row) => isHelocAccount(row.account))
+    .map((row) => ({
+      id: row.id,
+      transaction_date: row.date,
+      transaction_type: row.amount > 0 ? 'deposit' : 'draw',
+      amount: Math.abs(row.amount),
+      running_balance: 0,
+      description: row.merchant,
+      category: row.category,
+      owner: row.owner,
+      status: row.status,
+    }));
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // Shape into the format HelocTab expects
-  const transactions = (data || []).map(tx => ({
-    id: tx.id,
-    transaction_date: tx.date,
-    transaction_type: tx.category === 'Income' ? 'deposit' : 'draw',
-    amount: Math.abs(parseFloat(String(tx.amount))),
-    running_balance: 0, // not tracked per-row from Sheets; balance shown from net-worth
-    description: tx.merchant,
-  }));
-
-  return NextResponse.json(
-    { transactions },
-    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-  );
+  const debt = book ? helocDebt(book) : undefined;
+  return NextResponse.json({
+    transactions: rows,
+    balance: book ? helocBalance(book) : 0,
+    creditLimit: debt?.creditLimit || 0,
+    apr: firstApr(debt?.apr),
+    breeHelocShare: book?.latestBalance?.breeHelocShare || 0,
+    mahlonHelocShare: book?.latestBalance?.mahlonHelocShare || 0,
+    asOf: book?.latestBalance?.date || null,
+  }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
 }

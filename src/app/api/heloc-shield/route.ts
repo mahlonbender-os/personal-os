@@ -1,135 +1,101 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createClient } from '@supabase/supabase-js';
+import {
+  easternToday,
+  easternYearMonth,
+  firstApr,
+  helocBalance,
+  helocDebt,
+  normName,
+} from '@/lib/financeSheet';
+import { num, readTransactions, readWorkbook, serviceClient } from '@/lib/financeRead';
 
 export const dynamic = 'force-dynamic';
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
+function monthEnd(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${ym}-${String(dim).padStart(2, '0')}`;
+}
+
+function daysBetween(start: string, end: string): number {
+  const [ys, ms, ds] = start.split('-').map(Number);
+  const [ye, me, de] = end.split('-').map(Number);
+  return Math.max(0, Math.round((Date.UTC(ye, me - 1, de) - Date.UTC(ys, ms - 1, ds)) / 86400000));
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const today = easternToday();
+    const month = easternYearMonth();
+    const monthStart = `${month}-01`;
+    const end = monthEnd(month);
+
+    let helocRate = 8.5;
+    let currentBalance = 0;
+    let creditLimit = 0;
+    let breeHelocShare = 0;
+    let mahlonHelocShare = 0;
+    let dataSource = 'finance_sheet';
+
+    const book = await readWorkbook(session.accessToken);
+    if (book) {
+      currentBalance = helocBalance(book);
+      const debt = helocDebt(book);
+      const apr = firstApr(debt?.apr);
+      if (apr != null) helocRate = apr;
+      if (debt?.creditLimit) creditLimit = debt.creditLimit;
+      breeHelocShare = book.latestBalance?.breeHelocShare || 0;
+      mahlonHelocShare = book.latestBalance?.mahlonHelocShare || 0;
+    } else {
+      dataSource = 'home_profile';
+      const supabase = serviceClient();
+      const { data: home } = await supabase
+        .from('home_profile')
+        .select('heloc_interest_rate, heloc_current_balance, heloc_credit_limit')
+        .eq('user_id', USER_ID)
+        .maybeSingle();
+      if (home?.heloc_credit_limit) creditLimit = num(home.heloc_credit_limit);
+      if (home?.heloc_interest_rate) helocRate = num(home.heloc_interest_rate);
+      if (home?.heloc_current_balance) currentBalance = Math.abs(num(home.heloc_current_balance));
     }
 
-    // 1. Establish strict structural defaults
-    let helocRate = 8.25;
-    let currentBalance = 45000.00;
-    let creditLimit = 100000.00;
+    const txs = (await readTransactions(session.accessToken))
+      .filter((row) => normName(row.account).includes('heloc'))
+      .filter((row) => row.date >= monthStart && row.date <= end);
+
     let totalIncomeDeposited = 0;
-    let interestShieldedThisMonth = 0; 
-    let dataSource = 'live_database_calendar';
-
-    // Establish hard calendar-month boundaries based on local Eastern Time
-    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
-    const currentYear = todayStr.substring(0, 4);
-    const currentMonth = todayStr.substring(5, 7);
-    const monthStart = `${currentYear}-${currentMonth}-01`;
-    
-    const lastDayObj = new Date(parseInt(currentYear), parseInt(currentMonth), 0);
-    const monthEnd = `${currentYear}-${currentMonth}-${String(lastDayObj.getDate()).padStart(2, '0')}`;
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    // 2. Fetch home profile for rate, limit, and anchor balance
-    const { data: home } = await supabase
-      .from('home_profile')
-      .select('heloc_interest_rate, heloc_current_balance, heloc_credit_limit, updated_at')
-      .eq('user_id', USER_ID)
-      .maybeSingle();
-
-    let anchorBalance = 45000;
-    let anchorDate = '2026-06-21';
-
-    if (home) {
-      if (home.heloc_credit_limit) creditLimit = parseFloat(String(home.heloc_credit_limit));
-      if (home.heloc_interest_rate) helocRate = parseFloat(String(home.heloc_interest_rate));
-      if (home.heloc_current_balance) anchorBalance = Math.abs(parseFloat(String(home.heloc_current_balance)));
-      if (home.updated_at) anchorDate = home.updated_at.substring(0, 10);
-    }
-
-    // 3. Derive current balance from transactions since anchor date
-    // Positive transactions (income deposits) reduce HELOC balance
-    // Negative transactions (draws) increase HELOC balance
-    // current_balance = anchor_balance - sum(all transactions since anchor)
-    const { data: allHeloc } = await supabase
-      .from('transactions')
-      .select('amount')
-      .eq('user_id', USER_ID)
-      .eq('account', 'Members 1st HELOC')
-      .gt('date', anchorDate);
-
-    const netChange = (allHeloc || []).reduce(
-      (sum, t) => sum + parseFloat(String(t.amount)), 0
-    );
-    currentBalance = Math.max(0, anchorBalance - netChange);
-
+    let interestShieldedThisMonth = 0;
     const annualRate = helocRate > 1 ? helocRate / 100 : helocRate;
     const dailyRate = annualRate / 365;
 
-    // 3. Query transactions strictly within this calendar month boundaries
-    const { data: txs, error: txError } = await supabase
-      .from('transactions')
-      .select('date, amount, category')
-      .eq('user_id', USER_ID)
-      .eq('account', 'Members 1st HELOC')
-      .gte('date', monthStart)
-      .lte('date', monthEnd);
-
-    // 4. Calculate absolute interest shield metrics
-    if (!txError && txs && txs.length > 0) {
-      let calculatedShield = 0;
-      let calculatedInjections = 0;
-      const incomeCategories = ['income', 'other inc.', 'roth ira', '401k', 'hsa', 'bree'];
-      
-      const [ey, em, ed] = monthEnd.split('-');
-      const targetEnd = new Date(parseInt(ey), parseInt(em) - 1, parseInt(ed));
-
-      txs.forEach((tx) => {
-        const amountVal = parseFloat(String(tx.amount || 0));
-        const catNormalized = String(tx.category || '').toLowerCase().trim();
-        
-        // Income categories or manual positive injections counted as debt paydown acceleration
-        const isIncome = incomeCategories.includes(catNormalized) || amountVal > 0;
-        
-        if (isIncome && tx.date) {
-          const absAmount = Math.abs(amountVal);
-          calculatedInjections += absAmount;
-
-          const [ty, tm, td] = tx.date.split('-');
-          const txDate = new Date(parseInt(ty), parseInt(tm) - 1, parseInt(td));
-          
-          const diffTime = targetEnd.getTime() - txDate.getTime();
-          const daysInHELOC = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-
-          calculatedShield += absAmount * dailyRate * daysInHELOC;
-        }
-      });
-
-      totalIncomeDeposited = calculatedInjections;
-      interestShieldedThisMonth = calculatedShield;
+    for (const tx of txs) {
+      if (tx.amount <= 0) continue;
+      totalIncomeDeposited += tx.amount;
+      interestShieldedThisMonth += tx.amount * dailyRate * daysBetween(tx.date, end);
     }
 
-    return NextResponse.json(
-      {
-        helocRate: helocRate > 1 ? helocRate : helocRate * 100,
-        currentBalance,
-        creditLimit,
-        totalIncomeDeposited,
-        interestShieldedThisMonth,
-        estimatedDailyAccrual: currentBalance * (annualRate / 365),
-        cycleDateRange: { start: monthStart, end: monthEnd },
-        dataSource
-      },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    );
+    return NextResponse.json({
+      helocRate: helocRate > 1 ? helocRate : helocRate * 100,
+      currentBalance,
+      creditLimit,
+      breeHelocShare,
+      mahlonHelocShare,
+      totalIncomeDeposited,
+      interestShieldedThisMonth,
+      estimatedDailyAccrual: currentBalance * dailyRate,
+      cycleDateRange: { start: monthStart, end },
+      dataSource,
+      asOf: book?.latestBalance?.date || today,
+    }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error) {
-    console.error('Critical velocity metric loop crash handler:', error);
+    console.error('[heloc-shield]', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Internal system calculation failure' }, { status: 500 });
   }
 }
