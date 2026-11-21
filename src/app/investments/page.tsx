@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 import BottomNav from '@/components/BottomNav';
-import { useHaptics } from '@/context/HapticContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,14 +104,6 @@ function actionColor(action: string) {
   if (action === 'BUY') return { bg: 'bg-[#22c55e]/10', text: 'text-[#22c55e]' };
   if (action === 'REINVEST') return { bg: 'bg-[#f0a050]/10', text: 'text-[#f0a050]' };
   return { bg: 'bg-[#ef4444]/10', text: 'text-[#ef4444]' };
-}
-
-function actionBtnClass(action: string, selected: string) {
-  const active = action === selected;
-  if (!active) return 'bg-black border-[#2a2a2a] text-[#555]';
-  if (action === 'BUY') return 'bg-[#22c55e]/20 border-[#22c55e] text-[#22c55e]';
-  if (action === 'SELL') return 'bg-[#ef4444]/20 border-[#ef4444] text-[#ef4444]';
-  return 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]';
 }
 
 // ─── Spinner ─────────────────────────────────────────────────────────────────
@@ -235,7 +226,6 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function InvestmentsPage() {
-  const { triggerHaptic } = useHaptics();
   const [activeTab, setActiveTab] = useState(0);
   const [data, setData] = useState<InvestmentData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -249,29 +239,6 @@ export default function InvestmentsPage() {
   const [snapshotForm, setSnapshotForm] = useState({ snapshot_date: '', total_value: '', roth_ira_value: '', hsa_value: '', notes: '' });
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [deleteSnapshotId, setDeleteSnapshotId] = useState<string | null>(null);
-
-  // Modal state
-  const [showModal, setShowModal] = useState(false);
-  const [formDate, setFormDate] = useState('');
-  const [formAccount, setFormAccount] = useState('Roth IRA');
-  const [formSecurity, setFormSecurity] = useState('VOO');
-  const [formAction, setFormAction] = useState('BUY');
-  const [formShares, setFormShares] = useState('');
-  const [formPrice, setFormPrice] = useState('');
-  const [formAmount, setFormAmount] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // Fidelity cash — entered by hand, never derived from trades
-  const [showCashModal, setShowCashModal] = useState(false);
-  const [cashAccount, setCashAccount] = useState('Roth IRA');
-  const [cashAmount, setCashAmount] = useState('');
-  const [savingCash, setSavingCash] = useState(false);
-  const [cashError, setCashError] = useState('');
-
-  // Delete confirm state
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [editTrade, setEditTrade] = useState<Trade | null>(null);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -346,136 +313,6 @@ export default function InvestmentsPage() {
     fetchData();
     fetchHistory();
   }, []);
-
-  // Detect ?openTrade=true from Command Center shortcut
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('openTrade') === 'true') {
-      // Switch to Trade Log tab and open modal
-      setActiveTab(1);
-      openModal();
-      window.history.replaceState({}, '', '/investments');
-    }
-  }, []);
-
-  // Auto-calculate total amount from shares × price
-  useEffect(() => {
-    if (!formShares || !formPrice) return;
-    const total = parseFloat(formShares) * parseFloat(formPrice);
-    if (!isNaN(total)) setFormAmount(total.toFixed(2));
-  }, [formShares, formPrice]);
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
-
-  function openModal(trade?: Trade) {
-    setEditTrade(trade || null);
-    setFormDate(trade?.date || new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }));
-    setFormAccount(trade?.account || 'Roth IRA');
-    setFormSecurity(trade?.security || 'VOO');
-    setFormAction(trade?.action || 'BUY');
-    setFormShares(trade ? String(trade.shares) : '');
-    setFormPrice(trade ? (parseFloat(String(trade.amount)) / parseFloat(String(trade.shares))).toFixed(2) : '');
-    setFormAmount(trade ? String(trade.amount) : '');
-    setShowModal(true);
-  }
-
-  async function handleSaveTrade() {
-    if (!formDate || !formAmount || !formShares || !formPrice) return;
-    setSaving(true);
-    try {
-      if (editTrade) {
-        await fetch(`/api/finance/investments?id=${editTrade.id}`, { method: 'DELETE' });
-      }
-      const res = await fetch('/api/finance/investments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: formDate,
-          account: formAccount,
-          security: formSecurity,
-          action: formAction,
-          amount: parseFloat(formAmount),
-          shares: parseFloat(formShares),
-        }),
-      });
-      if (!res.ok) throw new Error('Save failed');
-      setShowModal(false);
-      setEditTrade(null);
-      await fetchData();
-    } catch (e) {
-      console.error('Save trade error:', e);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!deleteId) return;
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/finance/investments?id=${deleteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Delete failed');
-      const next = new Set(expandedTrades);
-      next.delete(deleteId);
-      setExpandedTrades(next);
-      setDeleteId(null);
-      await fetchData();
-    } catch (e) {
-      console.error('Delete error:', e);
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  function prefillCashAmount(account: string) {
-    const existing = data?.accounts?.find(a => a.name === account);
-    setCashAmount(
-      existing && Number.isFinite(existing.uninvestedCash)
-        ? existing.uninvestedCash.toFixed(2)
-        : ''
-    );
-  }
-
-  function openCashModal(account?: string) {
-    const name = account === 'HSA' ? 'HSA' : 'Roth IRA';
-    setCashAccount(name);
-    prefillCashAmount(name);
-    setCashError('');
-    setShowCashModal(true);
-  }
-
-  function chooseCashAccount(account: string) {
-    setCashAccount(account);
-    prefillCashAmount(account);
-  }
-
-  async function handleSaveCash() {
-    const amount = parseFloat(cashAmount);
-    if (!Number.isFinite(amount)) {
-      setCashError('Enter the cash amount from Fidelity');
-      return;
-    }
-    setSavingCash(true);
-    setCashError('');
-    try {
-      const res = await fetch('/api/finance/investments/cash', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: cashAccount, cash_balance: amount }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Save failed');
-      triggerHaptic('success');
-      setShowCashModal(false);
-      try { localStorage.removeItem('cc_investments_v1'); } catch {}
-      await fetchData();
-    } catch (e) {
-      setCashError(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      setSavingCash(false);
-    }
-  }
 
   function openSnapshotModal() {
     const t = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
@@ -553,11 +390,11 @@ export default function InvestmentsPage() {
                 <button
                   onClick={() => {
                     if (navigator.vibrate) navigator.vibrate(8);
-                    activeTab === 0 ? triggerRefresh() : openModal();
+                    triggerRefresh();
                   }}
                   className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
                 >
-                  {activeTab === 0 ? 'Sync' : 'Log Trade'}
+                  Sync
                 </button>
               </div>
             </div>
@@ -675,16 +512,6 @@ export default function InvestmentsPage() {
                       </div>
                     </div>
                   )}
-
-                  <div className="flex items-center justify-between px-1 pt-1">
-                    <span className="text-[#555] text-xs font-semibold uppercase tracking-wider">Accounts</span>
-                    <button
-                      onClick={() => { triggerHaptic('light'); openCashModal(); }}
-                      className="text-[11px] font-semibold text-[#f0a050] bg-[#f0a050]/10 border border-[#f0a050]/40 rounded-lg px-2.5 py-1 active:opacity-70"
-                    >
-                      Update cash
-                    </button>
-                  </div>
 
                   {(data?.accounts || []).map((acc, i) => (
                     <div key={i} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 space-y-3">
@@ -808,20 +635,6 @@ export default function InvestmentsPage() {
                                     <span className="text-white font-bold">{t.date}</span>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-4 pt-1.5 border-t border-[#1a1a1a]/40">
-                                  <button
-                                    onClick={() => { setExpandedTrades(new Set()); openModal(t); }}
-                                    className="text-[#f0a050] text-xs font-semibold uppercase tracking-wider"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    onClick={() => setDeleteId(t.id)}
-                                    className="text-[#ef4444] text-xs font-semibold uppercase tracking-wider"
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
                               </div>
                             )}
                           </div>
@@ -838,109 +651,6 @@ export default function InvestmentsPage() {
 
       {/* Fixed: prop is `active` not `activeTab` */}
       <BottomNav active="more" />
-
-      {/* Log Trade Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
-            <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
-              <span className="font-bold text-base text-white font-mono uppercase tracking-wide">{editTrade ? 'Edit Trade' : 'Log Trade'}</span>
-              <button onClick={() => { setShowModal(false); setEditTrade(null); }} className="text-[#555] text-lg p-1">✕</button>
-            </div>
-            <div className="px-5 pt-4 space-y-4">
-
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Date</div>
-                <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)}
-                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]" />
-              </div>
-
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Account</div>
-                <div className="flex gap-2">
-                  {['Roth IRA', 'HSA'].map(a => (
-                    <button key={a} onClick={() => setFormAccount(a)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${formAccount === a ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]' : 'bg-black border-[#1a1a1a] text-[#555]'}`}>
-                      {a}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Security</div>
-                <div className="flex gap-2">
-                  {['VOO', 'TSLA'].map(s => (
-                    <button key={s} onClick={() => setFormSecurity(s)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-mono font-semibold border transition-colors ${formSecurity === s ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]' : 'bg-black border-[#1a1a1a] text-[#555]'}`}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Action</div>
-                <div className="flex gap-2">
-                  {['BUY', 'SELL', 'REINVEST'].map(a => (
-                    <button key={a} onClick={() => setFormAction(a)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${actionBtnClass(a, formAction)}`}>
-                      {a}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Shares</div>
-                <input type="number" inputMode="decimal" placeholder="0.000" value={formShares} onChange={e => setFormShares(e.target.value)}
-                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]" />
-              </div>
-
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Price Per Share ($)</div>
-                <input type="number" inputMode="decimal" placeholder="0.00" value={formPrice} onChange={e => setFormPrice(e.target.value)}
-                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]" />
-              </div>
-
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Total Amount (auto-calc)</div>
-                <input type="number" inputMode="decimal" placeholder="0.00" value={formAmount} onChange={e => setFormAmount(e.target.value)}
-                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]" />
-              </div>
-            </div>
-
-            <div className="flex gap-3 px-5 pt-5">
-              <button onClick={() => { setShowModal(false); setEditTrade(null); }}
-                className="flex-1 py-3 bg-black border border-[#1a1a1a] text-[#555] rounded-xl text-sm font-semibold">
-                Cancel
-              </button>
-              <button onClick={handleSaveTrade} disabled={saving}
-                className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-bold uppercase font-mono tracking-wide text-black disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Trade'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete confirmation */}
-      {deleteId && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#1a1a1a]">
-            <div className="text-center mb-5">
-              <div className="text-base font-bold mb-1 text-white">Delete Trade?</div>
-              <div className="text-[#555] text-xs">This cannot be undone.</div>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 py-3 rounded-xl bg-black border border-[#1a1a1a] text-white text-sm font-semibold">Keep</button>
-              <button onClick={handleDelete} disabled={deleting} className="flex-1 bg-[#ef4444] rounded-xl text-sm font-bold text-white font-mono uppercase tracking-wide disabled:opacity-50 py-3">
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Snapshot Modal */}
       {showSnapshotModal && (
@@ -982,54 +692,6 @@ export default function InvestmentsPage() {
         </div>
       )}
 
-      {/* Update Fidelity cash — sibling of PullToRefresh, not inside it */}
-      {showCashModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
-            <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
-              <span className="font-bold text-base text-white">Update cash</span>
-              <button onClick={() => setShowCashModal(false)} className="text-[#555] text-lg p-1">✕</button>
-            </div>
-            <div className="px-5 pt-4 space-y-4">
-              <p className="text-[11px] text-[#444]">Enter the cash balance shown in Fidelity. Logging a trade does not change this.</p>
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Account</div>
-                <div className="flex gap-2">
-                  {['Roth IRA', 'HSA'].map(a => (
-                    <button key={a} onClick={() => chooseCashAccount(a)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${cashAccount === a ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]' : 'bg-black border-[#1a1a1a] text-[#555]'}`}>
-                      {a}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Fidelity cash balance</div>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={cashAmount}
-                  onChange={e => setCashAmount(e.target.value)}
-                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
-                />
-                <p className="text-[10px] text-[#444] font-mono mt-1">
-                  Stored as of {formatEasternDate(data?.accounts?.find(a => a.name === cashAccount)?.cashUpdatedAt)}
-                </p>
-              </div>
-              {cashError && <p className="text-[#ef4444] text-xs">{cashError}</p>}
-            </div>
-            <div className="flex gap-3 px-5 pt-5">
-              <button onClick={() => setShowCashModal(false)} className="flex-1 py-3 bg-black border border-[#1a1a1a] text-[#555] rounded-xl text-sm font-semibold">Cancel</button>
-              <button onClick={handleSaveCash} disabled={savingCash}
-                className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-bold text-black disabled:opacity-50">
-                {savingCash ? 'Saving…' : 'Save cash'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Snapshot delete confirm */}
       {deleteSnapshotId && (
