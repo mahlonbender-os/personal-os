@@ -17,7 +17,8 @@ async function persistRefreshToken(refreshToken: string | undefined) {
         { onConflict: 'user_id' }
       );
   } catch (e) {
-    console.error('[auth] persist_refresh_token_failed', e);
+    const message = e instanceof Error ? e.message : 'persist failed';
+    console.error('[auth] persist_refresh_token_failed', message);
   }
 }
 
@@ -36,7 +37,11 @@ async function refreshAccessToken(refreshToken: string) {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(`Token refresh failed: ${data.error}`);
+    const err = new Error(
+      `Token refresh failed: ${typeof data?.error === 'string' ? data.error : 'unknown'}`
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
 
   return {
@@ -95,7 +100,12 @@ export const authOptions: AuthOptions = {
           error: undefined,
         };
       } catch (e) {
-        console.error('Token refresh error:', e);
+        const err = e as { message?: string; status?: number };
+        console.error(
+          'Token refresh error:',
+          err?.message ?? 'unknown',
+          typeof err?.status === 'number' ? `status=${err.status}` : ''
+        );
         return {
           ...token,
           error: 'RefreshTokenError',

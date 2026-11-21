@@ -5,6 +5,20 @@ import { authOptions } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+function logGoogleError(label: string, error: unknown) {
+  const err = error as {
+    message?: string;
+    status?: number;
+    code?: unknown;
+    response?: { status?: number };
+  };
+  const status =
+    err?.response?.status ??
+    (typeof err?.status === 'number' ? err.status : undefined) ??
+    (typeof err?.code === 'number' ? err.code : undefined);
+  console.error(label, err?.message ?? 'unknown', status !== undefined ? `status=${status}` : '');
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -53,7 +67,7 @@ export async function GET() {
       lastUpdated: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }),
     });
   } catch (error: any) {
-    console.error('Real estate data bridge failure:', error);
+    logGoogleError('Real estate data bridge failure:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

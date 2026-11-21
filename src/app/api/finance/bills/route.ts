@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +13,11 @@ const supabase = createClient(
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { data, error } = await supabase
     .from('bills')
     .select('id, name, category, amount, due_day, due_date, payment_account, status')

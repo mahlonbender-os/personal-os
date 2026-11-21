@@ -3,6 +3,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { google } from "googleapis";
 
+function logGoogleError(label: string, error: unknown) {
+  const err = error as {
+    message?: string;
+    status?: number;
+    code?: unknown;
+    response?: { status?: number };
+  };
+  const status =
+    err?.response?.status ??
+    (typeof err?.status === "number" ? err.status : undefined) ??
+    (typeof err?.code === "number" ? err.code : undefined);
+  console.error(label, err?.message ?? "unknown", status !== undefined ? `status=${status}` : "");
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -37,7 +51,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("Delete event error:", error);
+    logGoogleError("Delete event error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to delete event" },
       { status: 500 }
