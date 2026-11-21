@@ -3,6 +3,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { google } from "googleapis";
 
+function logGoogleError(label: string, error: unknown) {
+  const err = error as {
+    message?: string;
+    status?: number;
+    code?: unknown;
+    response?: { status?: number };
+  };
+  const status =
+    err?.response?.status ??
+    (typeof err?.status === "number" ? err.status : undefined) ??
+    (typeof err?.code === "number" ? err.code : undefined);
+  console.error(label, err?.message ?? "unknown", status !== undefined ? `status=${status}` : "");
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -67,7 +81,7 @@ export async function GET(request: NextRequest) {
         });
       } catch (e) {
         // Skip calendars we can't read
-        console.error(`Error fetching calendar ${cal.id}:`, e);
+        logGoogleError(`Error fetching calendar ${cal.id}:`, e);
       }
     }
 
@@ -80,7 +94,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ events: allEvents, calendars });
   } catch (error: any) {
-    console.error("Calendar events error:", error);
+    logGoogleError("Calendar events error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to fetch events" },
       { status: 500 }

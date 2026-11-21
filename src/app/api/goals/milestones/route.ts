@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -9,6 +11,11 @@ const supabase = createClient(
 // PATCH — toggle milestone completion
 export async function PATCH(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.accessToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, is_completed } = body;
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
@@ -33,6 +40,11 @@ export async function PATCH(request: NextRequest) {
 // DELETE — delete milestone
 export async function DELETE(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.accessToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
