@@ -6,9 +6,6 @@ import NewsCard from '@/components/command-center/NewsCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ACCOUNTS = ['1stFinancial','401K','AidVantage','American Express Blue Cash Preferred','Apple',"Capital One BJ's",'Capital One Savor','Chase Sapphire Preferred','Fidelity','Home — Zestimate','HSA','Members 1st Checking','Members 1st HELOC','Roth IRA','Wells Fargo'];
-const CATEGORIES = ['401K','Bree','Car Insurance','Dining Out','Electric','Entertainment','Groceries','Gym','Housing','HSA','Income','Internet','Knox','Other Exp.','Other Inc.','Personal','Phone','Roth IRA','Student Loan','Subscriptions','Transfer','Transportation','UGI Gas','Water'];
-const INCOME_CATS = ['Income','Other Inc.','Roth IRA','401K','HSA','Bree'];
 const CARDIO_TYPES = ['Run','Walk','Bike','Swim','Rowing','Elliptical','HIIT','Other'];
 const INV_ACCOUNTS = ['Roth IRA','HSA'];
 const INV_SECURITIES = ['VOO','TSLA'];
@@ -104,40 +101,6 @@ function ModalSelect({value, onChange, options}: {value:string; onChange:(v:stri
       <option value="" className="bg-[#2c2c2e]">Select…</option>
       {options.map(o=><option key={o} value={o} className="bg-[#2c2c2e]">{o}</option>)}
     </select>
-  );
-}
-
-// ─── Quick Expense Modal ──────────────────────────────────────────────────────
-
-function ExpenseModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
-  const [form, setForm]=useState({date:today(),merchant:'',amount:'',account:'',category:'',txType:'expense'});
-  const [saving,setSaving]=useState(false); const [error,setError]=useState('');
-  function set(k:string,v:string){setForm(f=>({...f,[k]:v}));}
-  function cycleTxType(){setForm(f=>({...f,txType:f.txType==='expense'?'transfer':f.txType==='transfer'?'income':'expense'}));}
-  const meta: Record<string,{label:string;bg:string;text:string}> = {expense:{label:'− Expense',bg:'bg-[#ef4444]/20',text:'text-[#ef4444]'},transfer:{label:'⇄ Transfer',bg:'bg-[#888]/20',text:'text-[#888]'},income:{label:'+ Income',bg:'bg-[#22c55e]/20',text:'text-[#22c55e]'}};
-  const m=meta[form.txType];
-  async function handleSave(){
-    setError('');
-    if(!form.date||!form.merchant||!form.amount||!form.account||(form.txType!=='transfer'&&!form.category)){setError('All fields required');return;}
-    setError('Transactions are added on the Finance sheet. Personal OS only reads it.');
-    setSaving(false);
-  }
-  return (
-    <MiniModal title="New Transaction" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
-      <p className="text-[11px] text-[#f0a050] px-1">The Finance sheet is the source of truth. This app does not write to it.</p>
-      <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-        <ModalRow label="Date"><ModalInput type="date" value={form.date} onChange={v=>set('date',v)}/></ModalRow>
-        <ModalRow label="Merchant"><ModalInput value={form.merchant} onChange={v=>set('merchant',v)} placeholder="Where"/></ModalRow>
-        <ModalRow label="Amount">
-          <div className="flex items-center gap-2 w-full justify-end">
-            <button onClick={cycleTxType} className={`text-xs font-bold px-2.5 py-1 rounded-lg flex-shrink-0 ${m.bg} ${m.text}`}>{m.label}</button>
-            <ModalInput type="number" value={form.amount} onChange={v=>set('amount',v)} placeholder="0.00"/>
-          </div>
-        </ModalRow>
-        <ModalRow label={form.txType==='transfer'?'From':'Account'}><ModalSelect value={form.account} onChange={v=>set('account',v)} options={ACCOUNTS}/></ModalRow>
-        {form.txType!=='transfer'&&<ModalRow label="Category"><ModalSelect value={form.category} onChange={v=>set('category',v)} options={CATEGORIES}/></ModalRow>}
-      </div>
-    </MiniModal>
   );
 }
 
@@ -486,7 +449,6 @@ export default function CommandCenterCards() {
   },[]);
 
   const quickActions=[
-    {label:'+ Transaction',modal:'expense'},
     {label:'📊 Trade',modal:'trade'},
     {label:'⛽ Fuel',modal:'fuel'},
     {label:'💪 Workout',modal:'workout'},
@@ -533,7 +495,6 @@ export default function CommandCenterCards() {
         </div>
       </div>
 
-      {modal==='expense'&&<ExpenseModal onClose={()=>setModal(null)} onSaved={()=>{setModal(null);handleRefresh();}}/>}
       {modal==='fuel'&&<FuelModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
       {modal==='workout'&&<WorkoutModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
     </>
