@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 import BottomNav from '@/components/BottomNav';
+import { useHaptics } from '@/context/HapticContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface Account {
   name: string;
   sheetTotal: number;
   uninvestedCash: number;
+  cashUpdatedAt: string | null;
   stockValue: number;
   totalValue: number;
   holdings: Holding[];
@@ -59,7 +61,8 @@ interface HistoryPoint {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_KEY = 'investments-data-v2';
+const CACHE_KEY = 'investments-data-v3';
+const PREVIOUS_CACHE_KEY = 'investments-data-v2';
 const HISTORY_CACHE_KEY = 'investments-history-v4';
 const TABS = ['Overview', 'Trade Log'];
 const RANGES = ['1M', '3M', '6M', '1Y'];
@@ -74,6 +77,28 @@ const fmtShares = (n: number) => n.toFixed(3);
 
 function gainColor(v: number) {
   return v >= 0 ? '#22c55e' : '#ef4444';
+}
+
+function formatEasternDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
+}
+
+function isCachedInvestmentData(value: unknown): value is InvestmentData {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as InvestmentData;
+  if (!Array.isArray(data.accounts) || !Array.isArray(data.trades)) return false;
+  if (typeof data.totalPortfolioValue !== 'number') return false;
+  return data.accounts.every((account) => {
+    if (!account || typeof account !== 'object') return false;
+    return typeof account.name === 'string'
+      && typeof account.uninvestedCash === 'number'
+      && (account.cashUpdatedAt === null || typeof account.cashUpdatedAt === 'string')
+      && typeof account.totalValue === 'number'
+      && Array.isArray(account.holdings);
+  });
 }
 
 function actionColor(action: string) {
@@ -210,6 +235,7 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function InvestmentsPage() {
+  const { triggerHaptic } = useHaptics();
   const [activeTab, setActiveTab] = useState(0);
   const [data, setData] = useState<InvestmentData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -235,6 +261,13 @@ export default function InvestmentsPage() {
   const [formAmount, setFormAmount] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Fidelity cash — entered by hand, never derived from trades
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [cashAccount, setCashAccount] = useState('Roth IRA');
+  const [cashAmount, setCashAmount] = useState('');
+  const [savingCash, setSavingCash] = useState(false);
+  const [cashError, setCashError] = useState('');
+
   // Delete confirm state
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -247,8 +280,9 @@ export default function InvestmentsPage() {
       const res = await fetch('/api/finance/investments');
       if (!res.ok) return;
       const json = await res.json();
+      if (!isCachedInvestmentData(json)) return;
       setData(json);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(json));
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(json)); } catch {}
     } catch (e) {
       console.error('Investments fetch error:', e);
     } finally {
@@ -287,10 +321,20 @@ export default function InvestmentsPage() {
   };
 
   useEffect(() => {
+    try { localStorage.removeItem(PREVIOUS_CACHE_KEY); } catch {}
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
-      try { setData(JSON.parse(cached)); } catch {}
-      setLoading(false);
+      try {
+        const parsed = JSON.parse(cached);
+        if (isCachedInvestmentData(parsed)) {
+          setData(parsed);
+          setLoading(false);
+        } else {
+          localStorage.removeItem(CACHE_KEY);
+        }
+      } catch {
+        try { localStorage.removeItem(CACHE_KEY); } catch {}
+      }
     }
     try {
       const raw = localStorage.getItem(HISTORY_CACHE_KEY);
@@ -381,6 +425,55 @@ export default function InvestmentsPage() {
       console.error('Delete error:', e);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  function prefillCashAmount(account: string) {
+    const existing = data?.accounts?.find(a => a.name === account);
+    setCashAmount(
+      existing && Number.isFinite(existing.uninvestedCash)
+        ? existing.uninvestedCash.toFixed(2)
+        : ''
+    );
+  }
+
+  function openCashModal(account?: string) {
+    const name = account === 'HSA' ? 'HSA' : 'Roth IRA';
+    setCashAccount(name);
+    prefillCashAmount(name);
+    setCashError('');
+    setShowCashModal(true);
+  }
+
+  function chooseCashAccount(account: string) {
+    setCashAccount(account);
+    prefillCashAmount(account);
+  }
+
+  async function handleSaveCash() {
+    const amount = parseFloat(cashAmount);
+    if (!Number.isFinite(amount)) {
+      setCashError('Enter the cash amount from Fidelity');
+      return;
+    }
+    setSavingCash(true);
+    setCashError('');
+    try {
+      const res = await fetch('/api/finance/investments/cash', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: cashAccount, cash_balance: amount }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Save failed');
+      triggerHaptic('success');
+      setShowCashModal(false);
+      try { localStorage.removeItem('cc_investments_v1'); } catch {}
+      await fetchData();
+    } catch (e) {
+      setCashError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSavingCash(false);
     }
   }
 
@@ -583,6 +676,16 @@ export default function InvestmentsPage() {
                     </div>
                   )}
 
+                  <div className="flex items-center justify-between px-1 pt-1">
+                    <span className="text-[#555] text-xs font-semibold uppercase tracking-wider">Accounts</span>
+                    <button
+                      onClick={() => { triggerHaptic('light'); openCashModal(); }}
+                      className="text-[11px] font-semibold text-[#f0a050] bg-[#f0a050]/10 border border-[#f0a050]/40 rounded-lg px-2.5 py-1 active:opacity-70"
+                    >
+                      Update cash
+                    </button>
+                  </div>
+
                   {(data?.accounts || []).map((acc, i) => (
                     <div key={i} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 space-y-3">
                       <div className="flex justify-between items-center pb-2 border-b border-[#1a1a1a]">
@@ -592,7 +695,8 @@ export default function InvestmentsPage() {
                       <div className="grid grid-cols-2 gap-2">
                         <div className="bg-black/40 border border-[#1a1a1a] rounded-xl p-3">
                           <div className="text-[#555] text-[10px] uppercase mb-1">Uninvested Cash</div>
-                          <div className="font-mono text-white text-sm font-bold">{fmt(acc.uninvestedCash)}</div>
+                          <div className="font-mono text-white text-sm font-bold">{acc.uninvestedCash < 0 ? '-' : ''}{fmt(acc.uninvestedCash)}</div>
+                          <div className="text-[#444] text-[10px] font-mono mt-1">as of {formatEasternDate(acc.cashUpdatedAt)}</div>
                         </div>
                         <div className="bg-black/40 border border-[#1a1a1a] rounded-xl p-3">
                           <div className="text-[#555] text-[10px] uppercase mb-1">Market Value</div>
@@ -872,6 +976,55 @@ export default function InvestmentsPage() {
               <button onClick={handleSaveSnapshot} disabled={savingSnapshot || !snapshotForm.total_value}
                 className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-bold text-black disabled:opacity-50">
                 {savingSnapshot ? 'Saving…' : 'Save Snapshot'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Fidelity cash — sibling of PullToRefresh, not inside it */}
+      {showCashModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
+            <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
+              <span className="font-bold text-base text-white">Update cash</span>
+              <button onClick={() => setShowCashModal(false)} className="text-[#555] text-lg p-1">✕</button>
+            </div>
+            <div className="px-5 pt-4 space-y-4">
+              <p className="text-[11px] text-[#444]">Enter the cash balance shown in Fidelity. Logging a trade does not change this.</p>
+              <div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Account</div>
+                <div className="flex gap-2">
+                  {['Roth IRA', 'HSA'].map(a => (
+                    <button key={a} onClick={() => chooseCashAccount(a)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${cashAccount === a ? 'bg-[#f0a050]/20 border-[#f0a050] text-[#f0a050]' : 'bg-black border-[#1a1a1a] text-[#555]'}`}>
+                      {a}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">Fidelity cash balance</div>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={cashAmount}
+                  onChange={e => setCashAmount(e.target.value)}
+                  className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]"
+                />
+                <p className="text-[10px] text-[#444] font-mono mt-1">
+                  Stored as of {formatEasternDate(data?.accounts?.find(a => a.name === cashAccount)?.cashUpdatedAt)}
+                </p>
+              </div>
+              {cashError && <p className="text-[#ef4444] text-xs">{cashError}</p>}
+            </div>
+            <div className="flex gap-3 px-5 pt-5">
+              <button onClick={() => setShowCashModal(false)} className="flex-1 py-3 bg-black border border-[#1a1a1a] text-[#555] rounded-xl text-sm font-semibold">Cancel</button>
+              <button onClick={handleSaveCash} disabled={savingCash}
+                className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-bold text-black disabled:opacity-50">
+                {savingCash ? 'Saving…' : 'Save cash'}
               </button>
             </div>
           </div>

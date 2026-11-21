@@ -21,43 +21,6 @@ async function fetchQuote(symbol: string): Promise<{ price: number; d: number; d
   }
 }
 
-// ─── Source-of-truth cash recalculation ──────────────────────────────────────
-// contributions (transactions table, category = account name)
-// minus BUY/REINVEST trade amounts + SELL trade amounts
-async function recalculateCash(supabase: any, account: string): Promise<void> {
-  const { data: contribRows } = await supabase
-    .from('transactions')
-    .select('amount')
-    .eq('user_id', USER_ID)
-    .eq('category', account);
-
-  const contributions = (contribRows || []).reduce(
-    (sum: number, r: any) => sum + parseFloat(String(r.amount)), 0
-  );
-
-  const { data: tradeRows } = await supabase
-    .from('investment_transactions')
-    .select('action, amount')
-    .eq('user_id', USER_ID)
-    .eq('account', account);
-
-  let tradeNet = 0;
-  for (const t of (tradeRows || [])) {
-    const amt = parseFloat(String(t.amount));
-    if (t.action === 'BUY' || t.action === 'REINVEST') tradeNet -= amt;
-    else if (t.action === 'SELL') tradeNet += amt;
-  }
-
-  const newBalance = contributions + tradeNet;
-
-  await supabase
-    .from('investment_cash')
-    .upsert(
-      { user_id: USER_ID, account, cash_balance: newBalance, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id,account' }
-    );
-}
-
 // ─── GET ─────────────────────────────────────────────────────────────────────
 
 export async function GET() {
@@ -100,14 +63,22 @@ export async function GET() {
       // non-fatal
     }
 
-    const { data: cashRows } = await supabase
+    const { data: cashRows, error: cashError } = await supabase
       .from('investment_cash')
-      .select('account, cash_balance')
+      .select('account, cash_balance, updated_at')
       .eq('user_id', USER_ID);
 
+    if (cashError) {
+      console.error('investment_cash read error:', cashError.message);
+      return NextResponse.json({ error: cashError.message }, { status: 500 });
+    }
+
     const cashMap: Record<string, number> = {};
+    const cashUpdatedAt: Record<string, string | null> = {};
     (cashRows || []).forEach(r => {
-      cashMap[r.account] = parseFloat(String(r.cash_balance));
+      const balance = parseFloat(String(r.cash_balance));
+      cashMap[r.account] = Number.isFinite(balance) ? balance : 0;
+      cashUpdatedAt[r.account] = r.updated_at ?? null;
     });
 
     const { data: positionRows } = await supabase
@@ -129,6 +100,7 @@ export async function GET() {
     const accountList = accountNames.map(accountName => {
       const accountPositions = (positionRows || []).filter(p => p.account === accountName);
       const cash = cashMap[accountName] ?? 0;
+      const cashAsOf = cashUpdatedAt[accountName] ?? null;
 
       const holdings = accountPositions
         .filter(p => parseFloat(String(p.shares)) > 0)
@@ -162,6 +134,7 @@ export async function GET() {
         name: accountName,
         sheetTotal: sheetMap[accountName] || 0,
         uninvestedCash: cash,
+        cashUpdatedAt: cashAsOf,
         stockValue,
         totalValue: cash + stockValue,
         holdings,
@@ -250,9 +223,6 @@ export async function POST(req: Request) {
         .eq('user_id', USER_ID).eq('account', account).eq('security', security);
     }
 
-    // Recalculate cash from source of truth
-    await recalculateCash(supabase, account);
-
     return NextResponse.json({ success: true, trade: data }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
@@ -330,9 +300,6 @@ export async function DELETE(req: Request) {
       .eq('user_id', USER_ID)
       .eq('account', trade.account)
       .eq('security', trade.security);
-
-    // Recalculate cash from source of truth
-    await recalculateCash(supabase, trade.account);
 
     return NextResponse.json({ success: true }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },

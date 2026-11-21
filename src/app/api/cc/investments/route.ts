@@ -21,10 +21,12 @@ export async function GET() {
 
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-  const [{ data: positions }, { data: cash }] = await Promise.all([
+  const [{ data: positions }, { data: cash, error: cashError }] = await Promise.all([
     supabase.from('investment_positions').select('*').eq('user_id', USER_ID),
     supabase.from('investment_cash').select('*').eq('user_id', USER_ID),
   ]);
+
+  if (cashError) return NextResponse.json({ error: cashError.message }, { status: 500 });
 
   // Fetch live prices for all unique securities
   const securities = [...new Set((positions || []).map((p: any) => p.security))];
@@ -59,6 +61,7 @@ export async function GET() {
 
   for (const c of (cash || [])) {
     const bal = parseFloat(String(c.cash_balance));
+    if (!Number.isFinite(bal)) continue;
     if (!accountTotals[c.account]) accountTotals[c.account] = { value: 0, dailyChange: 0 };
     accountTotals[c.account].value += bal;
     totalValue += bal;
