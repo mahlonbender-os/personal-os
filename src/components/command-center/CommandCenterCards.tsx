@@ -7,8 +7,6 @@ import NewsCard from '@/components/command-center/NewsCard';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CARDIO_TYPES = ['Run','Walk','Bike','Swim','Rowing','Elliptical','HIIT','Other'];
-const INV_ACCOUNTS = ['Roth IRA','HSA'];
-const INV_SECURITIES = ['VOO','TSLA'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -144,43 +142,6 @@ function FuelModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
         <ModalRow label="Total ($)"><ModalInput type="number" value={form.total_cost} onChange={v=>set('total_cost',v)} placeholder="Auto-calc"/></ModalRow>
         <ModalRow label="Odometer"><ModalInput type="number" value={form.odometer} onChange={v=>set('odometer',v)} placeholder="Optional"/></ModalRow>
         <ModalRow label="Station"><ModalInput value={form.station} onChange={v=>set('station',v)} placeholder="Optional"/></ModalRow>
-      </div>
-    </MiniModal>
-  );
-}
-
-// ─── Quick Trade Modal ────────────────────────────────────────────────────────
-
-function TradeModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
-  const [form,setForm]=useState({date:today(),account:'Roth IRA',security:'VOO',action:'BUY',shares:'',amount:''});
-  const [saving,setSaving]=useState(false); const [error,setError]=useState('');
-  function set(k:string,v:string){setForm(f=>({...f,[k]:v}));}
-  async function handleSave(){
-    setError('');
-    if(!form.shares||!form.account||!form.security){setError('Account, security, and shares required');return;}
-    setSaving(true);
-    try {
-      const res=await fetch('/api/finance/investments/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:form.date,account:form.account,security:form.security,action:form.action,shares:parseFloat(form.shares),amount:form.amount?parseFloat(form.amount):null})});
-      if(!res.ok){const d=await res.json();throw new Error(d.error||'Failed');}
-      onSaved(); onClose();
-    } catch(e:any){setError(e.message);}
-    finally{setSaving(false);}
-  }
-  return (
-    <MiniModal title="Log Trade" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
-      <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-        <ModalRow label="Date"><ModalInput type="date" value={form.date} onChange={v=>set('date',v)}/></ModalRow>
-        <ModalRow label="Account"><ModalSelect value={form.account} onChange={v=>set('account',v)} options={INV_ACCOUNTS}/></ModalRow>
-        <ModalRow label="Security"><ModalSelect value={form.security} onChange={v=>set('security',v)} options={INV_SECURITIES}/></ModalRow>
-        <ModalRow label="Action">
-          <div className="flex gap-1">
-            {['BUY','SELL','REINVEST'].map(a=>(
-              <button key={a} onClick={()=>set('action',a)} className={`text-[10px] font-bold px-2 py-1 rounded ${form.action===a?(a==='BUY'?'bg-[#22c55e]/20 text-[#22c55e]':'bg-[#ef4444]/20 text-[#ef4444]'):'text-[#444]'}`}>{a}</button>
-            ))}
-          </div>
-        </ModalRow>
-        <ModalRow label="Shares"><ModalInput type="number" value={form.shares} onChange={v=>set('shares',v)} placeholder="0.000"/></ModalRow>
-        <ModalRow label="Amount ($)"><ModalInput type="number" value={form.amount} onChange={v=>set('amount',v)} placeholder="Optional"/></ModalRow>
       </div>
     </MiniModal>
   );
@@ -449,7 +410,6 @@ export default function CommandCenterCards() {
   },[]);
 
   const quickActions=[
-    {label:'📊 Trade',modal:'trade'},
     {label:'⛽ Fuel',modal:'fuel'},
     {label:'💪 Workout',modal:'workout'},
   ];
@@ -468,7 +428,7 @@ export default function CommandCenterCards() {
           </div>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             {quickActions.map(({label,modal:m})=>(
-              <button key={label} onClick={()=>{if(navigator.vibrate)navigator.vibrate(8);if(m==='sync')handleRefresh();else if(m==='trade'){window.location.href='/investments?openTrade=true';}else setModal(m);}}
+              <button key={label} onClick={()=>{if(navigator.vibrate)navigator.vibrate(8);setModal(m);}}
                 className="flex-shrink-0 text-[11px] font-semibold text-[#f0a050] border border-[#f0a050]/30 bg-[#f0a050]/5 px-3 py-1.5 rounded-full active:bg-[#f0a050]/15 transition-colors">
                 {label}
               </button>
