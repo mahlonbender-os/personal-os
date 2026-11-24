@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
+import Modal from '@/components/Modal';
 import HELOCInterestShield from '@/components/finance/HELOCInterestShield';
 import { MonthlyFlowTrend, NetWorthTrend, type FlowMonth, type NetWorthPoint } from '@/components/finance/NetWorthTrend';
 
@@ -110,11 +110,11 @@ interface SavingsGoal {
   is_complete: boolean;
 }
 
-type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth' | 'credit' | 'heloc' | 'subscriptions';
+type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth' | 'credit' | 'heloc';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Knox 🐾': '#f59e0b',
@@ -256,8 +256,7 @@ function readBillsCache(): Bill[] | null {
   }
 }
 
-async function syncSheets() {
-  await fetch('/api/sync/sheets', { method: 'POST' });
+function clearFinanceCache() {
   try {
     Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k));
   } catch {}
@@ -283,25 +282,27 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function DeleteSheet({ onCancel, onConfirm, deleting, message }: { onCancel: () => void; onConfirm: () => void; deleting: boolean; message?: string }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-      <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
-        <p className="text-base font-semibold text-white text-center mb-1">Delete this entry?</p>
-        {message && <p className="text-[11px] text-[#555] text-center mb-4">{message}</p>}
-        {!message && <div className="mb-4" />}
+    <Modal
+      title="Delete this entry?"
+      onClose={onCancel}
+      align="sheet"
+      footer={
         <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
-          <button onClick={onConfirm} disabled={deleting} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold disabled:opacity-40">
+          <button type="button" onClick={onCancel} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-base font-semibold">Cancel</button>
+          <button type="button" onClick={onConfirm} disabled={deleting} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-base font-semibold disabled:opacity-40">
             {deleting ? 'Deleting…' : 'Delete'}
           </button>
         </div>
-      </div>
-    </div>
+      }
+    >
+      <p className="text-center text-sm text-[#888]">{message || 'This cannot be undone.'}</p>
+    </Modal>
   );
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: number; onNavigateRow: (tab: Tab) => void; onAddGoal: () => void }) {
+function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNavigateRow: (tab: Tab) => void }) {
   const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number; savingsRate: number | null } | null>(null);
   const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number; mahlonNetWorth: number; asOf?: string } | null>(null);
   const [nwHistory, setNwHistory] = useState<NetWorthPoint[]>([]);
@@ -407,7 +408,7 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
           <p className="text-[32px] font-extrabold text-white leading-none font-display">
             {netWorth ? fmt(netWorth.netWorth) : '—'}
           </p>
-          {netWorth?.asOf && <p className="text-[10px] text-[#555] mt-1 font-mono">As of {netWorth.asOf}</p>}
+          {netWorth?.asOf && <p className="text-[10px] text-[#555] mt-1 font-mono">as of {netWorth.asOf}</p>}
           {netWorth && (
             <div className="flex gap-4 mt-2 text-[11px] text-[#555] font-mono">
               <span className="text-[#22c55e]">Assets {fmt(netWorth.totalAssets)}</span>
@@ -419,7 +420,7 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
             <div className="mt-3 pt-3 border-t border-[#1a1a1a]">
               <p className="text-[10px] font-semibold text-[#888] uppercase tracking-widest">Mahlon only</p>
               <p className="text-lg font-bold text-[#22c55e] font-mono mt-0.5">{fmt(netWorth.mahlonNetWorth)}</p>
-              <p className="text-[10px] text-[#555] mt-1">Sheet net worth plus Capital One BJ&apos;s and Bree&apos;s HELOC share</p>
+              <p className="text-[10px] text-[#555] mt-1">{historySource === 'daily' ? 'From the latest daily snapshot' : 'From the balances sheet'}</p>
             </div>
           )}
         </Card>
@@ -502,97 +503,6 @@ function OverviewTab({ onRefresh, onNavigateRow, onAddGoal }: { onRefresh: numbe
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Savings Goals */}
-      {(goals.length > 0 || true) && (
-        <div>
-          <div className="flex items-center justify-between px-1 mb-2">
-            <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Savings Goals</p>
-            <button onClick={onAddGoal} className="text-[11px] font-semibold text-[#f0a050] active:opacity-70">+ Add</button>
-          </div>
-          {goals.length === 0 ? (
-            <Card className="p-4">
-              <p className="text-[11px] text-[#333] text-center py-2">No savings goals yet — tap + Add to create one</p>
-            </Card>
-          ) : (
-            <Card className="overflow-hidden">
-              {goals.filter(g => !g.is_complete).map((goal, idx, arr) => {
-                const target = parseFloat(String(goal.target_amount));
-                const current = parseFloat(String(goal.current_amount));
-                const pct = target > 0 ? Math.min((current / target) * 100, 100) : 0;
-                const days = goal.target_date ? Math.round((new Date(goal.target_date + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000) : null;
-                const isExpanded = expandedGoalId === goal.id;
-                return (
-                  <div key={goal.id}>
-                    <div
-                      className={`px-4 py-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== arr.length - 1 || isExpanded ? 'border-b border-[#1a1a1a]' : ''}`}
-                      onClick={() => { setExpandedGoalId(isExpanded ? null : goal.id); setGoalUpdateAmt(current.toFixed(2)); }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-medium text-[#ccc]">{goal.name}</p>
-                        <div className="text-right">
-                          <p className="text-sm font-bold text-[#f0a050] font-mono">{fmt(current)}</p>
-                          <p className="text-[9px] text-[#444] font-mono">/ {fmt(target)}</p>
-                        </div>
-                      </div>
-                      <div className="h-[3px] bg-[#1a1a1a] rounded-full overflow-hidden mb-1.5">
-                        <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-[#22c55e]' : 'bg-[#f0a050]'}`} style={{ width: `${pct}%` }} />
-                      </div>
-                      <div className="flex justify-between text-[9px]">
-                        <span className={pct >= 100 ? 'text-[#22c55e]' : 'text-[#555]'}>{pct.toFixed(0)}% saved</span>
-                        {days !== null && <span className={days < 0 ? 'text-[#ef4444]' : days <= 30 ? 'text-[#f0a050]' : 'text-[#444]'}>{days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`}</span>}
-                      </div>
-                    </div>
-                    {isExpanded && (
-                      <div className={`px-4 py-3 bg-[#0d0d0d] ${idx !== arr.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                        <p className="text-[10px] text-[#444] mb-2">Update current balance</p>
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            value={goalUpdateAmt}
-                            onChange={e => setGoalUpdateAmt(e.target.value)}
-                            className="flex-1 bg-[#2c2c2e] text-white text-sm font-mono px-3 py-2 rounded-xl outline-none border border-[#3a3a3a] focus:border-[#f0a050]"
-                            placeholder="0.00"
-                          />
-                          <button
-                            disabled={updatingGoalId === goal.id}
-                            onClick={async () => {
-                              setUpdatingGoalId(goal.id);
-                              await fetch(`/api/finance/savings?id=${goal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_amount: parseFloat(goalUpdateAmt), is_complete: parseFloat(goalUpdateAmt) >= target }) });
-                              setUpdatingGoalId(null);
-                              setExpandedGoalId(null);
-                              load();
-                            }}
-                            className="px-4 py-2 rounded-xl bg-[#f0a050]/10 text-[#f0a050] text-sm font-semibold disabled:opacity-40"
-                          >
-                            {updatingGoalId === goal.id ? '…' : 'Update'}
-                          </button>
-                          <button
-                            onClick={async () => { await fetch(`/api/finance/savings?id=${goal.id}`, { method: 'DELETE' }); setExpandedGoalId(null); load(); }}
-                            className="px-3 py-2 rounded-xl bg-[#ef4444]/10 text-[#ef4444] text-sm font-semibold"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                        {goal.notes && <p className="text-[10px] text-[#444] mt-2">{goal.notes}</p>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {/* Completed goals */}
-              {goals.filter(g => g.is_complete).map((goal, idx, arr) => (
-                <div key={goal.id} className={`flex items-center px-4 py-3 gap-3 ${idx !== arr.length - 1 ? 'border-t border-[#1a1a1a]' : 'border-t border-[#1a1a1a]'}`}>
-                  <span className="text-[#22c55e] text-sm">✓</span>
-                  <p className="flex-1 text-sm text-[#444] line-through">{goal.name}</p>
-                  <p className="text-sm font-mono text-[#22c55e]">{fmt(parseFloat(String(goal.target_amount)))}</p>
-                  <button onClick={async () => { await fetch(`/api/finance/savings?id=${goal.id}`, { method: 'DELETE' }); load(); }} className="text-[10px] text-[#333] active:text-[#ef4444] ml-1">✕</button>
-                </div>
-              ))}
-            </Card>
-          )}
         </div>
       )}
 
@@ -812,11 +722,9 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── Transactions Tab ─────────────────────────────────────────────────────────
 
-function TransactionsTab({ onRefresh }: { onRefresh: number }) {
+function TransactionsTab({ onRefresh, searchQuery, selectedCategory, onCategories }: { onRefresh: number; searchQuery: string; selectedCategory: string; onCategories: (categories: string[]) => void }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -827,11 +735,13 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { setSearchQuery(''); setSelectedCategory('All'); load(); }, [load, onRefresh]);
+  useEffect(() => { load(); }, [load, onRefresh]);
 
   const mine = transactions.filter(tx => (tx.owner || '').toLowerCase() !== 'bree');
   const breeTx = transactions.filter(tx => (tx.owner || '').toLowerCase() === 'bree');
   const categories = ['All', ...Array.from(new Set(mine.map(t => t.category))).sort()];
+  const categoryKey = categories.join('|');
+  useEffect(() => { onCategories(categories); }, [categoryKey, onCategories]);
   const filtered = mine.filter(tx => {
     const matchCat = selectedCategory === 'All' || tx.category === selectedCategory;
     const matchSearch = !searchQuery || tx.merchant.toLowerCase().includes(searchQuery.toLowerCase());
@@ -857,33 +767,7 @@ function TransactionsTab({ onRefresh }: { onRefresh: number }) {
 
   return (
     <div className="animate-fadeIn">
-      {/* Sticky search + category chips */}
-      <div className="sticky top-0 bg-black z-10 -mx-4 px-4 pt-1 pb-3 space-y-2">
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#333] text-sm">🔍</span>
-          <input type="text" placeholder="Search transactions…" value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-9 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-sm text-[#ccc] placeholder-[#333] outline-none focus:border-[#f0a050]" />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555] text-sm active:text-white">✕</button>
-          )}
-        </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
-          {categories.map(cat => (
-            <button key={cat} onClick={() => setSelectedCategory(cat)}
-              className={`flex-shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                selectedCategory === cat
-                  ? 'bg-[#f0a050]/15 border-[#f0a050]/40 text-[#f0a050]'
-                  : 'bg-[#111] border-[#1a1a1a] text-[#555]'
-              }`}>
-              {cat || 'Transfer'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Transaction list */}
-      <div className="space-y-4 pt-1">
+      <div className="space-y-4">
         {loading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
         ) : filtered.length === 0 ? (
@@ -1342,7 +1226,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
       <div className="rounded-2xl bg-gradient-to-br from-[#1a1000] to-[#111] border border-[#f0a050]/20 p-5">
         <p className="text-[#f0a050]/60 text-sm mb-1">Net Worth</p>
         <p className="text-4xl font-bold text-white font-display tracking-tight">{fmt(data.netWorth)}</p>
-        {data.asOf && <p className="text-[10px] text-[#555] mt-1 font-mono">As of {data.asOf}</p>}
+        {data.asOf && <p className="text-[10px] text-[#555] mt-1 font-mono">as of {data.asOf}</p>}
         {isFiniteNumber(data.mahlonNetWorth) && (
           <div className="mt-3">
             <p className="text-[10px] uppercase tracking-widest text-[#888]">Mahlon only</p>
@@ -1737,38 +1621,15 @@ function FinancePageInner() {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [refreshCount, setRefreshCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
-
-  // ── Add Goal modal ───────────────────────────────────────────────────────
-  const [showAddGoal, setShowAddGoal] = useState(false);
-  const [goalForm, setGoalForm] = useState({ name: '', target_amount: '', current_amount: '', target_date: '', notes: '' });
-  const [goalSaving, setGoalSaving] = useState(false);
-  const [goalError, setGoalError] = useState('');
-
-  async function handleAddGoal() {
-    setGoalError('');
-    if (!goalForm.name || !goalForm.target_amount) { setGoalError('Name and target amount are required.'); return; }
-    setGoalSaving(true);
-    try {
-      const res = await fetch('/api/finance/savings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(goalForm) });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
-      setShowAddGoal(false);
-      setGoalForm({ name: '', target_amount: '', current_amount: '', target_date: '', notes: '' });
-      setRefreshCount(c => c + 1);
-    } catch (e: any) { setGoalError(e.message); }
-    finally { setGoalSaving(false); }
-  }
+  const [txSearch, setTxSearch] = useState('');
+  const [txCategory, setTxCategory] = useState('All');
+  const [txCategories, setTxCategories] = useState<string[]>(['All']);
 
   // ── Log Score modal ──────────────────────────────────────────────────────
   const [showAddScore, setShowAddScore] = useState(false);
   const [scoreForm, setScoreForm] = useState({ date: '', score: '', bureau: 'Experian', source: 'Credit Karma', notes: '' });
   const [scoreSaving, setScoreSaving] = useState(false);
   const [scoreError, setScoreError] = useState('');
-
-  // ── Add Subscription modal ───────────────────────────────────────────────
-  const [showAddSub, setShowAddSub] = useState(false);
-  const [subForm, setSubForm] = useState({ name: '', amount: '', billing_cycle: 'monthly', next_charge_date: '', category: 'Subscriptions', notes: '' });
-  const [subSaving, setSubSaving] = useState(false);
-  const [subError, setSubError] = useState('');
 
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
 
@@ -1789,26 +1650,9 @@ function FinancePageInner() {
     finally { setScoreSaving(false); }
   }
 
-  async function handleAddSub() {
-    setSubError('');
-    if (!subForm.name || !subForm.amount || !subForm.billing_cycle) { setSubError('Name, amount, and billing cycle are required.'); return; }
-    setSubSaving(true);
-    try {
-      const res = await fetch('/api/finance/subscriptions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subForm),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
-      setShowAddSub(false);
-      setSubForm({ name: '', amount: '', billing_cycle: 'monthly', next_charge_date: '', category: 'Subscriptions', notes: '' });
-      setRefreshCount(c => c + 1);
-    } catch (e: unknown) { setSubError(e instanceof Error ? e.message : 'Something went wrong.'); }
-    finally { setSubSaving(false); }
-  }
-
   const handleRefresh = useCallback(async () => {
     setSyncing(true);
-    await syncSheets();
+    clearFinanceCache();
     setSyncing(false);
     setRefreshCount(c => c + 1);
   }, []);
@@ -1824,220 +1668,150 @@ function FinancePageInner() {
     { id: 'networth', label: 'Net Worth' },
     { id: 'credit', label: 'Credit' },
     { id: 'heloc', label: 'HELOC' },
-    { id: 'subscriptions', label: 'Subscriptions' },
   ];
 
-  const headerButtonLabel =
-    activeTab === 'credit' ? 'Log Score' :
-    activeTab === 'subscriptions' ? 'Add Sub' : 'Sync';
+  const headerButtonLabel = activeTab === 'credit' ? 'Log Score' : 'Refresh';
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none" style={{ fontFamily: 'var(--font-dm), sans-serif' }}>
 
       {/* Header */}
-      <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-xl font-bold text-white font-display">Finance</h1>
-            {syncing && (
-              <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
-                <div className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
-                Syncing…
-              </div>
-            )}
-          </div>
-          <button
-            onClick={() => {
-              if (navigator.vibrate) navigator.vibrate(8);
-              if (activeTab === 'credit') { setScoreForm(f => ({ ...f, date: today })); setShowAddScore(true); }
-              else if (activeTab === 'subscriptions') { setShowAddSub(true); }
-              else { handleRefresh(); }
-            }}
-            className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
-          >
-            {headerButtonLabel}
-          </button>
-        </div>
-        <div className="flex gap-0 overflow-x-auto scrollbar-hide">
-          {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${activeTab === tab.id ? 'border-[#f0a050] text-[#f0a050]' : 'border-transparent text-[#555]'}`}>
-              {tab.label}
+      <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] z-40">
+        <div className="pt-14 px-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h1 className="text-xl font-bold text-white font-display">Finance</h1>
+              {syncing && (
+                <div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
+                  <div className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+                  Refreshing…
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                if (activeTab === 'credit') { setScoreForm(f => ({ ...f, date: today })); setShowAddScore(true); }
+                else { handleRefresh(); }
+              }}
+              className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+            >
+              {headerButtonLabel}
             </button>
-          ))}
+          </div>
+          <div className="flex gap-0 overflow-x-auto scrollbar-hide">
+            {tabs.map(tab => (
+              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+                className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${activeTab === tab.id ? 'border-[#f0a050] text-[#f0a050]' : 'border-transparent text-[#555]'}`}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
+        {activeTab === 'transactions' && (
+          <div className="bg-black px-4 pt-3 pb-3 space-y-2">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#333] text-sm">🔍</span>
+              <input type="text" placeholder="Search transactions…" value={txSearch}
+                onChange={e => setTxSearch(e.target.value)}
+                className="w-full pl-8 pr-9 py-2.5 rounded-xl bg-[#111] border border-[#1a1a1a] text-base text-[#ccc] placeholder-[#333] outline-none focus:border-[#f0a050]" />
+              {txSearch && (
+                <button type="button" onClick={() => setTxSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555] text-sm active:text-white">✕</button>
+              )}
+            </div>
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+              {txCategories.map(cat => (
+                <button key={cat || 'blank'} type="button" onClick={() => setTxCategory(cat)}
+                  className={`flex-shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                    txCategory === cat
+                      ? 'bg-[#f0a050]/15 border-[#f0a050]/40 text-[#f0a050]'
+                      : 'bg-[#111] border-[#1a1a1a] text-[#555]'
+                  }`}>
+                  {cat || 'Transfer'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden relative bg-black">
-        <div className="h-full overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
+        <div className="h-full overflow-y-auto overscroll-contain px-4 pt-4 pb-24 scrollbar-hide">
           <PullToRefresh onRefresh={handleRefresh}>
-            {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} onAddGoal={() => setShowAddGoal(true)} />}
+            {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} />}
             {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
-            {activeTab === 'transactions' && <TransactionsTab onRefresh={refreshCount} />}
+            {activeTab === 'transactions' && (
+              <TransactionsTab
+                onRefresh={refreshCount}
+                searchQuery={txSearch}
+                selectedCategory={txCategory}
+                onCategories={setTxCategories}
+              />
+            )}
             {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
             {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
             {activeTab === 'credit' && <CreditTab onRefresh={refreshCount} />}
             {activeTab === 'heloc' && <HelocTab onRefresh={refreshCount} />}
-            {activeTab === 'subscriptions' && <SubscriptionsTab onRefresh={refreshCount} />}
           </PullToRefresh>
         </div>
       </div>
 
-      {/* ── Log Score Modal ──────────────────────────────────────── */}
       {showAddScore && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddScore(false)}>
-          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
-              <button onClick={() => setShowAddScore(false)} className="text-[#f0a050] text-sm">Cancel</button>
-              <h2 className="text-base font-semibold text-white">Log Credit Score</h2>
-              <button onClick={handleAddScore} disabled={scoreSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
-                {scoreSaving ? 'Saving…' : 'Save'}
-              </button>
+        <Modal
+          title="Log Credit Score"
+          onClose={() => setShowAddScore(false)}
+          headerRight={
+            <button type="button" onClick={handleAddScore} disabled={scoreSaving} className="text-base font-semibold text-[#f0a050] disabled:opacity-40">
+              {scoreSaving ? 'Saving…' : 'Save'}
+            </button>
+          }
+        >
+          <div className="space-y-3">
+            <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+              <div className="flex items-center px-4 py-3 border-b border-white/10">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
+                <input type="date" value={scoreForm.date} onChange={e => setScoreForm(f => ({ ...f, date: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none" />
+              </div>
+              <div className="flex items-center px-4 py-3">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Score</span>
+                <input type="number" placeholder="750" min="300" max="850" value={scoreForm.score}
+                  onChange={e => setScoreForm(f => ({ ...f, score: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none placeholder-[#444]" />
+              </div>
             </div>
-            <div className="px-4 pt-4 space-y-3">
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
-                  <input type="date" value={scoreForm.date} onChange={e => setScoreForm(f => ({ ...f, date: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Score</span>
-                  <input type="number" placeholder="750" min="300" max="850" value={scoreForm.score}
-                    onChange={e => setScoreForm(f => ({ ...f, score: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
+            <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+              <div className="flex items-center px-4 py-3 border-b border-white/10">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Bureau</span>
+                <select value={scoreForm.bureau} onChange={e => setScoreForm(f => ({ ...f, bureau: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none appearance-none bg-[#2c2c2e]">
+                  <option value="Experian" className="bg-[#2c2c2e]">Experian</option>
+                  <option value="Equifax" className="bg-[#2c2c2e]">Equifax</option>
+                  <option value="TransUnion" className="bg-[#2c2c2e]">TransUnion</option>
+                </select>
               </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Bureau</span>
-                  <select value={scoreForm.bureau} onChange={e => setScoreForm(f => ({ ...f, bureau: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
-                    <option value="Experian" className="bg-[#2c2c2e]">Experian</option>
-                    <option value="Equifax" className="bg-[#2c2c2e]">Equifax</option>
-                    <option value="TransUnion" className="bg-[#2c2c2e]">TransUnion</option>
-                  </select>
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Source</span>
-                  <input type="text" placeholder="Credit Karma, Experian app…" value={scoreForm.source}
-                    onChange={e => setScoreForm(f => ({ ...f, source: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
+              <div className="flex items-center px-4 py-3">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Source</span>
+                <input type="text" placeholder="Credit Karma, Experian app…" value={scoreForm.source}
+                  onChange={e => setScoreForm(f => ({ ...f, source: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none placeholder-[#444]" />
               </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
-                  <input type="text" placeholder="Optional" value={scoreForm.notes}
-                    onChange={e => setScoreForm(f => ({ ...f, notes: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
-              </div>
-              {scoreError && <p className="text-[#ef4444] text-xs px-1 font-mono">{scoreError}</p>}
             </div>
+            <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+              <div className="flex items-center px-4 py-3">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
+                <input type="text" placeholder="Optional" value={scoreForm.notes}
+                  onChange={e => setScoreForm(f => ({ ...f, notes: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none placeholder-[#444]" />
+              </div>
+            </div>
+            {scoreError && <p className="text-[#ef4444] text-xs px-1 font-mono">{scoreError}</p>}
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* ── Add Subscription Modal ───────────────────────────────── */}
-      {showAddSub && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddSub(false)}>
-          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
-              <button onClick={() => setShowAddSub(false)} className="text-[#f0a050] text-sm">Cancel</button>
-              <h2 className="text-base font-semibold text-white">New Subscription</h2>
-              <button onClick={handleAddSub} disabled={subSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
-                {subSaving ? 'Saving…' : 'Add'}
-              </button>
-            </div>
-            <div className="px-4 pt-4 space-y-3">
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Name</span>
-                  <input type="text" placeholder="Netflix, Spotify…" value={subForm.name}
-                    onChange={e => setSubForm(f => ({ ...f, name: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Amount</span>
-                  <input type="number" placeholder="0.00" step="0.01" value={subForm.amount}
-                    onChange={e => setSubForm(f => ({ ...f, amount: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
-              </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Cycle</span>
-                  <select value={subForm.billing_cycle} onChange={e => setSubForm(f => ({ ...f, billing_cycle: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
-                    <option value="monthly" className="bg-[#2c2c2e]">Monthly</option>
-                    <option value="annual" className="bg-[#2c2c2e]">Annual</option>
-                    <option value="quarterly" className="bg-[#2c2c2e]">Quarterly</option>
-                    <option value="weekly" className="bg-[#2c2c2e]">Weekly</option>
-                  </select>
-                </div>
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Next Charge</span>
-                  <input type="date" value={subForm.next_charge_date}
-                    onChange={e => setSubForm(f => ({ ...f, next_charge_date: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Category</span>
-                  <select value={subForm.category} onChange={e => setSubForm(f => ({ ...f, category: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none appearance-none bg-[#2c2c2e]">
-                    {CATEGORIES_LIST.map(c => <option key={c} value={c} className="bg-[#2c2c2e]">{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
-                  <input type="text" placeholder="Optional" value={subForm.notes}
-                    onChange={e => setSubForm(f => ({ ...f, notes: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
-              </div>
-              {subError && <p className="text-[#ef4444] text-xs px-1 font-mono">{subError}</p>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Add Goal Modal ───────────────────────────────────────── */}
-      {showAddGoal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddGoal(false)}>
-          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
-              <button onClick={() => setShowAddGoal(false)} className="text-[#f0a050] text-sm">Cancel</button>
-              <h2 className="text-base font-semibold text-white">New Savings Goal</h2>
-              <button onClick={handleAddGoal} disabled={goalSaving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">{goalSaving ? 'Saving…' : 'Add'}</button>
-            </div>
-            <div className="px-4 pt-4 space-y-3">
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                {[
-                  { label: 'Goal Name', field: 'name', type: 'text', placeholder: 'Emergency Fund, Vacation…' },
-                  { label: 'Target ($)', field: 'target_amount', type: 'number', placeholder: '5000.00' },
-                  { label: 'Current ($)', field: 'current_amount', type: 'number', placeholder: '0.00' },
-                  { label: 'Target Date', field: 'target_date', type: 'date', placeholder: '' },
-                  { label: 'Notes', field: 'notes', type: 'text', placeholder: 'Optional' },
-                ].map(({ label, field, type, placeholder }) => (
-                  <div key={field} className="flex items-center px-4 py-3 border-b border-white/10 last:border-0">
-                    <span className="text-sm text-[#888] w-28 flex-shrink-0">{label}</span>
-                    <input type={type} placeholder={placeholder} value={(goalForm as any)[field]}
-                      onChange={e => setGoalForm(f => ({ ...f, [field]: e.target.value }))}
-                      className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                  </div>
-                ))}
-              </div>
-              {goalError && <p className="text-[#ef4444] text-xs px-1 font-mono">{goalError}</p>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <BottomNav active="finance" />
     </div>
   );
 }

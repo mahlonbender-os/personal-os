@@ -27,6 +27,20 @@ export function easternStamp(now = new Date()): string {
   return now.toLocaleString('sv-SE', { timeZone: 'America/New_York' });
 }
 
+/** Calendar date in Eastern, without shifting a YYYY-MM-DD snapshot back a day. */
+export function formatEasternDate(value: string): string {
+  const day = String(value || '').slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return value;
+  const stamp = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 17, 0, 0));
+  return stamp.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',

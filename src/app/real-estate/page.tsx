@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import PullToRefresh from '@/components/PullToRefresh';
-import BottomNav from '@/components/BottomNav';
 
 interface RealEstateData {
   homeValue: number;
@@ -73,7 +72,7 @@ export default function RealEstateOptimizationPage() {
   return (
     <div className="min-h-screen bg-black text-white selection:bg-[#f0a050]/30 pb-24">
       {/* Fixed Sticky Header Panel */}
-      <div className="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-[#1a1a1a] px-4 py-4 flex items-center justify-between">
+      <div className="sticky top-0 z-40 bg-black border-b border-[#1a1a1a] px-4 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div onClick={() => router.push('/more')} className="text-[#f0a050] text-sm font-mono cursor-pointer flex items-center gap-1">
             ← BACK
@@ -192,7 +191,6 @@ export default function RealEstateOptimizationPage() {
       </PullToRefresh>
 
       {/* Floating Bottom Nav Fixed Element Outside Scroll Bounds */}
-      <BottomNav active="more" />
     </div>
   );
 }

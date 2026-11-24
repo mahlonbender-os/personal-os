@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
-import BottomNav from '@/components/BottomNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,11 +16,11 @@ interface Holding {
   gainLossPct: number;
   dailyGainLoss: number;
   dailyGainLossPct: number;
+  priceSource?: 'quote' | 'avg_cost';
 }
 
 interface Account {
   name: string;
-  sheetTotal: number;
   uninvestedCash: number;
   cashUpdatedAt: string | null;
   stockValue: number;
@@ -29,25 +28,17 @@ interface Account {
   holdings: Holding[];
 }
 
-interface Trade {
-  id: string;
-  date: string;
-  account: string;
-  security: string;
-  action: string;
-  amount: number;
-  shares: number;
+interface QuoteTile {
+  symbol: string;
+  price: number;
+  change: number;
+  changePct: number;
+  source: 'quote' | 'avg_cost';
 }
 
 interface InvestmentData {
-  vooPrice: number;
-  vooDailyChange: number;
-  vooDailyChangePct: number;
-  tslaPrice: number;
-  tslaDailyChange: number;
-  tslaDailyChangePct: number;
+  quotes?: QuoteTile[];
   accounts: Account[];
-  trades: Trade[];
   totalPortfolioValue: number;
   totalDailyGainLoss: number;
   lastUpdated: string;
@@ -60,12 +51,10 @@ interface HistoryPoint {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_KEY = 'investments-data-v3';
-const PREVIOUS_CACHE_KEY = 'investments-data-v2';
-const HISTORY_CACHE_KEY = 'investments-history-v4';
-const TABS = ['Overview', 'Trade Log'];
+const CACHE_KEY = 'investments-data-v4';
+const PREVIOUS_CACHE_KEYS = ['investments-data-v2', 'investments-data-v3'];
+const HISTORY_CACHE_KEY = 'investments-history-v5';
 const RANGES = ['1M', '3M', '6M', '1Y'];
-const TRADE_ACCOUNTS = ['All', 'Roth IRA', 'HSA'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -88,7 +77,7 @@ function formatEasternDate(iso: string | null | undefined): string {
 function isCachedInvestmentData(value: unknown): value is InvestmentData {
   if (!value || typeof value !== 'object') return false;
   const data = value as InvestmentData;
-  if (!Array.isArray(data.accounts) || !Array.isArray(data.trades)) return false;
+  if (!Array.isArray(data.accounts)) return false;
   if (typeof data.totalPortfolioValue !== 'number') return false;
   return data.accounts.every((account) => {
     if (!account || typeof account !== 'object') return false;
@@ -98,12 +87,6 @@ function isCachedInvestmentData(value: unknown): value is InvestmentData {
       && typeof account.totalValue === 'number'
       && Array.isArray(account.holdings);
   });
-}
-
-function actionColor(action: string) {
-  if (action === 'BUY') return { bg: 'bg-[#22c55e]/10', text: 'text-[#22c55e]' };
-  if (action === 'REINVEST') return { bg: 'bg-[#f0a050]/10', text: 'text-[#f0a050]' };
-  return { bg: 'bg-[#ef4444]/10', text: 'text-[#ef4444]' };
 }
 
 // ─── Spinner ─────────────────────────────────────────────────────────────────
@@ -226,19 +209,11 @@ function PortfolioChart({ points, range }: { points: HistoryPoint[]; range: stri
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function InvestmentsPage() {
-  const [activeTab, setActiveTab] = useState(0);
   const [data, setData] = useState<InvestmentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDaily, setShowDaily] = useState(true);
   const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
   const [historyRange, setHistoryRange] = useState('1Y');
-  const [expandedTrades, setExpandedTrades] = useState<Set<string>>(new Set());
-  const [tradeFilter, setTradeFilter] = useState('All');
-  const [snapshots, setSnapshots] = useState<any[]>([]);
-  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
-  const [snapshotForm, setSnapshotForm] = useState({ snapshot_date: '', total_value: '', roth_ira_value: '', hsa_value: '', notes: '' });
-  const [savingSnapshot, setSavingSnapshot] = useState(false);
-  const [deleteSnapshotId, setDeleteSnapshotId] = useState<string | null>(null);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -264,7 +239,6 @@ export default function InvestmentsPage() {
         const parsed = JSON.parse(raw);
         if (parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000 && parsed.data?.length > 0) {
           setHistoryData(parsed.data);
-          if (parsed.snapshots) setSnapshots(parsed.snapshots);
           return;
         }
       }
@@ -273,9 +247,8 @@ export default function InvestmentsPage() {
       const json = await res.json();
       const pts: HistoryPoint[] = json.points || [];
       setHistoryData(pts);
-      setSnapshots(json.snapshots || []);
       if (pts.length > 0) {
-        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ data: pts, snapshots: json.snapshots || [], ts: Date.now() }));
+        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ data: pts, ts: Date.now() }));
       }
     } catch (e) {
       console.error('History fetch error:', e);
@@ -288,7 +261,7 @@ export default function InvestmentsPage() {
   };
 
   useEffect(() => {
-    try { localStorage.removeItem(PREVIOUS_CACHE_KEY); } catch {}
+    try { PREVIOUS_CACHE_KEYS.forEach((key) => localStorage.removeItem(key)); } catch {}
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
       try {
@@ -314,108 +287,37 @@ export default function InvestmentsPage() {
     fetchHistory();
   }, []);
 
-  function openSnapshotModal() {
-    const t = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' });
-    // Pre-fill total from live data if available
-    const liveTotal = data?.totalPortfolioValue;
-    const rothVal = data?.accounts?.find(a => a.name === 'Roth IRA')?.totalValue;
-    const hsaVal = data?.accounts?.find(a => a.name === 'HSA')?.totalValue;
-    setSnapshotForm({
-      snapshot_date: t,
-      total_value: liveTotal ? liveTotal.toFixed(2) : '',
-      roth_ira_value: rothVal ? rothVal.toFixed(2) : '',
-      hsa_value: hsaVal ? hsaVal.toFixed(2) : '',
-      notes: '',
-    });
-    setShowSnapshotModal(true);
-  }
-
-  async function handleSaveSnapshot() {
-    if (!snapshotForm.snapshot_date || !snapshotForm.total_value) return;
-    setSavingSnapshot(true);
-    try {
-      const res = await fetch('/api/finance/investments/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(snapshotForm),
-      });
-      if (!res.ok) throw new Error('Save failed');
-      setShowSnapshotModal(false);
-      localStorage.removeItem(HISTORY_CACHE_KEY);
-      await fetchHistory();
-    } catch (e) { console.error(e); }
-    finally { setSavingSnapshot(false); }
-  }
-
-  async function handleDeleteSnapshot() {
-    if (!deleteSnapshotId) return;
-    await fetch(`/api/finance/investments/history?id=${deleteSnapshotId}`, { method: 'DELETE' });
-    setDeleteSnapshotId(null);
-    localStorage.removeItem(HISTORY_CACHE_KEY);
-    await fetchHistory();
-  }
-
-  // ── Derived ────────────────────────────────────────────────────────────────
-
   const hasHoldings = (data?.accounts || []).some(a => a.holdings.some(h => parseFloat(String(h.shares)) > 0));
-  const filteredTrades = tradeFilter === 'All'
-    ? (data?.trades || [])
-    : (data?.trades || []).filter(t => t.account === tradeFilter);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <>
-      <PullToRefresh onRefresh={triggerRefresh}>
-        <div className="pb-24 bg-black text-white min-h-screen">
-
-          {/* Header */}
-          <div className="sticky top-0 z-20 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
-            <div className="flex items-center justify-between px-4 pt-14 pb-3">
-              <div>
-                <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
-                  Investments
-                </h1>
-                <p className="text-[10px] text-[#555] mt-0.5">Live Portfolio Tracker</p>
-              </div>
-              <div className="flex items-center gap-1">
-                {activeTab === 0 && (
-                  <button
-                    onClick={() => { if (navigator.vibrate) navigator.vibrate(8); openSnapshotModal(); }}
-                    className="text-sm font-semibold text-[#555] active:opacity-70 transition-opacity px-2 py-1"
-                  >
-                    Snapshot
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    if (navigator.vibrate) navigator.vibrate(8);
-                    triggerRefresh();
-                  }}
-                  className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
-                >
-                  Sync
-                </button>
-              </div>
-            </div>
-            <div className="flex border-t border-[#1a1a1a]">
-              {TABS.map((tab, i) => (
-                <button
-                  key={tab}
-                  onClick={() => { setActiveTab(i); window.scrollTo(0, 0); if (navigator.vibrate) navigator.vibrate(8); }}
-                  className={`flex-1 py-3 text-xs font-semibold transition-colors ${activeTab === i ? 'text-[#f0a050] border-b-2 border-[#f0a050]' : 'text-[#555]'}`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+    <div className="min-h-screen bg-black text-white pb-24">
+      <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a]">
+        <div className="flex items-center justify-between px-4 pt-14 pb-3">
+          <div>
+            <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
+              Investments
+            </h1>
+            <p className="text-[10px] text-[#555] mt-0.5">Live Portfolio Tracker</p>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(8);
+              triggerRefresh();
+            }}
+            className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+      <PullToRefresh onRefresh={triggerRefresh}>
+        <div>
 
           {loading && !data ? <Spinner /> : (
             <div className="px-4 pt-4 space-y-3">
-
-              {/* ── OVERVIEW TAB ─────────────────────────────────────────── */}
-              {activeTab === 0 && (
                 <>
                   <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-5 text-center">
                     <div className="text-[#888] text-xs font-semibold uppercase tracking-wider mb-1">Total Portfolio</div>
@@ -449,55 +351,22 @@ export default function InvestmentsPage() {
                     <PortfolioChart points={historyData} range={historyRange} />
                   </div>
 
-                  {/* Snapshot log */}
-                  {snapshots.length > 0 && (
-                    <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
-                      <div className="px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[#555] uppercase tracking-wider">Balance Snapshots</span>
-                        <span className="text-[10px] text-[#333]">{snapshots.length} logged · tap to delete</span>
-                      </div>
-                      {[...snapshots].reverse().map((s: any, idx: number) => (
-                        <div key={s.id}
-                          className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== snapshots.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}
-                          onClick={() => setDeleteSnapshotId(s.id)}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-[#ccc]">
-                              {new Date(s.snapshot_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </p>
-                            {(s.roth_ira_value || s.hsa_value) && (
-                              <div className="flex gap-3 text-[10px] text-[#444] mt-0.5">
-                                {s.roth_ira_value && <span>Roth ${parseFloat(s.roth_ira_value).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}</span>}
-                                {s.hsa_value && <span>HSA ${parseFloat(s.hsa_value).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}</span>}
-                              </div>
-                            )}
-                            {s.notes && <p className="text-[10px] text-[#333] mt-0.5">{s.notes}</p>}
-                          </div>
-                          <p className="text-sm font-bold font-mono text-[#22c55e]">
-                            ${parseFloat(s.total_value).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}
-                          </p>
+                  {(data?.quotes || []).length > 0 && (
+                    <div className="grid grid-cols-2 gap-3">
+                      {(data?.quotes || []).map(t => (
+                        <div key={t.symbol} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
+                          <div className="text-[#f0a050] text-xs font-mono font-bold">{t.symbol}</div>
+                          <div className="text-[#555] text-[10px] mb-1.5">{t.source === 'avg_cost' ? 'Avg cost' : 'Live quote'}</div>
+                          <div className="text-white font-mono font-bold text-sm">{fmt(t.price || 0)}</div>
+                          {t.source === 'quote' && t.change !== 0 && (
+                            <div className="font-mono text-[10px] mt-0.5" style={{ color: gainColor(t.change) }}>
+                              {t.change >= 0 ? '+' : ''}{t.change.toFixed(2)} ({t.changePct >= 0 ? '+' : ''}{t.changePct.toFixed(2)}%)
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { symbol: 'VOO', label: 'S&P 500 ETF', price: data?.vooPrice, d: data?.vooDailyChange, dp: data?.vooDailyChangePct },
-                      { symbol: 'TSLA', label: 'Tesla', price: data?.tslaPrice, d: data?.tslaDailyChange, dp: data?.tslaDailyChangePct },
-                    ].map(t => (
-                      <div key={t.symbol} className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4">
-                        <div className="text-[#f0a050] text-xs font-mono font-bold">{t.symbol}</div>
-                        <div className="text-[#555] text-[10px] mb-1.5">{t.label}</div>
-                        <div className="text-white font-mono font-bold text-sm">{fmt(t.price || 0)}</div>
-                        {t.d !== undefined && t.d !== 0 && (
-                          <div className="font-mono text-[10px] mt-0.5" style={{ color: gainColor(t.d!) }}>
-                            {t.d! >= 0 ? '+' : ''}{t.d?.toFixed(2)} ({t.dp! >= 0 ? '+' : ''}{t.dp?.toFixed(2)}%)
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
 
                   {hasHoldings && (
                     <div className="flex items-center justify-between px-1 pt-1">
@@ -540,7 +409,7 @@ export default function InvestmentsPage() {
                                 <div>
                                   <div className="text-[#f0a050] text-xs font-mono font-bold">{h.symbol}</div>
                                   <div className="text-[#555] text-[10px] font-mono">{fmtShares(h.shares)} shares</div>
-                                  <div className="text-[#555] text-[10px] font-mono">avg {fmt(h.avgCost)}</div>
+                                  <div className="text-[#555] text-[10px] font-mono">avg {fmt(h.avgCost)}{h.priceSource === 'avg_cost' ? ' · price unavailable' : ''}</div>
                                 </div>
                                 <div className="text-right">
                                   <div className="font-mono font-bold text-sm">{fmt(h.marketValue)}</div>
@@ -561,151 +430,10 @@ export default function InvestmentsPage() {
                     </div>
                   ))}
                 </>
-              )}
-
-              {/* ── TRADE LOG TAB ─────────────────────────────────────────── */}
-              {activeTab === 1 && (
-                <>
-                  {/* Account filter chips */}
-                  <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
-                    {TRADE_ACCOUNTS.map(acct => (
-                      <button key={acct} onClick={() => setTradeFilter(acct)}
-                        className={`flex-shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${tradeFilter === acct ? 'bg-[#f0a050]/10 text-[#f0a050] border-[#f0a050]/30' : 'border-[#2a2a2a] text-[#555]'}`}>
-                        {acct}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="px-1 pb-1">
-                    <span className="text-[#555] text-xs font-semibold uppercase tracking-wider">
-                      {filteredTrades.length
-                        ? `${filteredTrades.length} trade${filteredTrades.length !== 1 ? 's' : ''}${tradeFilter !== 'All' ? ` · ${tradeFilter}` : ''}`
-                        : 'No trades'}
-                    </span>
-                  </div>
-
-                  {filteredTrades.length === 0 ? (
-                    <div className="text-center text-[#555] text-sm font-mono pt-12">
-                      {(data?.trades?.length || 0) === 0 ? 'No trades logged yet' : `No ${tradeFilter} trades`}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {filteredTrades.map((t) => {
-                        const ac = actionColor(t.action);
-                        const expanded = expandedTrades.has(t.id);
-                        return (
-                          <div key={t.id} className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden transition-all">
-                            <div
-                              onClick={() => {
-                                const next = new Set(expandedTrades);
-                                expanded ? next.delete(t.id) : next.add(t.id);
-                                setExpandedTrades(next);
-                              }}
-                              className="p-4 flex items-center justify-between cursor-pointer active:bg-[#161616]"
-                            >
-                              <div className="flex-1 min-w-0 pr-2">
-                                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${ac.bg} ${ac.text}`}>
-                                    {t.action}
-                                  </span>
-                                  <span className="text-[#f0a050] text-xs font-mono font-bold">{t.security}</span>
-                                  <span className="text-[#555] text-[10px] font-mono truncate max-w-[80px]">{t.account}</span>
-                                </div>
-                                <div className="text-white font-mono font-bold text-sm">{fmt(t.amount)}</div>
-                              </div>
-                              <div className="flex items-center gap-3 shrink-0 ml-2">
-                                <span className="text-[#555] text-[10px] font-mono">
-                                  {new Date(t.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                </span>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"
-                                  style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                                  <path d="M6 9l6 6 6-6" />
-                                </svg>
-                              </div>
-                            </div>
-                            {expanded && (
-                              <div className="px-4 pb-4 pt-3 border-t border-[#1a1a1a] bg-black/20 space-y-3">
-                                <div className="grid grid-cols-2 gap-2 text-xs font-mono text-[#555]">
-                                  <div>
-                                    <span className="text-[9px] uppercase tracking-wider block text-[#444]">Shares</span>
-                                    <span className="text-white font-bold">{fmtShares(parseFloat(String(t.shares)))} units</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[9px] uppercase tracking-wider block text-[#444]">Date</span>
-                                    <span className="text-white font-bold">{t.date}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
             </div>
           )}
         </div>
       </PullToRefresh>
-
-      {/* Fixed: prop is `active` not `activeTab` */}
-      <BottomNav active="more" />
-
-      {/* Snapshot Modal */}
-      {showSnapshotModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]">
-            <div className="flex justify-between items-center px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
-              <span className="font-bold text-base text-white">Log Snapshot</span>
-              <button onClick={() => setShowSnapshotModal(false)} className="text-[#555] text-lg p-1">✕</button>
-            </div>
-            <div className="px-5 pt-4 space-y-4">
-              <p className="text-[11px] text-[#444]">Log your current portfolio balance from Fidelity. Each snapshot builds the growth chart over time.</p>
-              {[
-                { label: 'Date', field: 'snapshot_date', type: 'date', placeholder: '' },
-                { label: 'Total Portfolio Value', field: 'total_value', type: 'number', placeholder: '0.00' },
-                { label: 'Roth IRA Value (optional)', field: 'roth_ira_value', type: 'number', placeholder: '0.00' },
-                { label: 'HSA Value (optional)', field: 'hsa_value', type: 'number', placeholder: '0.00' },
-                { label: 'Notes (optional)', field: 'notes', type: 'text', placeholder: 'End of month…' },
-              ].map(({ label, field, type, placeholder }) => (
-                <div key={field}>
-                  <div className="text-[#555] text-xs mb-1.5 uppercase font-mono tracking-wider">{label}</div>
-                  <input type={type} inputMode={type === 'number' ? 'decimal' : undefined} placeholder={placeholder}
-                    value={(snapshotForm as any)[field]}
-                    onChange={e => setSnapshotForm(f => ({ ...f, [field]: e.target.value }))}
-                    className="w-full bg-black border border-[#1a1a1a] rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-[#f0a050]" />
-                  {field === 'total_value' && data?.totalPortfolioValue && (
-                    <p className="text-[10px] text-[#444] mt-1">Live calc: ${data.totalPortfolioValue.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})} — verify against Fidelity</p>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-3 px-5 pt-5">
-              <button onClick={() => setShowSnapshotModal(false)} className="flex-1 py-3 bg-black border border-[#1a1a1a] text-[#555] rounded-xl text-sm font-semibold">Cancel</button>
-              <button onClick={handleSaveSnapshot} disabled={savingSnapshot || !snapshotForm.total_value}
-                className="flex-1 py-3 bg-[#f0a050] rounded-xl text-sm font-bold text-black disabled:opacity-50">
-                {savingSnapshot ? 'Saving…' : 'Save Snapshot'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {/* Snapshot delete confirm */}
-      {deleteSnapshotId && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md p-5 border border-[#1a1a1a]">
-            <p className="text-base font-bold text-white text-center mb-1">Delete this snapshot?</p>
-            <p className="text-[11px] text-[#555] text-center mb-4">It will be removed from the growth chart.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteSnapshotId(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Keep</button>
-              <button onClick={handleDeleteSnapshot} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold">Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }

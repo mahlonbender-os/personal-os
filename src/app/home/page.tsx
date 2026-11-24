@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
-import BottomNav from '@/components/BottomNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -430,7 +429,7 @@ export default function HomePage() {
             </div>
 
             {/* Tab bar */}
-            <div className="flex border-b border-[#1a1a1a] sticky top-0 bg-black z-10">
+            <div className="sticky top-0 z-30 -mx-0 border-b border-[#1a1a1a] bg-black">
               {TABS.map((tab, i) => (
                 <button
                   key={tab}
@@ -736,7 +735,6 @@ export default function HomePage() {
           </div>
         </PullToRefresh>
 
-        <BottomNav active="more" />
       </div>
 
       {/* ════════════════════════════════════════════════════════════════════ */}
@@ -746,7 +744,7 @@ export default function HomePage() {
       {/* Edit Profile Modal */}
       {showEditProfile && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[90dvh] overflow-y-auto overscroll-contain pb-6">
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
               <h2 className="text-white font-semibold">Edit Home Profile</h2>
               <button onClick={() => setShowEditProfile(false)} className="text-[#555] text-sm">Cancel</button>
@@ -835,7 +833,7 @@ export default function HomePage() {
       {/* Add / Edit Maintenance Modal */}
       {showAddMaintenance && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[90dvh] overflow-y-auto overscroll-contain pb-6">
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
               <h2 className="text-white font-semibold">{editMaintenance ? 'Edit Maintenance' : 'Add Maintenance'}</h2>
               <button onClick={() => setShowAddMaintenance(false)} className="text-[#555] text-sm">Cancel</button>
@@ -933,7 +931,7 @@ export default function HomePage() {
       {/* Add / Edit Project Modal */}
       {showAddProject && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[90dvh] overflow-y-auto overscroll-contain pb-6">
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
               <h2 className="text-white font-semibold">{editProject ? 'Edit Project' : 'Add Project'}</h2>
               <button onClick={() => setShowAddProject(false)} className="text-[#555] text-sm">Cancel</button>

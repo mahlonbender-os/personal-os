@@ -115,7 +115,7 @@ function PlacesInput({ value, onChange, placeholder = 'Search location...' }: {
         </button>
       </div>
       {open && (
-        <div className="absolute top-full left-0 right-0 bg-[#1c1c1e] border border-[#333] rounded-xl mt-1 z-[60] max-h-44 overflow-y-auto shadow-2xl">
+        <div className="absolute top-full left-0 right-0 bg-[#1c1c1e] border border-[#333] rounded-xl mt-1 z-[60] max-h-44 overflow-y-auto overscroll-contain shadow-2xl">
           {predictions.map((p, i) => (
             <button
               key={p.place_id || i}
@@ -156,6 +156,10 @@ function mapsUrl(q: string) {
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function VehiclePage() {
   const [activeTab, setActiveTab] = useState(0);
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'fuel') setActiveTab(1);
+  }, []);
 
   // Data
   const [vehicleInfo, setVehicleInfo] = useState<any>(null);
@@ -432,7 +436,7 @@ export default function VehiclePage() {
         <div className="pb-24 min-h-screen bg-black text-white">
 
           {/* Sticky Tab Header Row Wrapper */}
-          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+          <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
@@ -800,7 +804,7 @@ export default function VehiclePage() {
       {/* Setup Attributes Modal */}
       {showSetup && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 w-full max-w-lg border border-[#2a2a2a]">
             <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
               <p className="text-white font-semibold text-lg">Vehicle Attributes</p>
               <button onClick={() => setShowSetup(false)} className="text-[#555] text-lg p-1">✕</button>
@@ -862,7 +866,7 @@ export default function VehiclePage() {
       {/* Log Fuel Modal */}
       {showAddFuel && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 w-full max-w-lg border border-[#2a2a2a]">
             <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
               <p className="text-white font-semibold text-lg">Log Fuel Fill-Up</p>
               <button onClick={() => setShowAddFuel(false)} className="text-[#555] text-lg p-1">✕</button>
@@ -927,7 +931,7 @@ export default function VehiclePage() {
       {/* Log Maintenance Modal */}
       {showAddMaint && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 w-full max-w-lg border border-[#2a2a2a]">
             <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
               <p className="text-white font-semibold text-lg">Log Maintenance Service</p>
               <button onClick={() => setShowAddMaint(false)} className="text-[#555] text-lg p-1">✕</button>
@@ -978,7 +982,7 @@ export default function VehiclePage() {
       {/* Edit Fuel Modal */}
       {editFuelEntry && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 w-full max-w-lg border border-[#2a2a2a]">
             <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
               <p className="text-white font-semibold text-lg">Modify Fuel Log Entry</p>
               <button onClick={() => setEditFuelEntry(null)} className="text-[#555] text-lg p-1">✕</button>
@@ -1040,7 +1044,7 @@ export default function VehiclePage() {
       {/* Edit Maintenance Modal */}
       {editMaintEntry && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl max-h-[85vh] overflow-y-auto pb-6 w-full max-w-lg border border-[#2a2a2a]">
+          <div className="bg-[#1c1c1e] rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 w-full max-w-lg border border-[#2a2a2a]">
             <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-[#2a2a2a] sticky top-0 bg-[#1c1c1e] z-10">
               <p className="text-white font-semibold text-lg">Modify Service Record</p>
               <button onClick={() => setEditMaintEntry(null)} className="text-[#555] text-lg p-1">✕</button>

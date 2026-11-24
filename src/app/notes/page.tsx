@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
 import { useHaptics } from '@/context/HapticContext';
 
@@ -175,7 +174,7 @@ export default function NotesPage() {
         <div className="pb-24 bg-black text-white min-h-screen">
 
           {/* Header */}
-          <div className="sticky top-0 z-20 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+          <div className="sticky top-0 z-20 bg-black border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>Notes</h1>
@@ -264,7 +263,6 @@ export default function NotesPage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav active="more" />
 
       {/* ── Note Modal ──────────────────────────────────────────── */}
       {showModal && (
@@ -293,7 +291,7 @@ export default function NotesPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 pt-4 pb-8 space-y-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 pt-4 pb-8 space-y-4">
 
               {/* Date */}
               <div className="flex items-center gap-3">

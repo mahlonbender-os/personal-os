@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
-import BottomNav from '@/components/BottomNav';
 
 const TABS = ['Goals', 'Habits'];
 const CATEGORIES = ['personal', 'work', 'health', 'finance', 'home', 'fitness', 'learning', 'other'];
@@ -270,7 +269,7 @@ export default function GoalsPage() {
         <div className="pb-24">
 
           {/* ── Sticky header context controls bar component ── */}
-          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+          <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
@@ -516,7 +515,7 @@ export default function GoalsPage() {
                           <div className="flex items-center gap-2">
                             <h3 className="font-semibold text-sm text-white truncate">{habit.name}</h3>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#444" strokeWidth="2"
-                              style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', shrink: '0' }}>
+                              style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
                               <path d="M6 9l6 6 6-6" />
                             </svg>
                           </div>
@@ -582,7 +581,6 @@ export default function GoalsPage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav activeTab="goals" />
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
@@ -804,7 +802,7 @@ export default function GoalsPage() {
       {/* Add Habit Overlay Form Modal View */}
       {showAddHabit && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 border border-[#1a1a1a]">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain p-6 border border-[#1a1a1a]">
             <h2 className="text-base font-bold font-mono text-[#f0a050] uppercase tracking-wide mb-4">Add Habit Sequence</h2>
             <div className="space-y-4">
               <div>
@@ -850,7 +848,7 @@ export default function GoalsPage() {
       {/* Edit Habit Overlay Form Modal View */}
       {showEditHabit && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 border border-[#1a1a1a]">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain p-6 border border-[#1a1a1a]">
             <h2 className="text-base font-bold font-mono text-[#f0a050] uppercase tracking-wide mb-4">Modify Habit Parameters</h2>
             <div className="space-y-4">
               <div>

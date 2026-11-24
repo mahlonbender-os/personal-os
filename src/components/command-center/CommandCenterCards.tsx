@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 import NewsCard from '@/components/command-center/NewsCard';
+import Modal from '@/components/Modal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const CARDIO_TYPES = ['Run','Walk','Bike','Swim','Rowing','Elliptical','HIIT','Other'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +27,6 @@ function today() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'Am
 function daysUntil(d: string | null | undefined): number | null { if (!d) return null; const now = new Date(); now.setHours(0,0,0,0); return Math.round((new Date(d+'T00:00:00').getTime()-now.getTime())/86400000); }
 function dueDateColor(days: number | null): string { if (days===null) return '#555'; if (days<0) return '#ef4444'; if (days<=14) return '#f0a050'; if (days<=30) return '#f59e0b'; return '#22c55e'; }
 function fmtShort(d: string) { return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
-function getKnoxAge() { const born=new Date('2026-01-14'),now=new Date(),m=(now.getFullYear()-born.getFullYear())*12+(now.getMonth()-born.getMonth()); return m<24?`${m}mo`:`${Math.floor(m/12)}y ${m%12}mo`; }
 
 function weatherIcon(code: number, hour: number): string {
   const c = Number(code); const isDay = hour>=6&&hour<20;
@@ -67,16 +65,15 @@ function SectionLabel({children}: {children: React.ReactNode}) {
 
 function MiniModal({ title, onClose, onSave, saving, children, error }: { title:string; onClose:()=>void; onSave:()=>void; saving:boolean; children:React.ReactNode; error?:string }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e=>e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
-          <button onClick={onClose} className="text-[#f0a050] text-sm">Cancel</button>
-          <h2 className="text-base font-semibold text-white">{title}</h2>
-          <button onClick={onSave} disabled={saving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">{saving?'Saving…':'Save'}</button>
-        </div>
-        <div className="px-4 pt-4 space-y-3">{children}{error&&<p className="text-[#ef4444] text-xs px-1 font-mono">{error}</p>}</div>
-      </div>
-    </div>
+    <Modal
+      title={title}
+      onClose={onClose}
+      headerRight={
+        <button type="button" onClick={onSave} disabled={saving} className="text-base font-semibold text-[#f0a050] disabled:opacity-40">{saving?'Saving…':'Save'}</button>
+      }
+    >
+      <div className="space-y-3">{children}{error&&<p className="text-[#ef4444] text-xs px-1 font-mono">{error}</p>}</div>
+    </Modal>
   );
 }
 
@@ -143,51 +140,6 @@ function FuelModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
         <ModalRow label="Odometer"><ModalInput type="number" value={form.odometer} onChange={v=>set('odometer',v)} placeholder="Optional"/></ModalRow>
         <ModalRow label="Station"><ModalInput value={form.station} onChange={v=>set('station',v)} placeholder="Optional"/></ModalRow>
       </div>
-    </MiniModal>
-  );
-}
-
-// ─── Quick Workout Modal ──────────────────────────────────────────────────────
-
-function WorkoutModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
-  const [type,setType]=useState<'cardio'|'strength'>('cardio');
-  const [form,setForm]=useState({date:today(),name:'',duration_minutes:'',distance_miles:'',avg_heart_rate:'',calories_burned:''});
-  const [saving,setSaving]=useState(false); const [error,setError]=useState('');
-  function set(k:string,v:string){setForm(f=>({...f,[k]:v}));}
-  async function handleSave(){
-    setError('');
-    if(type==='strength'&&!form.name){setError('Workout name required');return;}
-    setSaving(true);
-    try {
-      const body: any={session_date:form.date,workout_type:type,name:form.name||null,duration_minutes:form.duration_minutes?parseInt(form.duration_minutes):null};
-      if(type==='cardio'){body.distance_miles=form.distance_miles?parseFloat(form.distance_miles):null;body.avg_heart_rate=form.avg_heart_rate?parseInt(form.avg_heart_rate):null;body.calories_burned=form.calories_burned?parseInt(form.calories_burned):null;}
-      const res=await fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!res.ok){const d=await res.json();throw new Error(d.error||'Failed');}
-      onSaved(); onClose();
-    } catch(e:any){setError(e.message);}
-    finally{setSaving(false);}
-  }
-  return (
-    <MiniModal title="Log Workout" onClose={onClose} onSave={handleSave} saving={saving} error={error}>
-      <div className="flex rounded-xl overflow-hidden border border-[#2a2a2a]">
-        {(['cardio','strength'] as const).map(t=>(
-          <button key={t} onClick={()=>setType(t)} className={`flex-1 py-2.5 text-sm font-semibold capitalize transition-colors ${type===t?'bg-[#f0a050]/10 text-[#f0a050]':'text-[#444]'}`}>{t==='cardio'?'🏃 Cardio':'🏋 Strength'}</button>
-        ))}
-      </div>
-      <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-        <ModalRow label="Date"><ModalInput type="date" value={form.date} onChange={v=>set('date',v)}/></ModalRow>
-        {type==='cardio'
-          ? <ModalRow label="Type"><ModalSelect value={form.name} onChange={v=>set('name',v)} options={CARDIO_TYPES}/></ModalRow>
-          : <ModalRow label="Name"><ModalInput value={form.name} onChange={v=>set('name',v)} placeholder="Chest Day, Full Body…"/></ModalRow>
-        }
-        <ModalRow label="Duration (min)"><ModalInput type="number" value={form.duration_minutes} onChange={v=>set('duration_minutes',v)} placeholder="30"/></ModalRow>
-        {type==='cardio'&&<>
-          <ModalRow label="Distance (mi)"><ModalInput type="number" value={form.distance_miles} onChange={v=>set('distance_miles',v)} placeholder="3.1"/></ModalRow>
-          <ModalRow label="Avg HR"><ModalInput type="number" value={form.avg_heart_rate} onChange={v=>set('avg_heart_rate',v)} placeholder="145"/></ModalRow>
-          <ModalRow label="Calories"><ModalInput type="number" value={form.calories_burned} onChange={v=>set('calories_burned',v)} placeholder="300"/></ModalRow>
-        </>}
-      </div>
-      {type==='strength'&&<p className="text-[10px] text-[#444] px-1">Go to Workouts after saving to add exercises and sets.</p>}
     </MiniModal>
   );
 }
@@ -280,8 +232,8 @@ function FinanceRow({ refreshCount }: { refreshCount: number }) {
 function InvestmentsCard({ refreshCount }: { refreshCount: number }) {
   const [data,setData]=useState<any>(null); const [loading,setLoading]=useState(true);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_investments_v1');if(c){setData(JSON.parse(c));setLoading(false);}}catch{}
-    fetch('/api/cc/investments').then(r=>r.json()).then(d=>{setData(d);setLoading(false);try{localStorage.setItem('cc_investments_v1',JSON.stringify(d));}catch{}}).catch(()=>setLoading(false));
+    try{localStorage.removeItem('cc_investments_v1');const c=localStorage.getItem('cc_investments_v2');if(c){setData(JSON.parse(c));setLoading(false);}}catch{}
+    fetch('/api/cc/investments').then(r=>r.json()).then(d=>{setData(d);setLoading(false);try{localStorage.setItem('cc_investments_v2',JSON.stringify(d));}catch{}}).catch(()=>setLoading(false));
   },[refreshCount]);
   const totalValue=data?.totalValue??0; const dailyChange=data?.dailyChange??null; const dailyChangePct=data?.dailyChangePct??null; const totalGain=data?.totalGain??null; const totalGainPct=data?.totalGainPct??null; const accounts:any[]=data?.accounts??[]; const hasPrices=data?.hasPrices??false;
   return (
@@ -333,32 +285,6 @@ function TasksCard({ refreshCount }: { refreshCount: number }) {
   );
 }
 
-// ─── Knox Card ────────────────────────────────────────────────────────────────
-
-function KnoxCard({ refreshCount }: { refreshCount: number }) {
-  const [data,setData]=useState<any>(null);
-  useEffect(()=>{
-    try{const c=localStorage.getItem('cc_knox_v2');if(c)setData(JSON.parse(c));}catch{}
-    fetch('/api/knox/summary').then(r=>r.json()).then(d=>{setData(d);try{localStorage.setItem('cc_knox_v2',JSON.stringify(d));}catch{}}).catch(()=>{});
-  },[refreshCount]);
-  function vetLabel(d: string|null|undefined): string {if(!d)return'—';const days=daysUntil(d);if(days===null)return fmtShort(d);if(days<0)return`Overdue ${Math.abs(days)}d`;if(days===0)return'Today';if(days<=7)return`In ${days}d`;return fmtShort(d);}
-  function sc(d: string|null|undefined){return dueDateColor(daysUntil(d??null));}
-  return (
-    <div onClick={()=>{window.location.href='/knox';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer">
-      <div className="flex items-center gap-2 mb-3"><span className="text-base">🐺</span><span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Knox</span><span className="text-[10px] text-[#333] ml-auto">{getKnoxAge()}</span></div>
-      <div className="space-y-2">
-        <div className="flex justify-between items-center"><span className="text-[11px] text-[#555]">Weight</span><span className="text-[11px] font-bold font-mono text-[#888]">{data?.latestWeight?`${parseFloat(String(data.latestWeight.weight_lbs)).toFixed(1)} lbs`:'—'}</span></div>
-        <div className="h-px bg-[#141414]"/>
-        <div className="flex justify-between items-center"><span className="text-[11px] text-[#555]">Next Vet</span><span className="text-[11px] font-bold font-mono" style={{color:sc(data?.nextVetDate)}}>{vetLabel(data?.nextVetDate)}</span></div>
-        <div className="h-px bg-[#141414]"/>
-        <div className="flex justify-between items-center"><span className="text-[11px] text-[#555]">Next Vaccine</span><div className="text-right">{data?.nextVaccine?.next_due_date?(<><span className="text-[11px] font-bold font-mono" style={{color:sc(data.nextVaccine.next_due_date)}}>{vetLabel(data.nextVaccine.next_due_date)}</span><span className="text-[9px] text-[#444] block">{data.nextVaccine.vaccine_name}</span></>):<span className="text-[11px] text-[#2a2a2a]">—</span>}</div></div>
-        <div className="h-px bg-[#141414]"/>
-        <div className="flex justify-between items-center"><span className="text-[11px] text-[#555]">Next Medication</span><div className="text-right">{data?.nextMedication?.next_due_date?(<><span className="text-[11px] font-bold font-mono" style={{color:sc(data.nextMedication.next_due_date)}}>{vetLabel(data.nextMedication.next_due_date)}</span><span className="text-[9px] text-[#444] block">{data.nextMedication.medication_name}</span></>):<span className="text-[11px] text-[#2a2a2a]">—</span>}</div></div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Vehicle Card ─────────────────────────────────────────────────────────────
 
 function VehicleCard({ refreshCount }: { refreshCount: number }) {
@@ -403,15 +329,13 @@ export default function CommandCenterCards() {
 
   const handleRefresh=useCallback(async()=>{
     setSyncing(true);
-    await fetch('/api/sync/sheets',{method:'POST'});
-    try{['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
+    try{['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_investments_v2','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
     setSyncing(false);
     setRefreshCount(c=>c+1);
   },[]);
 
   const quickActions=[
     {label:'⛽ Fuel',modal:'fuel'},
-    {label:'💪 Workout',modal:'workout'},
   ];
 
   return (
@@ -422,7 +346,7 @@ export default function CommandCenterCards() {
             <div>
               <div className="text-[11px] text-[#444] font-medium">{formatDay()}</div>
               <div className="text-[22px] font-extrabold text-white leading-tight font-display">{getGreeting()}, Mahlon</div>
-              {syncing&&<div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono"><div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin"/>Syncing…</div>}
+              {syncing&&<div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono"><div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin"/>Refreshing…</div>}
             </div>
             <WeatherWidget refreshCount={refreshCount}/>
           </div>
@@ -435,7 +359,7 @@ export default function CommandCenterCards() {
             ))}
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overscroll-contain">
           <PullToRefresh onRefresh={handleRefresh}>
             <div className="px-4 pt-4 pb-24 space-y-3">
               <SectionLabel>Health</SectionLabel>
@@ -446,7 +370,6 @@ export default function CommandCenterCards() {
               <SectionLabel>My Life</SectionLabel>
               <CalendarCard refreshCount={refreshCount}/>
               <TasksCard refreshCount={refreshCount}/>
-              <KnoxCard refreshCount={refreshCount}/>
               <VehicleCard refreshCount={refreshCount}/>
               <SectionLabel>News</SectionLabel>
               <NewsCard/>
@@ -456,7 +379,6 @@ export default function CommandCenterCards() {
       </div>
 
       {modal==='fuel'&&<FuelModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
-      {modal==='workout'&&<WorkoutModal onClose={()=>setModal(null)} onSaved={()=>setModal(null)}/>}
     </>
   );
 }

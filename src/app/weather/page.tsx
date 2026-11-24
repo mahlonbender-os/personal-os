@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -151,7 +150,7 @@ function AlertsBanner({ alerts, onTap }: { alerts: WxAlert[]; onTap: (a: WxAlert
 function AlertDetailModal({ alert, onClose }: { alert: WxAlert; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
           <button onClick={onClose} className="text-[#f0a050] text-sm">Close</button>
           <h2 className="text-base font-semibold text-white">{alert.event}</h2>
@@ -187,7 +186,7 @@ function DayDetailModal({ day, onClose }: { day: DailyEntry; onClose: () => void
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
           <button onClick={onClose} className="text-[#f0a050] text-sm">Close</button>
           <h2 className="text-base font-semibold text-white">{dateLabel}</h2>
@@ -316,7 +315,7 @@ function LocationModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e] z-10">
           <button onClick={onClose} className="text-[#f0a050] text-sm">Cancel</button>
           <h2 className="text-base font-semibold text-white">Search Location</h2>
@@ -686,7 +685,6 @@ export default function WeatherPage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav active="more" />
 
       {expandedDay && <DayDetailModal day={expandedDay} onClose={() => setExpandedDay(null)} />}
       {expandedAlert && <AlertDetailModal alert={expandedAlert} onClose={() => setExpandedAlert(null)} />}

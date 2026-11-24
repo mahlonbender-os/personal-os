@@ -2,14 +2,18 @@ import { AuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function tokenStore() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
 
 async function persistRefreshToken(refreshToken: string | undefined) {
   if (!refreshToken) return;
   try {
+    const supabase = tokenStore();
+    if (!supabase) return;
     await supabase
       .from('google_oauth_tokens')
       .upsert(

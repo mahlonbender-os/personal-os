@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -388,7 +387,7 @@ function StrengthTab({ refresh }: { refresh: number }) {
               {sessions.map((s, idx) => {
                 const isExp = expandedSessionId === s.id;
                 const sets = sessionSets[s.id] || [];
-                const groups = [...new Set(sets.map(set => set.muscle_group || 'Other'))];
+                const groups = Array.from(new Set(sets.map(set => set.muscle_group || 'Other')));
                 return (
                   <div key={s.id}>
                     <div
@@ -414,9 +413,9 @@ function StrengthTab({ refresh }: { refresh: number }) {
                         {sets.length > 0 && (
                           <div className="px-4 py-3 space-y-4">
                             {/* Group sets by muscle_group > exercise_name */}
-                            {[...new Set(sets.map(s => s.muscle_group || 'Other'))].map(group => {
+                            {Array.from(new Set(sets.map(s => s.muscle_group || 'Other'))).map(group => {
                               const groupSets = sets.filter(s => (s.muscle_group || 'Other') === group);
-                              const exercises = [...new Set(groupSets.map(s => s.exercise_name))];
+                              const exercises = Array.from(new Set(groupSets.map(s => s.exercise_name)));
                               return (
                                 <div key={group}>
                                   <p className="text-[9px] font-bold text-[#f0a050] uppercase tracking-wider mb-2">
@@ -652,7 +651,7 @@ function AddModal({ type, onClose, onSaved }: { type: 'cardio' | 'strength'; onC
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10 sticky top-0 bg-[#1c1c1e]">
           <button onClick={onClose} className="text-[#f0a050] text-sm">Cancel</button>
           <h2 className="text-base font-semibold text-white">{type === 'cardio' ? 'Log Cardio' : 'New Strength Workout'}</h2>
@@ -727,7 +726,7 @@ export default function WorkoutPage() {
             ))}
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-24 scrollbar-hide">
           <PullToRefresh onRefresh={async () => setRefreshCount(c => c + 1)}>
             <div className="space-y-4">
               {activeTab === 0 && <CardioTab refresh={refreshCount} />}
@@ -735,7 +734,6 @@ export default function WorkoutPage() {
             </div>
           </PullToRefresh>
         </div>
-        <BottomNav active="more" />
       </div>
       {showAdd && (
         <AddModal type={activeTab === 0 ? 'cardio' : 'strength'} onClose={() => setShowAdd(false)} onSaved={() => setRefreshCount(c => c + 1)} />

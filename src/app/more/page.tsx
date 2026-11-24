@@ -8,22 +8,10 @@ const GROUPS = [
   {
     label: 'Personal',
     items: [
-      { label: 'Knox', href: '/knox', icon: '🐺' },
       { label: 'Vehicle', href: '/vehicle', icon: '🚗' },
+      { label: 'Fuel log', href: '/vehicle?tab=fuel', icon: '⛽' },
       { label: 'Home', href: '/home', icon: '🏠' },
-    ],
-  },
-  {
-    label: 'Health',
-    items: [
       { label: 'Health', href: '/health', icon: '❤️' },
-      { label: 'Workouts', href: '/workout', icon: '💪' },
-    ],
-  },
-  {
-    label: 'Work',
-    items: [
-      { label: 'Work', href: '/work', icon: '🏭' },
     ],
   },
   {
@@ -31,15 +19,13 @@ const GROUPS = [
     items: [
       { label: 'Calendar', href: '/calendar', icon: '📅' },
       { label: 'Tasks', href: '/tasks', icon: '✅' },
-      { label: 'Goals', href: '/goals', icon: '🎯' },
     ],
   },
   {
     label: 'Finance & Assets',
     items: [
-      { label: 'Insurance', href: '/insurance', icon: '🛡️' },
-      { label: 'Warranties', href: '/warranties', icon: '📄' },
       { label: 'Investments', href: '/investments', icon: '📈' },
+      { label: 'Credit', href: '/finance?tab=credit', icon: '💳' },
       { label: '401(k)', href: '/retirement', icon: '💼' },
       { label: 'Equity Optimizer', href: '/real-estate', icon: '📊' },
     ],
@@ -47,15 +33,12 @@ const GROUPS = [
   {
     label: 'Lifestyle',
     items: [
-      { label: 'Notes', href: '/notes', icon: '📝' },
       { label: 'Weather', href: '/weather', icon: '🌤️' },
-      { label: 'Alerts', href: '/alerts', icon: '🔔' },
     ],
   },
   {
     label: 'System',
     items: [
-      { label: 'AI Assistant', href: '/chat', icon: '🤖' },
       { label: 'Settings', href: '/settings', icon: '⚙️' },
     ],
   },
@@ -68,8 +51,6 @@ export default function MorePage() {
     <div className="min-h-screen bg-black">
       <PullToRefresh onRefresh={async () => { window.location.reload(); }}>
         <div className="px-4 pt-6 pb-24">
-
-          {/* Header */}
           <div className="mb-5">
             <h1
               className="text-2xl font-bold text-white"
@@ -80,7 +61,6 @@ export default function MorePage() {
             <p className="text-[#555] text-sm mt-0.5">All modules</p>
           </div>
 
-          {/* Module groups */}
           <div className="space-y-5">
             {GROUPS.map((group) => (
               <div key={group.label}>
@@ -118,8 +98,8 @@ export default function MorePage() {
             ))}
           </div>
 
-          {/* Sign out */}
           <button
+            type="button"
             onClick={() => signOut({ callbackUrl: '/' })}
             className="w-full mt-6 py-3.5 rounded-2xl border border-[#2a1010] text-[#ef4444] text-sm font-medium active:bg-[#1a0808] transition-colors"
           >

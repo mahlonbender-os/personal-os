@@ -69,3 +69,15 @@ html, body {
 
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Keep typed fields at 16px so iPhone does not zoom the page. */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* Dialog overlays stay inside the phone, including the home-indicator area. */
+div.fixed.inset-0.z-50 {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  overflow: hidden;
+}
