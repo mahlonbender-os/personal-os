@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import HealthTrends from '@/components/health/HealthTrends';
 
 interface HealthLog {
   log_date: string;
@@ -84,16 +85,6 @@ export default function HealthPage() {
     : '';
 
   const last7Days = history.slice(0, 7);
-  const chronological7Days = [...last7Days].reverse();
-
-  const avgSteps = last7Days.length
-    ? Math.round(last7Days.reduce((s, l) => s + (l.steps || 0), 0) / last7Days.length) : 0;
-  const avgCalories = last7Days.length
-    ? Math.round(last7Days.reduce((s, l) => s + (l.active_calories || 0), 0) / last7Days.length) : 0;
-  const avgHRV = last7Days.length && last7Days.filter(l => l.hrv).length
-    ? (last7Days.reduce((s, l) => s + (Number(l.hrv) || 0), 0) / last7Days.filter(l => l.hrv).length) : 0;
-  const avgRHR = last7Days.length && last7Days.filter(l => l.resting_heart_rate).length
-    ? Math.round(last7Days.reduce((s, l) => s + (l.resting_heart_rate || 0), 0) / last7Days.filter(l => l.resting_heart_rate).length) : 0;
 
   const getSleepTime = (item: HealthLog | null) => {
     if (!item) return 0;
@@ -168,7 +159,9 @@ export default function HealthPage() {
       <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-24 scrollbar-hide">
         <PullToRefresh onRefresh={handleRefresh}>
 
-          {!log && !loading ? (
+          {activeTab === 3 ? (
+            <HealthTrends refreshKey={refreshCount} />
+          ) : !log && !loading ? (
             <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-6 text-center text-[#555] font-mono text-xs">
               No dataset mapped inside health_logs. Run export to transmit.
             </div>
@@ -411,120 +404,6 @@ export default function HealthPage() {
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* ── TRENDS TAB ── */}
-              {activeTab === 3 && (
-                <div className="space-y-6 transition-all duration-200">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-[#111] border border-[#1a1a1a] p-4 rounded-xl">
-                      <p className="text-[9px] font-bold text-[#555] uppercase tracking-wider">Avg Steps (7d)</p>
-                      <p className="text-base font-mono font-bold text-[#60a5fa] mt-1">{avgSteps.toLocaleString()}</p>
-                    </div>
-                    <div className="bg-[#111] border border-[#1a1a1a] p-4 rounded-xl">
-                      <p className="text-[9px] font-bold text-[#555] uppercase tracking-wider">Avg Burn (7d)</p>
-                      <p className="text-base font-mono font-bold text-[#ef4444] mt-1">{avgCalories} kcal</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-[#111] border border-[#1a1a1a] p-4 rounded-xl">
-                      <p className="text-[9px] font-bold text-[#555] uppercase tracking-wider">Avg HRV (7d)</p>
-                      <p className="text-base font-mono font-bold text-purple-400 mt-1">
-                        {isNaN(avgHRV) || avgHRV === 0 ? '--' : `${Math.round(avgHRV)} ms`}
-                      </p>
-                    </div>
-                    <div className="bg-[#111] border border-[#1a1a1a] p-4 rounded-xl">
-                      <p className="text-[9px] font-bold text-[#555] uppercase tracking-wider">Avg RHR (7d)</p>
-                      <p className="text-base font-mono font-bold text-[#ef4444] mt-1">
-                        {isNaN(avgRHR) || avgRHR === 0 ? '--' : `${avgRHR} bpm`}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
-                    <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">Steps</p>
-                    <div className="flex justify-between items-end h-20 px-1">
-                      {chronological7Days.map((h, index) => {
-                        const pct = Math.min(((h.steps || 0) / 12500) * 100, 100);
-                        const isLatest = h.log_date === log?.log_date;
-                        return (
-                          <div key={h.log_date || index} className="flex flex-col items-center flex-1">
-                            <div className="w-2.5 bg-[#1a1a1a] h-16 rounded-full flex items-end overflow-hidden">
-                              <div className={`w-full rounded-full ${isLatest ? 'bg-[#60a5fa]' : 'bg-[#60a5fa]/30'}`} style={{ height: `${pct}%` }} />
-                            </div>
-                            <p className="text-[8px] font-mono text-[#444] mt-1.5">
-                              {h.log_date ? new Date(h.log_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1) : '-'}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
-                    <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">Sleep Duration</p>
-                    <div className="flex justify-between items-end h-20 px-1">
-                      {chronological7Days.map((h, index) => {
-                        const duration = getSleepTime(h);
-                        const pct = Math.min((duration / 10) * 100, 100);
-                        const isLatest = h.log_date === log?.log_date;
-                        return (
-                          <div key={h.log_date || index} className="flex flex-col items-center flex-1">
-                            <div className="w-2.5 bg-[#1a1a1a] h-16 rounded-full flex items-end overflow-hidden">
-                              <div className={`w-full rounded-full ${isLatest ? 'bg-indigo-400' : 'bg-indigo-400/30'}`} style={{ height: `${pct}%` }} />
-                            </div>
-                            <p className="text-[8px] font-mono text-[#444] mt-1.5">
-                              {h.log_date ? new Date(h.log_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1) : '-'}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
-                    <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">HRV</p>
-                    <div className="flex justify-between items-end h-20 px-1">
-                      {chronological7Days.map((h, index) => {
-                        const val = Number(h.hrv) || 0;
-                        const pct = Math.min((val / 100) * 100, 100);
-                        const isLatest = h.log_date === log?.log_date;
-                        return (
-                          <div key={h.log_date || index} className="flex flex-col items-center flex-1">
-                            <div className="w-2.5 bg-[#1a1a1a] h-16 rounded-full flex items-end overflow-hidden">
-                              <div className={`w-full rounded-full ${isLatest ? 'bg-purple-400' : 'bg-purple-400/30'}`} style={{ height: `${pct}%` }} />
-                            </div>
-                            <p className="text-[8px] font-mono text-[#444] mt-1.5">
-                              {h.log_date ? new Date(h.log_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1) : '-'}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="bg-[#111] border border-[#1a1a1a] p-5 rounded-2xl">
-                    <p className="text-[10px] font-semibold text-[#555] uppercase tracking-wider mb-6">Resting Heart Rate</p>
-                    <div className="flex justify-between items-end h-20 px-1">
-                      {chronological7Days.map((h, index) => {
-                        const val = Number(h.resting_heart_rate) || 0;
-                        const pct = Math.min((val / 100) * 100, 100);
-                        const isLatest = h.log_date === log?.log_date;
-                        return (
-                          <div key={h.log_date || index} className="flex flex-col items-center flex-1">
-                            <div className="w-2.5 bg-[#1a1a1a] h-16 rounded-full flex items-end overflow-hidden">
-                              <div className={`w-full rounded-full ${isLatest ? 'bg-[#ef4444]' : 'bg-[#ef4444]/30'}`} style={{ height: `${pct}%` }} />
-                            </div>
-                            <p className="text-[8px] font-mono text-[#444] mt-1.5">
-                              {h.log_date ? new Date(h.log_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1) : '-'}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
                 </div>
               )}
 
