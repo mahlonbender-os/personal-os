@@ -1,7 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const tabs = [
   {
@@ -46,19 +45,17 @@ const tabs = [
     ),
   },
   {
-    id: 'goals',
-    label: 'Goals',
-    href: '/goals',
+    id: 'today',
+    label: 'Today',
+    href: '/today',
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9"
+        <rect x="3" y="4" width="18" height="17" rx="2"
+          fill={active ? 'var(--amber)' : 'none'}
           stroke={active ? 'var(--amber)' : '#444'}
           strokeWidth="1.5"/>
-        <circle cx="12" cy="12" r="5"
-          stroke={active ? 'var(--amber)' : '#444'}
-          strokeWidth="1.5"/>
-        <circle cx="12" cy="12" r="1.5"
-          fill={active ? 'var(--amber)' : '#444'}/>
+        <path d="M3 9H21" stroke={active ? '#000' : '#444'} strokeWidth="1.5"/>
+        <path d="M8 2V6M16 2V6" stroke={active ? 'var(--amber)' : '#444'} strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
     ),
   },
@@ -76,8 +73,24 @@ const tabs = [
   },
 ];
 
-export default function BottomNav({ active }: { active: string }) {
+function tabFromPath(pathname: string): string {
+  if (pathname === '/') return 'home';
+  if (pathname === '/finance' || pathname.startsWith('/finance/')) return 'finance';
+  if (pathname === '/health' || pathname.startsWith('/health/')) return 'health';
+  if (
+    pathname === '/today' ||
+    pathname === '/calendar' ||
+    pathname === '/tasks' ||
+    pathname.startsWith('/calendar/') ||
+    pathname.startsWith('/tasks/')
+  ) return 'today';
+  return 'more';
+}
+
+export default function BottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const active = tabFromPath(pathname || '/');
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-black border-t border-[#1a1a1a]"
@@ -86,14 +99,21 @@ export default function BottomNav({ active }: { active: string }) {
         {tabs.map((tab) => {
           const isActive = active === tab.id;
           return (
-            <Link key={tab.id} href={tab.href}
-              className="flex flex-col items-center gap-0.5 flex-1 py-1 active:opacity-70 transition-opacity">
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(8);
+                router.push(tab.href);
+              }}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 active:opacity-70 transition-opacity"
+            >
               {tab.icon(isActive)}
               <span className="text-[10px] font-medium"
                 style={{ color: isActive ? 'var(--amber)' : '#444' }}>
                 {tab.label}
               </span>
-            </Link>
+            </button>
           );
         })}
       </div>

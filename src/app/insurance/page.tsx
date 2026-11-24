@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
-import BottomNav from '@/components/BottomNav';
 
 interface InsurancePolicy {
   id: string;
@@ -188,7 +187,7 @@ export default function InsurancePage() {
         <div className="min-h-screen bg-black text-white pb-24">
           
           {/* Sticky context header row perfectly matching Knox and Investments template */}
-          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+          <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
@@ -359,7 +358,6 @@ export default function InsurancePage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav activeTab="more" />
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
@@ -368,7 +366,7 @@ export default function InsurancePage() {
       {/* Centered Add Form Popup Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 border border-[#1a1a1a]">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain p-6 border border-[#1a1a1a]">
             <h2 className="text-xl font-bold font-mono text-[#f0a050] mb-4 uppercase tracking-wide">Add Insurance</h2>
             <div className="space-y-4">
               <div>
@@ -459,7 +457,7 @@ export default function InsurancePage() {
       {/* Centered Edit Form Popup Modal */}
       {editPolicyEntry && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 border border-[#1a1a1a]">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain p-6 border border-[#1a1a1a]">
             <h2 className="text-xl font-bold font-mono text-[#f0a050] mb-4 uppercase tracking-wide">Modify Policy</h2>
             <div className="space-y-4">
               <div>

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import BottomNav from '@/components/BottomNav';
 import PullToRefresh from '@/components/PullToRefresh';
+import Modal from '@/components/Modal';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -227,7 +227,7 @@ export default function RetirementPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto overscroll-contain pb-24 scrollbar-hide">
           <PullToRefresh onRefresh={load}>
             <div className="px-4 pt-4 space-y-4">
 
@@ -246,29 +246,10 @@ export default function RetirementPage() {
                   </>
                 )}
 
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  <div className="bg-white/5 rounded-xl p-3">
-                    <p className="text-[#555] text-[9px] mb-0.5">Contributed</p>
-                    <p className="text-white text-sm font-bold font-mono">{fmt(totalContributions)}</p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl p-3">
-                    <p className="text-[#555] text-[9px] mb-0.5">Growth</p>
-                    <p className={`text-sm font-bold font-mono ${impliedGrowth >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                      {impliedGrowth >= 0 ? '+' : '-'}{fmt(Math.abs(impliedGrowth))}
-                    </p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl p-3">
-                    <p className="text-[#555] text-[9px] mb-0.5">Return</p>
-                    <p className={`text-sm font-bold font-mono ${growthPct >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                      {growthPct >= 0 ? '+' : ''}{growthPct.toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
               </div>
 
               {/* Charts */}
               <BalanceSparkline />
-              <ContributionBars />
 
               {/* Balance snapshots */}
               {snapshots.length > 0 && (
@@ -292,53 +273,11 @@ export default function RetirementPage() {
                 </div>
               )}
 
-              {/* Monthly contribution breakdown */}
-              {monthlyContributions.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2 px-1">Contributions by Month</p>
-                  <Card className="overflow-hidden">
-                    {[...monthlyContributions].reverse().map((m, idx) => {
-                      const isExpanded = expandedMonth === m.month;
-                      const monthTxs = contributions.filter(tx => tx.date.startsWith(m.month));
-                      return (
-                        <div key={m.month}>
-                          <div
-                            className={`flex items-center px-4 py-3 gap-3 cursor-pointer active:bg-[#161616] transition-colors ${idx !== monthlyContributions.length - 1 || isExpanded ? 'border-b border-[#1a1a1a]' : ''}`}
-                            onClick={() => setExpandedMonth(isExpanded ? null : m.month)}
-                          >
-                            <div className="flex-1">
-                              <p className="text-sm text-[#ccc]">{monthLabel(m.month)}</p>
-                              <p className="text-[10px] text-[#444]">{monthTxs.length} contribution{monthTxs.length !== 1 ? 's' : ''}</p>
-                            </div>
-                            <span className={`text-[10px] text-[#555] mr-1 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
-                            <p className="text-sm font-semibold text-[#22c55e] font-mono">{fmt(m.total)}</p>
-                          </div>
-                          {isExpanded && (
-                            <div className={`bg-[#0d0d0d] ${idx !== monthlyContributions.length - 1 ? 'border-b border-[#1a1a1a]' : ''}`}>
-                              {monthTxs.map((tx, ti) => (
-                                <div key={tx.id} className={`flex items-center px-6 py-2.5 gap-3 ${ti !== monthTxs.length - 1 ? 'border-b border-[#141414]' : ''}`}>
-                                  <div className="flex-1">
-                                    <p className="text-[11px] text-[#888]">{fmtDate(tx.date)}</p>
-                                    <p className="text-[10px] text-[#444]">{tx.merchant}</p>
-                                  </div>
-                                  <p className="text-[11px] font-semibold text-[#22c55e] font-mono">{fmt(parseFloat(String(tx.amount)))}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </Card>
-                </div>
-              )}
-
               {/* Empty state */}
-              {contributions.length === 0 && snapshots.length === 0 && (
+              {snapshots.length === 0 && (
                 <div className="text-center py-12 text-[#333] text-sm">
-                  <p>No 401(k) data yet.</p>
+                  <p>No 401(k) balance yet.</p>
                   <p className="text-[11px] mt-1">Tap Log Balance above to add your first snapshot.</p>
-                  <p className="text-[11px] mt-0.5">Contributions sync automatically from your paycheck transactions.</p>
                 </div>
               )}
 
@@ -346,62 +285,62 @@ export default function RetirementPage() {
           </PullToRefresh>
         </div>
 
-        <BottomNav active="more" />
       </div>
 
       {/* Log Balance Modal */}
       {showAdd && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAdd(false)}>
-          <div className="bg-[#1c1c1e] w-full max-w-lg rounded-2xl pb-6 border border-[#1a1a1a]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
-              <button onClick={() => setShowAdd(false)} className="text-[#f0a050] text-sm">Cancel</button>
-              <h2 className="text-base font-semibold text-white">Log Balance</h2>
-              <button onClick={handleAdd} disabled={saving} className="text-[#f0a050] text-sm font-semibold disabled:opacity-40">
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-            <div className="px-4 pt-4 space-y-3">
-              <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
-                  <input type="date" value={form.snapshot_date}
-                    onChange={e => setForm(f => ({ ...f, snapshot_date: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none" />
-                </div>
-                <div className="flex items-center px-4 py-3 border-b border-white/10">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Balance</span>
-                  <input type="number" placeholder="0.00" step="0.01" value={form.balance}
-                    onChange={e => setForm(f => ({ ...f, balance: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
-                <div className="flex items-center px-4 py-3">
-                  <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
-                  <input type="text" placeholder="Optional" value={form.notes}
-                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                    className="flex-1 bg-transparent text-sm text-white text-right outline-none placeholder-[#444]" />
-                </div>
+        <Modal
+          title="Log Balance"
+          onClose={() => setShowAdd(false)}
+          headerRight={
+            <button type="button" onClick={handleAdd} disabled={saving} className="text-base font-semibold text-[#f0a050] disabled:opacity-40">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          }
+        >
+          <div className="space-y-3">
+            <div className="rounded-xl bg-[#2c2c2e] overflow-hidden">
+              <div className="flex items-center px-4 py-3 border-b border-white/10">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Date</span>
+                <input type="date" value={form.snapshot_date}
+                  onChange={e => setForm(f => ({ ...f, snapshot_date: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none" />
               </div>
-              <p className="text-[10px] text-[#444] px-1">Check your 1st Financial account for the current balance, then log it here monthly to track growth.</p>
-              {formError && <p className="text-[#ef4444] text-xs px-1 font-mono">{formError}</p>}
+              <div className="flex items-center px-4 py-3 border-b border-white/10">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Balance</span>
+                <input type="number" placeholder="0.00" step="0.01" value={form.balance}
+                  onChange={e => setForm(f => ({ ...f, balance: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none placeholder-[#444]" />
+              </div>
+              <div className="flex items-center px-4 py-3">
+                <span className="text-sm text-[#888] w-24 flex-shrink-0">Notes</span>
+                <input type="text" placeholder="Optional" value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  className="flex-1 bg-transparent text-base text-white text-right outline-none placeholder-[#444]" />
+              </div>
             </div>
+            <p className="text-[10px] text-[#444] px-1">Check your 1st Financial account for the current balance, then log it here monthly.</p>
+            {formError && <p className="text-[#ef4444] text-xs px-1 font-mono">{formError}</p>}
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* Delete confirm */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center px-4 pb-8">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-lg p-5 border border-[#1a1a1a]">
-            <p className="text-base font-semibold text-white text-center mb-1">Delete this snapshot?</p>
-            <p className="text-[11px] text-[#555] text-center mb-4">This cannot be undone.</p>
+        <Modal
+          title="Delete this snapshot?"
+          onClose={() => setDeleteId(null)}
+          align="sheet"
+          footer={
             <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold">Cancel</button>
-              <button onClick={handleDelete} disabled={deleting} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-sm font-semibold disabled:opacity-40">
+              <button type="button" onClick={() => setDeleteId(null)} className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-base font-semibold">Cancel</button>
+              <button type="button" onClick={handleDelete} disabled={deleting} className="flex-1 py-3 rounded-xl bg-[#ef4444] text-white text-base font-semibold disabled:opacity-40">
                 {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
-          </div>
-        </div>
+          }
+        >
+          <p className="text-center text-sm text-[#888]">This cannot be undone.</p>
+        </Modal>
       )}
     </>
   );

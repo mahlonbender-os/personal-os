@@ -4,7 +4,7 @@ import PullToRefresh from '@/components/PullToRefresh';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import EditTaskModal from '@/components/EditTaskModal';
-import BottomNav from '@/components/BottomNav';
+import Modal from '@/components/Modal';
 import {
   ArrowLeft, Check, ChevronDown,
   X, Clock, Eye, EyeOff, List, CheckSquare, Plus
@@ -141,7 +141,7 @@ export default function TasksPage() {
         <div className="pb-24 min-h-screen bg-black text-white">
 
           {/* Sticky Header Row */}
-          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+          <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a]">
             <div className="flex items-center gap-2 px-4 pt-14 pb-3">
               <button onClick={() => router.push('/more')} className="p-2 -ml-2 rounded-full text-[#555] active:text-[#f0a050]">
                 <ArrowLeft className="w-5 h-5" />
@@ -374,7 +374,6 @@ export default function TasksPage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav activeTab="more" />
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
@@ -396,7 +395,13 @@ export default function TasksPage() {
           taskListId={activeListId}
           onClose={() => setEditingTask(null)}
           onSaved={(updated) => {
-            setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+            setTasks(prev => prev.map(t => t.id === updated.id ? {
+              ...t,
+              title: updated.title,
+              notes: updated.notes,
+              due: updated.due,
+              status: updated.status === 'completed' ? 'completed' : 'needsAction',
+            } : t));
             setEditingTask(null);
             fetchTasks();
           }}
@@ -456,16 +461,21 @@ function AddTaskSheet({ listId, onClose, onSave }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
-      <div className="w-full max-w-md bg-[#1c1c1e] border-t border-[#1a1a1a] rounded-t-2xl max-h-[90vh] overflow-y-auto pb-4">
-        <div className="w-10 h-1 bg-[#333] rounded-full mx-auto mt-3" />
-        <div className="px-5 pt-4 pb-8">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-bold font-mono text-white uppercase tracking-wide">Log Task Entry</h2>
-            <button onClick={onClose} className="p-2 rounded-full text-[#555] active:text-[#ef4444]">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+    <Modal
+      title="New Task"
+      onClose={onClose}
+      align="sheet"
+      footer={
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!title.trim() || saving}
+          className="w-full bg-[#f0a050] text-black rounded-xl py-3.5 text-base font-bold disabled:opacity-40"
+        >
+          {saving ? 'Adding…' : 'Add Task'}
+        </button>
+      }
+    >
           <div className="space-y-4">
             <div>
               <label className="block text-xs uppercase text-[#555] font-mono mb-1">Task Heading Statement *</label>
@@ -539,16 +549,7 @@ function AddTaskSheet({ listId, onClose, onSave }: {
               </div>
             </div>
             
-            <button
-              onClick={handleSave}
-              disabled={!title.trim() || saving}
-              className="w-full bg-[#f0a050] text-black rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide font-mono disabled:opacity-40"
-            >
-              {saving ? 'Adding…' : 'Commit Task Entry'}
-            </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

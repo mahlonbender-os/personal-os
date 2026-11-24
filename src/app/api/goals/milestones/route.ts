@@ -3,10 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function supabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 // PATCH — toggle milestone completion
 export async function PATCH(request: NextRequest) {
@@ -20,7 +22,7 @@ export async function PATCH(request: NextRequest) {
     const { id, is_completed } = body;
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient()
       .from('goal_milestones')
       .update({
         is_completed,
@@ -49,7 +51,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-    const { error } = await supabase
+    const { error } = await supabaseClient()
       .from('goal_milestones')
       .delete()
       .eq('id', id);

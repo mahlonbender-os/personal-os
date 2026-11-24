@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
-import BottomNav from '@/components/BottomNav';
 
 interface HealthLog {
   log_date: string;
@@ -166,7 +165,7 @@ export default function HealthPage() {
       </div>
 
       {/* INDEPENDENT CONTENT VIEWS CONTAINER - Restricts height extensions */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-24 scrollbar-hide">
         <PullToRefresh onRefresh={handleRefresh}>
 
           {!log && !loading ? (
@@ -534,7 +533,6 @@ export default function HealthPage() {
         </PullToRefresh>
       </div>
 
-      <BottomNav active="health" />
     </div>
   );
 }

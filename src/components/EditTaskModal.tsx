@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
+import Modal from '@/components/Modal';
 
 interface Task {
   id: string;
@@ -23,40 +24,6 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
   const [due, setDue] = useState(task.due ? task.due.split('T')[0] : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Lock body scroll and force viewport to top on iOS
-  useEffect(() => {
-    const scrollY = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      window.scrollTo(0, scrollY);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target === e.currentTarget) onClose();
-  }
 
   async function handleSave() {
     if (!title.trim()) { setError('Title is required'); return; }
@@ -91,79 +58,57 @@ export default function EditTaskModal({ task, taskListId, onClose, onSaved }: Pr
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4"
-      onClick={handleBackdrop}
+    <Modal
+      title="Edit Task"
+      onClose={onClose}
+      footer={
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !title.trim()}
+          className="w-full py-3 rounded-xl bg-[#f0a050] text-black text-base font-semibold disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      }
     >
-      <div
-        ref={scrollRef}
-        className="bg-[#1c1c1e] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto pb-6"
-      >
-        {/* Header */}
-        <div className="px-5 pt-5 pb-4 border-b border-[#2a2a2a]">
-          <h2 className="text-base font-semibold text-white text-center">Edit Task</h2>
+      <div className="space-y-4">
+        <div>
+          <label className="text-[#888] text-xs uppercase tracking-wider mb-1 block">Title</label>
+          <input
+            type="text"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Task title"
+            className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-base placeholder-[#555] focus:outline-none focus:border-[#f0a050]"
+          />
         </div>
-
-        {/* Fields */}
-        <div className="px-5 pt-4 space-y-4">
-          <div>
-            <label className="text-[#888] text-xs uppercase tracking-wider mb-1 block">Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Task title"
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-sm placeholder-[#555] focus:outline-none focus:border-[#f0a050]"
-            />
-          </div>
-
-          <div>
-            <label className="text-[#888] text-xs uppercase tracking-wider mb-1 block">Notes</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Add notes…"
-              rows={3}
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-sm placeholder-[#555] focus:outline-none focus:border-[#f0a050] resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="text-[#888] text-xs uppercase tracking-wider mb-1 block">Due Date</label>
-            <input
-              type="date"
-              value={due}
-              onChange={e => setDue(e.target.value)}
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#f0a050] [color-scheme:dark]"
-            />
-            {due && (
-              <button onClick={() => setDue('')} className="text-[#ef4444] text-xs mt-1">
-                Clear due date
-              </button>
-            )}
-          </div>
-
-          {error && <p className="text-[#ef4444] text-sm">{error}</p>}
+        <div>
+          <label className="text-[#888] text-xs uppercase tracking-wider mb-1 block">Notes</label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Add notes…"
+            rows={3}
+            className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-base placeholder-[#555] focus:outline-none focus:border-[#f0a050] resize-none"
+          />
         </div>
-
-        {/* Footer */}
-        <div className="flex gap-3 px-5 pt-5">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="flex-1 py-3 rounded-xl bg-[#2a2a2a] text-white text-sm font-semibold"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !title.trim()}
-            className="flex-1 py-3 rounded-xl bg-[#f0a050] text-black text-sm font-semibold disabled:opacity-40"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+        <div>
+          <label className="text-[#888] text-xs uppercase tracking-wider mb-1 block">Due Date</label>
+          <input
+            type="date"
+            value={due}
+            onChange={e => setDue(e.target.value)}
+            className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white text-base focus:outline-none focus:border-[#f0a050] [color-scheme:dark]"
+          />
+          {due && (
+            <button type="button" onClick={() => setDue('')} className="text-[#ef4444] text-xs mt-1">
+              Clear due date
+            </button>
+          )}
         </div>
+        {error && <p className="text-[#ef4444] text-sm">{error}</p>}
       </div>
-    </div>
+    </Modal>
   );
 }

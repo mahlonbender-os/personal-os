@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
-import BottomNav from '@/components/BottomNav';
 
 interface Warranty {
   id: string;
@@ -179,7 +178,7 @@ export default function WarrantiesPage() {
         <div className="min-h-screen bg-black text-white pb-24">
           
           {/* Sticky context header row perfectly matching Knox and Investments template */}
-          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+          <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>
@@ -322,7 +321,6 @@ export default function WarrantiesPage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav activeTab="more" />
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
@@ -331,7 +329,7 @@ export default function WarrantiesPage() {
       {/* Modal Configuration Sheet */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6 text-white border border-[#1a1a1a]">
+          <div className="bg-[#1c1c1e] rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain pb-6 text-white border border-[#1a1a1a]">
             <div className="flex justify-between items-center px-5 py-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
               <h2 className="text-base font-bold text-white font-mono uppercase tracking-wide">
                 {selectedWarranty ? 'Modify Asset Profile' : 'Log New Warranty'}

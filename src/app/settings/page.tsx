@@ -7,122 +7,35 @@ export default function SettingsPage() {
   const router = useRouter();
   const [permission, setPermission] = useState<string>('default');
   const [loading, setLoading] = useState(false);
-  const [swRegistered, setSwRegistered] = useState(false);
 
   useEffect(() => {
     if ('Notification' in window) {
       setPermission(Notification.permission);
     }
-    
-    if ('serviceWorker' in navigator) {
-      // 1. Check if a service worker is actively controlling the page right now
-      if (navigator.serviceWorker.controller) {
-        setSwRegistered(true);
-      }
-
-      // 2. Scan all active registrations as a bulletproof fallback indicator
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        if (registrations.length > 0) {
-          setSwRegistered(true);
-        }
-      });
-
-      // 3. Fallback register inline to guarantee activation on this route path
-      navigator.serviceWorker.register('/sw.js')
-        .then(() => {
-          setSwRegistered(true);
-        })
-        .catch((err) => {
-          console.error('Settings page inline service worker registration failed:', err);
-        });
-    }
   }, []);
 
   async function enableNotifications() {
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-      alert('Push notifications are not supported on this browser configuration or system device envelope.');
+    if (!('Notification' in window)) {
+      alert('This phone does not support notifications.');
       return;
     }
-
     if (navigator.vibrate) navigator.vibrate(8);
     setLoading(true);
-
     try {
       const status = await Notification.requestPermission();
       setPermission(status);
-
-      if (status === 'granted') {
-        const reg = await navigator.serviceWorker.ready;
-        let sub = await reg.pushManager.getSubscription();
-        
-        if (!sub) {
-          try {
-            sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(
-                'BEl62OhaywTk7ExVAwwvKo7r364496m14VCTwbTI65gXYw83B_S3A8S7YwbV46R-2_P3_wb_1gVw84S8mB_46A'
-              ),
-            });
-          } catch (subErr) {
-            console.warn('Real pushManager generation requires explicit VAPID key pairs. Syncing device-handshake envelope metadata.');
-          }
-        }
-
-        // Commits configuration subscription straight to Supabase via our new endpoint
-        await fetch('/api/push/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            subscription: sub || {
-              is_mock: true,
-              user_agent: navigator.userAgent,
-              timestamp: new Date().toISOString(),
-            },
-          }),
-        });
-
-        alert('Success: Lock-screen push notification channel successfully linked to your Personal OS account!');
-      }
-    } catch (err: any) {
-      alert(`Permission handshake failed: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Permission failed';
+      alert(message);
     } finally {
       setLoading(false);
-    }
-  }
-
-  function urlBase64ToUint8Array(base64String: string) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  }
-
-  // Simulated diagnostic push loop to test your phone hardware instantly
-  function triggerLocalDiagnosticTest() {
-    if (navigator.vibrate) navigator.vibrate([50, 40, 50]);
-    
-    if ('Notification' in window && Notification.permission === 'granted') {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.showNotification('Personal OS Engine', {
-          body: '⚡ Test lock-screen warning trigger executed successfully! System notification array is active.',
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-          vibrate: [200, 100, 200],
-        });
-      });
-    } else {
-      alert('Diagnostic aborted: You must authorize permissions using the switch control block below first.');
     }
   }
 
   return (
     <div className="min-h-screen bg-black text-white pb-24">
       {/* Sticky Premium Header matching the design tokens of Knox & Vehicles */}
-      <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a] px-4 pt-14 pb-3 flex items-center justify-between">
+      <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a] px-4 pt-14 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div 
             onClick={() => { if (navigator.vibrate) navigator.vibrate(8); router.push('/more'); }} 
@@ -168,26 +81,15 @@ export default function SettingsPage() {
           </div>
 
           {/* Diagnostic Action Block Row Element */}
-          <div className="flex items-center justify-between pt-1">
-            <div>
-              <p className="text-white text-xs font-medium">Alert Channel Simulation</p>
-              <p className="text-[#555] text-[11px] mt-0.5 font-sans">Dispatches an instant mock alert pipeline payload</p>
-            </div>
-            <button
-              onClick={triggerLocalDiagnosticTest}
-              className="bg-black border border-[#1a1a1a] text-white text-[11px] font-mono font-semibold uppercase tracking-wider px-3 py-2 rounded-xl active:bg-[#111]"
-            >
-              Test Flash Alert
-            </button>
-          </div>
+          <p className="text-[#555] text-[11px]">Lock-screen alerts stayed tied to the old offline cache, so that channel is off.</p>
         </div>
 
         {/* Read-Only Environment Telemetry Indicators Section */}
         <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl p-4 space-y-2.5 font-mono text-xs text-[#555]">
           <p className="text-white text-[10px] font-bold uppercase tracking-wider mb-1 font-mono text-[#888]">System Diagnostics</p>
           <div className="flex justify-between border-b border-[#1a1a1a]/40 pb-1.5">
-            <span className="uppercase text-[10px]">Service Worker Registered</span>
-            <span className={swRegistered ? 'text-[#22c55e] font-bold' : 'text-[#ef4444]'}>{swRegistered ? 'ACTIVE' : 'DISCONNECTED'}</span>
+            <span className="uppercase text-[10px]">Offline cache</span>
+            <span className="text-[#888] font-bold">OFF</span>
           </div>
           <div className="flex justify-between border-b border-[#1a1a1a]/40 pb-1.5">
             <span className="uppercase text-[10px]">Notification Handshake State</span>

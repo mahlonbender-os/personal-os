@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import BottomNav from "@/components/BottomNav";
 import LocationAutocomplete from '@/components/LocationAutocomplete';
 import PullToRefresh from '@/components/PullToRefresh';
 
@@ -236,7 +235,7 @@ export default function CalendarPage() {
         <div className="pb-24 min-h-screen bg-black text-white">
           
           {/* Aligned Top Lock Header */}
-          <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-[#1a1a1a]">
+          <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a]">
             <div className="flex items-center justify-between px-4 pt-14 pb-3">
               <div>
                 <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>Calendar</h1>
@@ -409,7 +408,6 @@ export default function CalendarPage() {
         </div>
       </PullToRefresh>
 
-      <BottomNav activeTab="more" />
 
       {/* ═══════════════════════════════════════════════════════════════
           VIEWPORT FIXED ELEMENT SPECIFICATION MODALS BOUNDED SIBLINGS
@@ -418,7 +416,7 @@ export default function CalendarPage() {
       {/* Add New Event Popup Card Overlay */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setShowAddModal(false)}>
-          <div className="bg-[#1c1c1e] border border-[#1a1a1a] w-full max-w-md rounded-2xl max-h-[85vh] overflow-y-auto pb-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#1c1c1e] border border-[#1a1a1a] w-full max-w-md rounded-2xl max-h-[90dvh] overflow-y-auto overscroll-contain pb-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#1a1a1a] sticky top-0 bg-[#1c1c1e] z-10">
               <button onClick={() => setShowAddModal(false)} className="text-[#555] text-sm font-semibold">Cancel</button>
               <h2 className="text-base font-bold font-mono text-white uppercase tracking-wide">New Event</h2>

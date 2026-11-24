@@ -3,10 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function supabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 
-    let query = supabase
+    let query = supabaseClient()
       .from('goals')
       .select(`*, goal_milestones(*)`)
       .eq('user_id', USER_ID)
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { milestones, ...goalData } = body;
 
-    const { data: goal, error: goalError } = await supabase
+    const { data: goal, error: goalError } = await supabaseClient()
       .from('goals')
       .insert({ ...goalData, user_id: USER_ID })
       .select()
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
         due_date: m.due_date || null,
         sort_order: i,
       }));
-      await supabase.from('goal_milestones').insert(milestoneRows);
+      await supabaseClient().from('goal_milestones').insert(milestoneRows);
     }
 
     return NextResponse.json({ goal });
@@ -92,7 +94,7 @@ export async function PATCH(request: NextRequest) {
     }
     updates.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient()
       .from('goals')
       .update(updates)
       .eq('id', id)
@@ -119,7 +121,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-    const { error } = await supabase
+    const { error } = await supabaseClient()
       .from('goals')
       .delete()
       .eq('id', id)
