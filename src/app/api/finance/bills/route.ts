@@ -1,10 +1,39 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { applyAutoAmounts, type BillAmountRow } from '@/lib/billAmounts';
 import { num, readWorkbook, serviceClient, upcomingBills } from '@/lib/financeRead';
 import { FINANCE_SHEET_SOURCE, FINANCE_USER_ID, easternToday } from '@/lib/financeSheet';
 
 export const dynamic = 'force-dynamic';
+
+const NO_STORE = { headers: { 'Cache-Control': 'no-store, max-age=0' } };
+
+/** Live amounts for Varies bills. A failed read leaves the list exactly as built. */
+async function readBillAmounts(): Promise<BillAmountRow[] | null> {
+  try {
+    const supabase = serviceClient();
+    const { data, error } = await supabase
+      .from('bill_amounts')
+      .select('bill_name, amount, due_date, source, as_of')
+      .eq('user_id', FINANCE_USER_ID);
+    if (error) {
+      console.error(`[finance] bill_amounts_read_failed ${String(error.message || 'read failed').slice(0, 180)}`);
+      return null;
+    }
+    return (data || []).map((row) => ({
+      bill_name: row.bill_name,
+      amount: row.amount,
+      due_date: row.due_date,
+      source: row.source,
+      as_of: row.as_of,
+    }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'read failed';
+    console.error(`[finance] bill_amounts_read_failed ${message.slice(0, 180)}`);
+    return null;
+  }
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -18,9 +47,13 @@ export async function GET() {
     const bills = upcomingBills(book, today);
     const mine = bills.filter((bill) => bill.owner.trim().toLowerCase() !== 'bree');
     const bree = bills.filter((bill) => bill.owner.trim().toLowerCase() === 'bree');
+    const amounts = await readBillAmounts();
     return NextResponse.json(
-      { bills: mine, breeBills: bree },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      {
+        bills: applyAutoAmounts(mine, amounts, today),
+        breeBills: applyAutoAmounts(bree, amounts, today),
+      },
+      NO_STORE,
     );
   }
 
@@ -40,8 +73,9 @@ export async function GET() {
     amount_type: num(bill.amount) > 0 ? 'Fixed' : 'Varies',
     owner: '',
   }));
+  const amounts = await readBillAmounts();
   return NextResponse.json(
-    { bills, breeBills: [] },
-    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    { bills: applyAutoAmounts(bills, amounts, today), breeBills: [] },
+    NO_STORE,
   );
 }
