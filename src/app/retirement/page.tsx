@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 import TrendLine from '@/components/TrendLine';
 import { easternToday, formatLongDate } from '@/lib/dates';
 import {
@@ -75,16 +76,20 @@ function ChangeCell({ label, change }: { label: string; change: RetirementChange
 export default function RetirementPage() {
   const [data, setData] = useState<RetirementPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [problem, setProblem] = useState<'unauthorized' | 'error' | null>(null);
   const [range, setRange] = useState<BalanceRange>('1Y');
   const today = easternToday();
   const requestId = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     const id = ++requestId.current;
-    const cached = readCache();
+    if (fresh) {
+      try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+    }
+    const cached = fresh ? null : readCache();
     try {
-      const res = await fetch('/api/retirement');
+      const res = await freshFetch('/api/retirement', { fresh });
       if (id !== requestId.current) return;
       if (res.status === 401) {
         setData(null);
@@ -120,7 +125,7 @@ export default function RetirementPage() {
       setLoading(false);
       setProblem(null);
     }
-    load();
+    load(false);
   }, [load]);
 
   const latest = data?.latest ?? null;
@@ -134,11 +139,22 @@ export default function RetirementPage() {
           <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
             401(k)
           </h1>
-          <p className="text-[10px] text-[#555] mt-0.5">Fidelity</p>
+          {refreshing ? (
+            <p className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
+              <span className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+              Refreshing…
+            </p>
+          ) : (
+            <p className="text-[10px] text-[#555] mt-0.5">Fidelity</p>
+          )}
         </div>
       </div>
 
-      <PullToRefresh onRefresh={load}>
+      <PullToRefresh onRefresh={async () => {
+        setRefreshing(true);
+        try { await load(true); }
+        finally { setRefreshing(false); }
+      }}>
         <div className="px-4 pt-4 space-y-3">
           {loading && !data ? (
             <div className="flex justify-center pt-16">

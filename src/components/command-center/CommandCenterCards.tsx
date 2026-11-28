@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 import NewsCard from '@/components/command-center/NewsCard';
 import Modal from '@/components/Modal';
+import { clearStoragePrefix, freshFetch } from '@/lib/freshFetch';
 import { formatEasternMonthDay } from '@/lib/dates';
+
+const CC_CARDS = ['health', 'finance', 'investments', 'calendar', 'tasks', 'vehicle', 'weather', 'news'] as const;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -154,12 +157,18 @@ function FuelModal({onClose, onSaved}: {onClose:()=>void; onSaved:()=>void}) {
 
 // ─── Health Card ──────────────────────────────────────────────────────────────
 
-function HealthCard({ refreshCount }: { refreshCount: number }) {
+function HealthCard({ refreshCount, onDone }: { refreshCount: number; onDone: (epoch: number, card: string) => void }) {
   const [data,setData]=useState<any>(null);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_health_v1');if(c)setData(JSON.parse(c));}catch{}
-    fetch('/api/health/latest').then(r=>r.json()).then(d=>{setData(d.log||null);try{localStorage.setItem('cc_health_v1',JSON.stringify(d.log||null));}catch{}}).catch(()=>{});
-  },[refreshCount]);
+    let active = true;
+    const fresh = refreshCount > 0;
+    if (!fresh) { try{const c=localStorage.getItem('cc_health_v1');if(c)setData(JSON.parse(c));}catch{} }
+    freshFetch('/api/health/latest', { fresh }).then(r=>r.json()).then(d=>{
+      if (!active) return;
+      setData(d.log||null);try{localStorage.setItem('cc_health_v1',JSON.stringify(d.log||null));}catch{}
+    }).catch(()=>{}).finally(()=>{ if (active && fresh) onDone(refreshCount, 'health'); });
+    return () => { active = false; };
+  },[refreshCount, onDone]);
   const steps=data?.steps??0;
   const cal=data?.active_calories??0;
   const active=data?.exercise_minutes??data?.activity_minutes??0;
@@ -198,21 +207,30 @@ function HealthCard({ refreshCount }: { refreshCount: number }) {
 
 // ─── Finance Row ──────────────────────────────────────────────────────────────
 
-function FinanceRow({ refreshCount }: { refreshCount: number }) {
+function FinanceRow({ refreshCount, onDone }: { refreshCount: number; onDone: (epoch: number, card: string) => void }) {
   const [cf,setCf]=useState<any>(null); const [bills,setBills]=useState<any[]>([]);
   useEffect(()=>{
-    const cached=readCcFinance();
-    if(cached){setCf(cached.cf);setBills(cached.bills);}
-    else{try{localStorage.removeItem('cc_finance_v2');localStorage.removeItem('cc_finance_v3');}catch{}}
-    Promise.all([fetch('/api/finance/cash-flow').then(r=>r.json()),fetch('/api/finance/bills').then(r=>r.json())]).then(([cfData,blData])=>{
+    let active = true;
+    const fresh = refreshCount > 0;
+    if (!fresh) {
+      const cached=readCcFinance();
+      if(cached){setCf(cached.cf);setBills(cached.bills);}
+      else{try{localStorage.removeItem('cc_finance_v2');localStorage.removeItem('cc_finance_v3');}catch{}}
+    }
+    Promise.all([
+      freshFetch('/api/finance/cash-flow', { fresh }).then(r=>r.json()),
+      freshFetch('/api/finance/bills', { fresh }).then(r=>r.json()),
+    ]).then(([cfData,blData])=>{
+      if (!active) return;
       const ym=new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'}).slice(0,7);
       const cur=cfData.months?.find((m:any)=>m.rawHeader===ym);
       const newCf=cur&&Number.isFinite(cur.income)&&Number.isFinite(cur.net)?{income:cur.income,expenses:(cur.essentials||0)+(cur.discretionary||0),net:cur.net}:null;
       const newBills=(Array.isArray(blData.bills)?blData.bills:[]).filter((b:any)=>b&&typeof b.name==='string'&&Number.isFinite(Number(b.amount)));
       setCf(newCf);setBills(newBills);
       try{localStorage.setItem('cc_finance_v3',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
-    }).catch(()=>{});
-  },[refreshCount]);
+    }).catch(()=>{}).finally(()=>{ if (active && fresh) onDone(refreshCount, 'finance'); });
+    return () => { active = false; };
+  },[refreshCount, onDone]);
   const today=new Date().toLocaleDateString('sv-SE',{timeZone:'America/New_York'});
   const [y,m,d]=today.split('-').map(Number);
   const endUtc=new Date(Date.UTC(y,m-1,d+7));
@@ -237,12 +255,18 @@ function FinanceRow({ refreshCount }: { refreshCount: number }) {
 
 // ─── Investments Card ─────────────────────────────────────────────────────────
 
-function InvestmentsCard({ refreshCount }: { refreshCount: number }) {
+function InvestmentsCard({ refreshCount, onDone }: { refreshCount: number; onDone: (epoch: number, card: string) => void }) {
   const [data,setData]=useState<any>(null); const [loading,setLoading]=useState(true);
   useEffect(()=>{
-    try{localStorage.removeItem('cc_investments_v1');const c=localStorage.getItem('cc_investments_v2');if(c){setData(JSON.parse(c));setLoading(false);}}catch{}
-    fetch('/api/cc/investments').then(r=>r.json()).then(d=>{setData(d);setLoading(false);try{localStorage.setItem('cc_investments_v2',JSON.stringify(d));}catch{}}).catch(()=>setLoading(false));
-  },[refreshCount]);
+    let active = true;
+    const fresh = refreshCount > 0;
+    if (!fresh) { try{localStorage.removeItem('cc_investments_v1');const c=localStorage.getItem('cc_investments_v2');if(c){setData(JSON.parse(c));setLoading(false);}}catch{} }
+    freshFetch('/api/cc/investments', { fresh }).then(r=>r.json()).then(d=>{
+      if (!active) return;
+      setData(d);setLoading(false);try{localStorage.setItem('cc_investments_v2',JSON.stringify(d));}catch{}
+    }).catch(()=>{ if (active) setLoading(false); }).finally(()=>{ if (active && fresh) onDone(refreshCount, 'investments'); });
+    return () => { active = false; };
+  },[refreshCount, onDone]);
   const totalValue=data?.totalValue??0; const dailyChange=data?.dailyChange??null; const dailyChangePct=data?.dailyChangePct??null; const totalGain=data?.totalGain??null; const totalGainPct=data?.totalGainPct??null; const accounts:any[]=data?.accounts??[]; const hasPrices=data?.hasPrices??false;
   return (
     <div onClick={()=>{window.location.href='/investments';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer">
@@ -262,12 +286,18 @@ function InvestmentsCard({ refreshCount }: { refreshCount: number }) {
 
 // ─── Calendar Card ────────────────────────────────────────────────────────────
 
-function CalendarCard({ refreshCount }: { refreshCount: number }) {
+function CalendarCard({ refreshCount, onDone }: { refreshCount: number; onDone: (epoch: number, card: string) => void }) {
   const [events,setEvents]=useState<any[]>([]);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_calendar_v1');if(c)setEvents(JSON.parse(c));}catch{}
-    fetch('/api/calendar/events?days=7').then(r=>r.json()).then(d=>{const e=(d.events||[]).slice(0,5);setEvents(e);try{localStorage.setItem('cc_calendar_v1',JSON.stringify(e));}catch{}}).catch(()=>{});
-  },[refreshCount]);
+    let active = true;
+    const fresh = refreshCount > 0;
+    if (!fresh) { try{const c=localStorage.getItem('cc_calendar_v1');if(c)setEvents(JSON.parse(c));}catch{} }
+    freshFetch('/api/calendar/events?days=7', { fresh }).then(r=>r.json()).then(d=>{
+      if (!active) return;
+      const e=(d.events||[]).slice(0,5);setEvents(e);try{localStorage.setItem('cc_calendar_v1',JSON.stringify(e));}catch{}
+    }).catch(()=>{}).finally(()=>{ if (active && fresh) onDone(refreshCount, 'calendar'); });
+    return () => { active = false; };
+  },[refreshCount, onDone]);
   function fmtEvt(e:any){const d=new Date(e.start),now=new Date();now.setHours(0,0,0,0);const diff=Math.floor((d.getTime()-now.getTime())/86400000);const pre=diff===0?'Today':diff===1?'Tomorrow':d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});return e.allDay?pre:`${pre} · ${d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`;}
   return (
     <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] overflow-hidden">
@@ -279,12 +309,24 @@ function CalendarCard({ refreshCount }: { refreshCount: number }) {
 
 // ─── Tasks Card ───────────────────────────────────────────────────────────────
 
-function TasksCard({ refreshCount }: { refreshCount: number }) {
+function TasksCard({ refreshCount, onDone }: { refreshCount: number; onDone: (epoch: number, card: string) => void }) {
   const [tasks,setTasks]=useState<any[]>([]);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_tasks_v1');if(c)setTasks(JSON.parse(c));}catch{}
-    fetch('/api/tasks/lists').then(r=>r.json()).then(async d=>{const lists=d.lists||[];if(!lists.length)return;const preferred=lists.find((l:any)=>l.title==='Personal OS');const listId=(preferred||lists[0]).id;const res=await fetch(`/api/tasks/items?listId=${listId}&showCompleted=false`);const data=await res.json();const t=(data.tasks||[]).slice(0,4);setTasks(t);try{localStorage.setItem('cc_tasks_v1',JSON.stringify(t));}catch{}}).catch(()=>{});
-  },[refreshCount]);
+    let active = true;
+    const fresh = refreshCount > 0;
+    if (!fresh) { try{const c=localStorage.getItem('cc_tasks_v1');if(c)setTasks(JSON.parse(c));}catch{} }
+    freshFetch('/api/tasks/lists', { fresh }).then(r=>r.json()).then(async d=>{
+      const lists=d.lists||[];
+      if(!lists.length) return;
+      const preferred=lists.find((l:any)=>l.title==='Personal OS');
+      const listId=(preferred||lists[0]).id;
+      const res=await freshFetch(`/api/tasks/items?listId=${listId}&showCompleted=false`, { fresh });
+      const data=await res.json();
+      if (!active) return;
+      const t=(data.tasks||[]).slice(0,4);setTasks(t);try{localStorage.setItem('cc_tasks_v1',JSON.stringify(t));}catch{}
+    }).catch(()=>{}).finally(()=>{ if (active && fresh) onDone(refreshCount, 'tasks'); });
+    return () => { active = false; };
+  },[refreshCount, onDone]);
   return (
     <div className="rounded-2xl bg-[#111] border border-[#1a1a1a] overflow-hidden">
       <div onClick={()=>{window.location.href='/tasks';}} className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] active:bg-[#161616] cursor-pointer"><div className="flex items-center gap-2"><span className="text-sm">☑</span><span className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">Tasks</span></div><span className="text-[9px] text-[#f0a050]">{tasks.length} pending →</span></div>
@@ -295,12 +337,21 @@ function TasksCard({ refreshCount }: { refreshCount: number }) {
 
 // ─── Vehicle Card ─────────────────────────────────────────────────────────────
 
-function VehicleCard({ refreshCount }: { refreshCount: number }) {
+function VehicleCard({ refreshCount, onDone }: { refreshCount: number; onDone: (epoch: number, card: string) => void }) {
   const [vehicle,setVehicle]=useState<any>(null); const [lastService,setLastService]=useState<any>(null);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_vehicle_v1');if(c){const p=JSON.parse(c);setVehicle(p.v);setLastService(p.s);}}catch{}
-    Promise.all([fetch('/api/vehicle/info').then(r=>r.json()).catch(()=>({})),fetch('/api/vehicle/maintenance').then(r=>r.json()).catch(()=>({}))]).then(([info,maint])=>{const v=info.vehicle||info||null;const records:any[]=maint.records||maint.maintenance||maint||[];const s=[...records].sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime())[0]||null;setVehicle(v);setLastService(s);try{localStorage.setItem('cc_vehicle_v1',JSON.stringify({v,s}));}catch{}});
-  },[refreshCount]);
+    let active = true;
+    const fresh = refreshCount > 0;
+    if (!fresh) { try{const c=localStorage.getItem('cc_vehicle_v1');if(c){const p=JSON.parse(c);setVehicle(p.v);setLastService(p.s);}}catch{} }
+    Promise.all([
+      freshFetch('/api/vehicle/info', { fresh }).then(r=>r.json()).catch(()=>({})),
+      freshFetch('/api/vehicle/maintenance', { fresh }).then(r=>r.json()).catch(()=>({})),
+    ]).then(([info,maint])=>{
+      if (!active) return;
+      const v=info.vehicle||info||null;const records:any[]=maint.records||maint.maintenance||maint||[];const s=[...records].sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime())[0]||null;setVehicle(v);setLastService(s);try{localStorage.setItem('cc_vehicle_v1',JSON.stringify({v,s}));}catch{}
+    }).finally(()=>{ if (active && fresh) onDone(refreshCount, 'vehicle'); });
+    return () => { active = false; };
+  },[refreshCount, onDone]);
   function dLabel(d:string|null|undefined):string{const days=daysUntil(d??null);if(!d||days===null)return'—';if(days<0)return`Overdue ${Math.abs(days)}d`;if(days===0)return'Today';if(days<=90)return`${days} days`;return fmtShort(d);}
   return (
     <div onClick={()=>{window.location.href='/vehicle';}} className="rounded-2xl bg-[#111] border border-[#1a1a1a] p-4 active:opacity-70 transition-opacity cursor-pointer">
@@ -317,13 +368,23 @@ function VehicleCard({ refreshCount }: { refreshCount: number }) {
 
 // ─── Weather Widget ───────────────────────────────────────────────────────────
 
-function WeatherWidget({ refreshCount }: { refreshCount: number }) {
+function WeatherWidget({ refreshCount, onDone }: { refreshCount: number; onDone: (epoch: number, card: string) => void }) {
   const [weather,setWeather]=useState<{temp:number;icon:string}|null>(null);
   useEffect(()=>{
-    try{const c=localStorage.getItem('cc_weather_v1');if(c)setWeather(JSON.parse(c));}catch{}
-    if(!('geolocation'in navigator))return;
-    navigator.geolocation.getCurrentPosition(pos=>{fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`).then(r=>r.json()).then(d=>{if(!d.current)return;const w={temp:d.current.tempF,icon:d.current.icon};setWeather(w);try{localStorage.setItem('cc_weather_v1',JSON.stringify(w));}catch{}}).catch(()=>{});});
-  },[refreshCount]);
+    let active = true;
+    const fresh = refreshCount > 0;
+    const finish = () => { if (active && fresh) onDone(refreshCount, 'weather'); };
+    if (!fresh) { try{const c=localStorage.getItem('cc_weather_v1');if(c)setWeather(JSON.parse(c));}catch{} }
+    if(!('geolocation'in navigator)){ finish(); return; }
+    const timer = window.setTimeout(finish, 8000);
+    navigator.geolocation.getCurrentPosition(pos=>{
+      freshFetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`, { fresh }).then(r=>r.json()).then(d=>{
+        if (!active || !d.current) return;
+        const w={temp:d.current.tempF,icon:d.current.icon};setWeather(w);try{localStorage.setItem('cc_weather_v1',JSON.stringify(w));}catch{}
+      }).catch(()=>{}).finally(()=>{ window.clearTimeout(timer); finish(); });
+    }, ()=>{ window.clearTimeout(timer); finish(); }, { timeout: 8000 });
+    return () => { active = false; window.clearTimeout(timer); };
+  },[refreshCount, onDone]);
   if(!weather)return<div className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 text-[11px] text-[#333]">—°</div>;
   return<div onClick={()=>{window.location.href='/weather';}} className="rounded-full bg-[#111] border border-[#1a1a1a] px-3 py-1.5 flex items-center gap-1.5 active:opacity-70 transition-opacity cursor-pointer"><span className="text-sm">{weather.icon}</span><span className="text-[12px] font-semibold text-[#888]">{weather.temp}°</span></div>;
 }
@@ -334,12 +395,39 @@ export default function CommandCenterCards() {
   const [syncing,setSyncing]=useState(false);
   const [modal,setModal]=useState<string|null>(null);
   const [refreshCount,setRefreshCount]=useState(0);
+  const epochRef = useRef(0);
+  const arrived = useRef(new Set<string>());
+  const finishRef = useRef<(() => void) | null>(null);
 
-  const handleRefresh=useCallback(async()=>{
+  const onDone = useCallback((epoch: number, card: string) => {
+    if (epoch !== epochRef.current) return;
+    arrived.current.add(card);
+    if (CC_CARDS.every((name) => arrived.current.has(name))) {
+      finishRef.current?.();
+      finishRef.current = null;
+    }
+  }, []);
+
+  const handleRefresh=useCallback(()=>{
     setSyncing(true);
-    try{['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_finance_v3','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_investments_v2','cc_vehicle_v1'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('finance_')).forEach(k=>localStorage.removeItem(k));}catch{}
-    setSyncing(false);
-    setRefreshCount(c=>c+1);
+    try{
+      ['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_finance_v3','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_investments_v2','cc_vehicle_v1','news_articles_v2'].forEach(k=>localStorage.removeItem(k));
+      clearStoragePrefix('finance_');
+    }catch{}
+    const epoch = epochRef.current + 1;
+    epochRef.current = epoch;
+    arrived.current = new Set();
+    setRefreshCount(epoch);
+    return new Promise<void>((resolve) => {
+      const finish = () => {
+        if (epochRef.current !== epoch) return;
+        finishRef.current = null;
+        setSyncing(false);
+        resolve();
+      };
+      finishRef.current = finish;
+      window.setTimeout(finish, 20000);
+    });
   },[]);
 
   const quickActions=[
@@ -356,7 +444,7 @@ export default function CommandCenterCards() {
               <div className="text-[22px] font-extrabold text-white leading-tight font-display">{getGreeting()}, Mahlon</div>
               {syncing&&<div className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5 font-mono"><div className="w-2 h-2 border border-[#f0a050] border-t-transparent rounded-full animate-spin"/>Refreshing…</div>}
             </div>
-            <WeatherWidget refreshCount={refreshCount}/>
+            <WeatherWidget refreshCount={refreshCount} onDone={onDone}/>
           </div>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
             {quickActions.map(({label,modal:m})=>(
@@ -371,16 +459,16 @@ export default function CommandCenterCards() {
           <PullToRefresh onRefresh={handleRefresh}>
             <div className="px-4 pt-4 pb-24 space-y-3">
               <SectionLabel>Health</SectionLabel>
-              <HealthCard refreshCount={refreshCount}/>
+              <HealthCard refreshCount={refreshCount} onDone={onDone}/>
               <SectionLabel>Finance</SectionLabel>
-              <FinanceRow refreshCount={refreshCount}/>
-              <InvestmentsCard refreshCount={refreshCount}/>
+              <FinanceRow refreshCount={refreshCount} onDone={onDone}/>
+              <InvestmentsCard refreshCount={refreshCount} onDone={onDone}/>
               <SectionLabel>My Life</SectionLabel>
-              <CalendarCard refreshCount={refreshCount}/>
-              <TasksCard refreshCount={refreshCount}/>
-              <VehicleCard refreshCount={refreshCount}/>
+              <CalendarCard refreshCount={refreshCount} onDone={onDone}/>
+              <TasksCard refreshCount={refreshCount} onDone={onDone}/>
+              <VehicleCard refreshCount={refreshCount} onDone={onDone}/>
               <SectionLabel>News</SectionLabel>
-              <NewsCard/>
+              <NewsCard refreshCount={refreshCount} onDone={onDone}/>
             </div>
           </PullToRefresh>
         </div>

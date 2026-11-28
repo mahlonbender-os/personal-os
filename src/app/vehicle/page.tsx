@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { clearStorageKeys, freshFetch } from '@/lib/freshFetch';
 
 const TABS = ['Overview', 'Fuel', 'Maintenance'];
 const SERVICE_TYPES = [
@@ -202,12 +203,13 @@ export default function VehiclePage() {
   const [editMaintSaving, setEditMaintSaving] = useState(false);
 
   // ─── Data fetching ─────────────────────────────────────────────────────────
-  async function fetchAll() {
+  async function fetchAll(fresh = false) {
+    if (fresh) clearStorageKeys(['vehicle-info', 'vehicle-fuel', 'vehicle-maint']);
     try {
       const [ri, rf, rm] = await Promise.all([
-        fetch('/api/vehicle/info'),
-        fetch('/api/vehicle/fuel'),
-        fetch('/api/vehicle/maintenance'),
+        freshFetch('/api/vehicle/info', { fresh }),
+        freshFetch('/api/vehicle/fuel', { fresh }),
+        freshFetch('/api/vehicle/maintenance', { fresh }),
       ]);
       if (ri.ok) { const d = await ri.json(); setVehicleInfo(d); localStorage.setItem('vehicle-info', JSON.stringify(d)); }
       if (rf.ok) { const d = await rf.json(); setFuelEntries(d); localStorage.setItem('vehicle-fuel', JSON.stringify(d)); }
@@ -221,7 +223,7 @@ export default function VehiclePage() {
       const f = localStorage.getItem('vehicle-fuel'); if (f) setFuelEntries(JSON.parse(f));
       const m = localStorage.getItem('vehicle-maint'); if (m) setMaintEntries(JSON.parse(m));
     } catch {}
-    fetchAll();
+    fetchAll(false);
   }, []);
 
   // ─── Derived calculations ──────────────────────────────────────────────────
@@ -432,7 +434,7 @@ export default function VehiclePage() {
 
   return (
     <>
-      <PullToRefresh onRefresh={fetchAll}>
+      <PullToRefresh onRefresh={() => fetchAll(true)}>
         <div className="pb-24 min-h-screen bg-black text-white">
 
           {/* Sticky Tab Header Row Wrapper */}

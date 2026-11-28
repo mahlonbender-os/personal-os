@@ -4,10 +4,11 @@ import { authOptions } from '@/lib/auth';
 import { applyAutoAmounts, type BillAmountRow } from '@/lib/billAmounts';
 import { num, readWorkbook, serviceClient, upcomingBills } from '@/lib/financeRead';
 import { FINANCE_SHEET_SOURCE, FINANCE_USER_ID, easternToday } from '@/lib/financeSheet';
+import { freshRequested, NO_STORE_HEADERS } from '@/lib/noStore';
 
 export const dynamic = 'force-dynamic';
-
-const NO_STORE = { headers: { 'Cache-Control': 'no-store, max-age=0' } };
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 /** Live amounts for Varies bills. A failed read leaves the list exactly as built. */
 async function readBillAmounts(): Promise<BillAmountRow[] | null> {
@@ -35,14 +36,14 @@ async function readBillAmounts(): Promise<BillAmountRow[] | null> {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const today = easternToday();
-  const book = await readWorkbook(session.accessToken);
+  const book = await readWorkbook(session.accessToken, freshRequested(request));
   if (book) {
     const bills = upcomingBills(book, today);
     const mine = bills.filter((bill) => bill.owner.trim().toLowerCase() !== 'bree');
@@ -53,7 +54,7 @@ export async function GET() {
         bills: applyAutoAmounts(mine, amounts, today),
         breeBills: applyAutoAmounts(bree, amounts, today),
       },
-      NO_STORE,
+      { headers: NO_STORE_HEADERS }
     );
   }
 
@@ -76,6 +77,6 @@ export async function GET() {
   const amounts = await readBillAmounts();
   return NextResponse.json(
     { bills: applyAutoAmounts(bills, amounts, today), breeBills: [] },
-    NO_STORE,
+    { headers: NO_STORE_HEADERS }
   );
 }

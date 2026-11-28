@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import PullToRefresh from '@/components/PullToRefresh';
 import Modal from '@/components/Modal';
 import HELOCInterestShield from '@/components/finance/HELOCInterestShield';
 import { MonthlyFlowTrend, NetWorthTrend, type FlowMonth, type NetWorthPoint } from '@/components/finance/NetWorthTrend';
+import { clearStoragePrefix, freshFetch } from '@/lib/freshFetch';
 import { formatEasternMonthDay } from '@/lib/dates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -268,9 +269,25 @@ function readBillsCache(): Bill[] | null {
 }
 
 function clearFinanceCache() {
-  try {
-    Object.keys(localStorage).filter(k => k.startsWith('finance_')).forEach(k => localStorage.removeItem(k));
-  } catch {}
+  clearStoragePrefix('finance_');
+}
+
+function useFinanceReload(
+  onRefresh: number,
+  onRefreshDone: ((epoch: number) => void) | undefined,
+  load: (fresh: boolean, stillCurrent?: () => boolean) => Promise<void>,
+) {
+  const doneRef = useRef(onRefreshDone);
+  doneRef.current = onRefreshDone;
+  const generation = useRef(0);
+  useEffect(() => {
+    const id = ++generation.current;
+    const fresh = onRefresh > 0;
+    const stillCurrent = () => generation.current === id;
+    load(fresh, stillCurrent).catch(() => { /* The tab already recorded the failure. */ }).finally(() => {
+      if (stillCurrent() && fresh) doneRef.current?.(onRefresh);
+    });
+  }, [load, onRefresh]);
 }
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
@@ -313,7 +330,7 @@ function DeleteSheet({ onCancel, onConfirm, deleting, message }: { onCancel: () 
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNavigateRow: (tab: Tab) => void }) {
+function OverviewTab({ onRefresh, onRefreshDone, onNavigateRow }: { onRefresh: number; onRefreshDone: (epoch: number) => void; onNavigateRow: (tab: Tab) => void }) {
   const [cashFlow, setCashFlow] = useState<{ income: number; expenses: number; net: number; savingsRate: number | null } | null>(null);
   const [netWorth, setNetWorth] = useState<{ netWorth: number; totalAssets: number; totalLiabilities: number; mahlonNetWorth: number; asOf?: string } | null>(null);
   const [nwHistory, setNwHistory] = useState<NetWorthPoint[]>([]);
@@ -331,36 +348,39 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
   const [merchantTotal, setMerchantTotal] = useState(0);
 
   const loadMerchants = useCallback(async (month: string) => {
-    const res = await fetch(`/api/finance/merchants?month=${month}`);
+    const res = await freshFetch(`/api/finance/merchants?month=${month}`, { fresh: true });
     const json = await res.json();
     setMerchantData(json.merchants || []);
     setMerchantMonth(json.month || month);
     setMerchantTotal(json.grandTotal || 0);
   }, []);
 
-  const load = useCallback(async () => {
-    const cached = readOverviewCache();
-    if (cached) {
-      if (cached.cf) setCashFlow(cached.cf);
-      if (cached.nw) setNetWorth(cached.nw);
-      setRecentTx(cached.tx);
-      setBills(cached.bl);
-      setTrendData(cached.trend);
-      setNwHistory(cached.nwHistory);
-      setHistorySource(cached.historySource);
-      setLoading(false);
-    } else {
-      try { localStorage.removeItem(`finance_overview_${CACHE_VERSION}`); } catch {}
+  const load = useCallback(async (fresh: boolean, stillCurrent: () => boolean = () => true) => {
+    if (!fresh) {
+      const cached = readOverviewCache();
+      if (cached) {
+        if (cached.cf) setCashFlow(cached.cf);
+        if (cached.nw) setNetWorth(cached.nw);
+        setRecentTx(cached.tx);
+        setBills(cached.bl);
+        setTrendData(cached.trend);
+        setNwHistory(cached.nwHistory);
+        setHistorySource(cached.historySource);
+        setLoading(false);
+      } else {
+        try { localStorage.removeItem(`finance_overview_${CACHE_VERSION}`); } catch {}
+      }
     }
     try {
       const [cfRes, nwRes, txRes, blRes, goalsRes] = await Promise.all([
-        fetch('/api/finance/cash-flow'), fetch('/api/finance/net-worth'),
-        fetch('/api/finance/transactions?limit=5'), fetch('/api/finance/bills'),
-        fetch('/api/finance/savings'),
+        freshFetch('/api/finance/cash-flow', { fresh }), freshFetch('/api/finance/net-worth', { fresh }),
+        freshFetch('/api/finance/transactions?limit=5', { fresh }), freshFetch('/api/finance/bills', { fresh }),
+        freshFetch('/api/finance/savings', { fresh }),
       ]);
       const [cfData, nwData, txData, blData, goalsData] = await Promise.all([
         cfRes.json(), nwRes.json(), txRes.json(), blRes.json(), goalsRes.json(),
       ]);
+      if (!stillCurrent()) return;
       const ym = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/New_York' }).slice(0, 7);
       const cur = cfData.months?.find((m: { rawHeader?: string }) => m.rawHeader === ym);
       const cf = cur ? { income: cur.income, expenses: cur.essentials + cur.discretionary, net: cur.net, savingsRate: cur.savingsRate ?? null } : null;
@@ -384,10 +404,11 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
       let trend: FlowMonth[] = [];
       try {
         const [trendRes, merchantRes] = await Promise.all([
-          fetch('/api/finance/cashflow-trend'),
-          fetch('/api/finance/merchants'),
+          freshFetch('/api/finance/cashflow-trend', { fresh }),
+          freshFetch('/api/finance/merchants', { fresh }),
         ]);
         const [trendJson, merchantJson] = await Promise.all([trendRes.json(), merchantRes.json()]);
+        if (!stillCurrent()) return;
         trend = trendJson.months || [];
         setTrendData(trend);
         setMerchantData(merchantJson.merchants || []);
@@ -401,10 +422,10 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
           cf, nw, tx: txData.transactions || [], bl: blData.bills || [], trend, nwHistory: history, historySource: historySourceNext,
         }));
       } catch {}
-    } finally { setLoading(false); }
+    } finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  useFinanceReload(onRefresh, onRefreshDone, load);
 
   const dueSoon = bills.filter(b => dueWithinDays(b.due_date, 7));
   const dueTotal = dueSoon.reduce((s, b) => s + Math.abs(b.amount), 0);
@@ -545,7 +566,7 @@ function OverviewTab({ onRefresh, onNavigateRow }: { onRefresh: number; onNaviga
 
 // ─── Budget Tab ───────────────────────────────────────────────────────────────
 
-function BudgetTab({ onRefresh }: { onRefresh: number }) {
+function BudgetTab({ onRefresh, onRefreshDone }: { onRefresh: number; onRefreshDone: (epoch: number) => void }) {
   const [items, setItems] = useState<BudgetItem[]>([]);
   const [totalIncomeBudget, setTotalIncomeBudget] = useState(0);
   const [totalIncomeActual, setTotalIncomeActual] = useState(0);
@@ -562,11 +583,12 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (month?: string) => {
+  const load = useCallback(async (month?: string, fresh = false, stillCurrent: () => boolean = () => true) => {
     setLoading(true); setError(null);
     try {
       const url = month ? `/api/finance/budget?month=${month}` : '/api/finance/budget';
-      const data = await fetch(url).then(r => r.json());
+      const data = await freshFetch(url, { fresh }).then(r => r.json());
+      if (!stillCurrent()) return;
       if (data.error) throw new Error(data.error);
       setItems(data.items || []);
       setTotalIncomeBudget(data.totalIncomeBudget || 0);
@@ -580,7 +602,8 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
       setSelectedMonth(data.month);
       setCurrentMonth(data.currentMonth);
       setAvailableMonths(data.availableMonths || []);
-      const cfData = await fetch('/api/finance/cash-flow').then(r => r.json());
+      const cfData = await freshFetch('/api/finance/cash-flow', { fresh }).then(r => r.json());
+      if (!stillCurrent()) return;
       if (cfData.months) {
         const targetMonthIndex = cfData.months.findIndex((m: CashFlowMonth) => m.rawHeader === (month || data.month));
         if (targetMonthIndex !== -1) {
@@ -591,11 +614,12 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
         }
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load');
-    } finally { setLoading(false); }
+      if (stillCurrent()) setError(e instanceof Error ? e.message : 'Failed to load');
+    } finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  const reload = useCallback((fresh: boolean, stillCurrent?: () => boolean) => load(undefined, fresh, stillCurrent), [load]);
+  useFinanceReload(onRefresh, onRefreshDone, reload);
 
   const incomeItems = items.filter(i => i.section === 'income');
   const essentialItems = items.filter(i => i.section === 'essentials');
@@ -685,7 +709,7 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
           <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest">
             {selectedMonth === currentMonth ? 'This Month' : monthLabel(selectedMonth)}
           </p>
-          <select value={selectedMonth} onChange={e => load(e.target.value)} className="text-[11px] text-[#f0a050] bg-transparent border-none outline-none cursor-pointer">
+          <select value={selectedMonth} onChange={e => load(e.target.value, true)} className="text-[11px] text-[#f0a050] bg-transparent border-none outline-none cursor-pointer">
             {availableMonths.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </select>
         </div>
@@ -733,20 +757,21 @@ function BudgetTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── Transactions Tab ─────────────────────────────────────────────────────────
 
-function TransactionsTab({ onRefresh, searchQuery, selectedCategory, onCategories }: { onRefresh: number; searchQuery: string; selectedCategory: string; onCategories: (categories: string[]) => void }) {
+function TransactionsTab({ onRefresh, onRefreshDone, searchQuery, selectedCategory, onCategories }: { onRefresh: number; onRefreshDone: (epoch: number) => void; searchQuery: string; selectedCategory: string; onCategories: (categories: string[]) => void }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh: boolean, stillCurrent: () => boolean = () => true) => {
     setLoading(true);
     try {
-      const data = await fetch(`/api/finance/transactions?limit=2000&owner=all&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
+      const data = await freshFetch('/api/finance/transactions?limit=2000&owner=all', { fresh }).then(r => r.json());
+      if (!stillCurrent()) return;
       setTransactions(data.transactions || []);
     } catch (e) { console.error('Failed to load transactions:', e); }
-    finally { setLoading(false); }
+    finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  useFinanceReload(onRefresh, onRefreshDone, load);
 
   const mine = transactions.filter(tx => (tx.owner || '').toLowerCase() !== 'bree');
   const breeTx = transactions.filter(tx => (tx.owner || '').toLowerCase() === 'bree');
@@ -847,27 +872,30 @@ function TransactionsTab({ onRefresh, searchQuery, selectedCategory, onCategorie
 
 // ─── Bills Tab ────────────────────────────────────────────────────────────────
 
-function BillsTab({ onRefresh }: { onRefresh: number }) {
+function BillsTab({ onRefresh, onRefreshDone }: { onRefresh: number; onRefreshDone: (epoch: number) => void }) {
   const [bills, setBills] = useState<Bill[]>([]);
   const [breeBills, setBreeBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    const cached = readBillsCache();
-    if (cached) { setBills(cached); setLoading(false); }
-    else { try { localStorage.removeItem(`finance_bills_${CACHE_VERSION}`); } catch {} }
+  const load = useCallback(async (fresh: boolean, stillCurrent: () => boolean = () => true) => {
+    if (!fresh) {
+      const cached = readBillsCache();
+      if (cached) { setBills(cached); setLoading(false); }
+      else { try { localStorage.removeItem(`finance_bills_${CACHE_VERSION}`); } catch {} }
+    }
     try {
-      const data = await fetch('/api/finance/bills').then(r => r.json());
+      const data = await freshFetch('/api/finance/bills', { fresh }).then(r => r.json());
+      if (!stillCurrent()) return;
       const next = Array.isArray(data.bills) ? data.bills : [];
       setBills(next);
       setBreeBills(Array.isArray(data.breeBills) ? data.breeBills : []);
-      if (readBillsCache() || next.every((bill: Bill) => bill && typeof bill.id === 'string' && typeof bill.name === 'string')) {
+      if (next.every((bill: Bill) => bill && typeof bill.id === 'string' && typeof bill.name === 'string')) {
         try { localStorage.setItem(`finance_bills_${CACHE_VERSION}`, JSON.stringify(next)); } catch {}
       }
-    } finally { setLoading(false); }
+    } finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  useFinanceReload(onRefresh, onRefreshDone, load);
 
   const totalMonthly = bills.reduce((s, b) => s + Math.abs(b.amount || 0), 0);
   const weekEnd = easternDay(7);
@@ -1033,7 +1061,7 @@ function getAcctMeta(name: string, isLiability: boolean, limit: number): {
   return { typeLabel: isLiability ? 'Liability' : 'Asset', emoji: '💰', isRevolving: false, isInvestment: false, isLoan: false, isChecking: false, isHome: false };
 }
 
-function NetWorthTab({ onRefresh }: { onRefresh: number }) {
+function NetWorthTab({ onRefresh, onRefreshDone }: { onRefresh: number; onRefreshDone: (epoch: number) => void }) {
   const [data, setData] = useState<{ accounts: NetWorthAccount[]; totalAssets: number; totalLiabilities: number; netWorth: number; mahlonNetWorth?: number; asOf?: string; history?: NetWorthSnapshot[]; historySource?: 'daily' | 'balances' } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1041,14 +1069,15 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
   // Monthly activity per account — fetched once when tab loads
   const [monthlyActivity, setMonthlyActivity] = useState<Record<string, { income: number; expenses: number; txCount: number }>>({});
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh: boolean, stillCurrent: () => boolean = () => true) => {
     setLoading(true); setError(null);
     try {
       const [nwRes, txRes] = await Promise.all([
-        fetch('/api/finance/net-worth'),
-        fetch(`/api/finance/transactions?limit=400&_=${Date.now()}`, { cache: 'no-store' }),
+        freshFetch('/api/finance/net-worth', { fresh }),
+        freshFetch('/api/finance/transactions?limit=400', { fresh }),
       ]);
       const [d, txData] = await Promise.all([nwRes.json(), txRes.json()]);
+      if (!stillCurrent()) return;
       if (d.error) throw new Error(d.error);
       setData(d);
 
@@ -1066,10 +1095,10 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
       });
       setMonthlyActivity(activity);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to load'); }
-    finally { setLoading(false); }
+    finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  useFinanceReload(onRefresh, onRefreshDone, load);
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
   if (error) return <Card className="p-4 text-sm text-[#ef4444]">Unable to load — pull down to refresh</Card>;
@@ -1288,7 +1317,7 @@ function NetWorthTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── Credit Tab ───────────────────────────────────────────────────────────────
 
-function CreditTab({ onRefresh }: { onRefresh: number }) {
+function CreditTab({ onRefresh, onRefreshDone }: { onRefresh: number; onRefreshDone: (epoch: number) => void }) {
   const [scores, setScores] = useState<CreditScore[]>([]);
   const [accounts, setAccounts] = useState<{ name: string; balance: number; limit: number }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1296,21 +1325,22 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh: boolean, stillCurrent: () => boolean = () => true) => {
     setLoading(true);
     try {
       const [creditRes, acctRes] = await Promise.all([
-        fetch('/api/finance/credit'),
-        fetch('/api/finance/accounts'),
+        freshFetch('/api/finance/credit', { fresh }),
+        freshFetch('/api/finance/accounts', { fresh }),
       ]);
       const [creditData, acctData] = await Promise.all([creditRes.json(), acctRes.json()]);
+      if (!stillCurrent()) return;
       setScores(creditData.scores || []);
       setAccounts((acctData.accounts || []).filter((a: { limit: number }) => parseFloat(String(a.limit)) > 0));
     } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  useFinanceReload(onRefresh, onRefreshDone, load);
 
   async function handleDelete() {
     if (!deleteId) return;
@@ -1319,7 +1349,7 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
     setDeleting(false);
     setDeleteId(null);
     setExpandedId(null);
-    load();
+    load(true);
   }
 
   function scoreColor(s: number) {
@@ -1438,15 +1468,16 @@ function CreditTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── HELOC Tab ────────────────────────────────────────────────────────────────
 
-function HelocTab({ onRefresh }: { onRefresh: number }) {
+function HelocTab({ onRefresh, onRefreshDone }: { onRefresh: number; onRefreshDone: (epoch: number) => void }) {
   const [transactions, setTransactions] = useState<HelocTransaction[]>([]);
   const [summary, setSummary] = useState<{ balance: number; creditLimit: number; apr: number | null; breeHelocShare: number; mahlonHelocShare: number; asOf: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh: boolean, stillCurrent: () => boolean = () => true) => {
     setLoading(true);
     try {
-      const data = await fetch('/api/finance/heloc').then(r => r.json());
+      const data = await freshFetch('/api/finance/heloc', { fresh }).then(r => r.json());
+      if (!stillCurrent()) return;
       setTransactions(data.transactions || []);
       setSummary({
         balance: Number(data.balance) || 0,
@@ -1457,10 +1488,10 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
         asOf: data.asOf || null,
       });
     } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  useFinanceReload(onRefresh, onRefreshDone, load);
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
 
@@ -1489,7 +1520,7 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
         </Card>
       )}
 
-      <HELOCInterestShield />
+      <HELOCInterestShield refreshToken={onRefresh} />
 
       {transactions.length === 0 ? (
         <div className="text-center py-12 text-[#333] text-sm">
@@ -1527,7 +1558,7 @@ function HelocTab({ onRefresh }: { onRefresh: number }) {
 
 // ─── Subscriptions Tab ────────────────────────────────────────────────────────
 
-function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
+function SubscriptionsTab({ onRefresh, onRefreshDone }: { onRefresh: number; onRefreshDone?: (epoch: number) => void }) {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1535,23 +1566,24 @@ function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
   const [deleting, setDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh: boolean, stillCurrent: () => boolean = () => true) => {
     setLoading(true);
     try {
-      const data = await fetch('/api/finance/subscriptions').then(r => r.json());
+      const data = await freshFetch('/api/finance/subscriptions', { fresh }).then(r => r.json());
+      if (!stillCurrent()) return;
       setSubs(data.subscriptions || []);
     } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    finally { if (stillCurrent()) setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load, onRefresh]);
+  useFinanceReload(onRefresh, onRefreshDone, load);
 
   async function handleDelete() {
     if (!deleteId) return;
     setDeleting(true);
     await fetch(`/api/finance/subscriptions?id=${deleteId}`, { method: 'DELETE' });
     setDeleting(false); setDeleteId(null); setExpandedId(null);
-    load();
+    load(true);
   }
 
   async function handleToggle(sub: Subscription) {
@@ -1560,7 +1592,7 @@ function SubscriptionsTab({ onRefresh }: { onRefresh: number }) {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !sub.is_active }),
     });
-    setTogglingId(null); load();
+    setTogglingId(null); load(true);
   }
 
   const activeSubs = subs.filter(s => s.is_active);
@@ -1635,6 +1667,8 @@ function FinancePageInner() {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [refreshCount, setRefreshCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const refreshEpoch = useRef(0);
+  const refreshWaiter = useRef<((epoch: number) => void) | null>(null);
   const [txSearch, setTxSearch] = useState('');
   const [txCategory, setTxCategory] = useState('All');
   const [txCategories, setTxCategories] = useState<string[]>(['All']);
@@ -1664,11 +1698,28 @@ function FinancePageInner() {
     finally { setScoreSaving(false); }
   }
 
-  const handleRefresh = useCallback(async () => {
+  const onRefreshDone = useCallback((epoch: number) => {
+    refreshWaiter.current?.(epoch);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    if (refreshWaiter.current) return Promise.resolve();
     setSyncing(true);
     clearFinanceCache();
-    setSyncing(false);
-    setRefreshCount(c => c + 1);
+    const epoch = refreshEpoch.current + 1;
+    refreshEpoch.current = epoch;
+    setRefreshCount(epoch);
+    return new Promise<void>((resolve) => {
+      const finish = (seen?: number) => {
+        if (seen != null && seen !== epoch) return;
+        if (refreshEpoch.current !== epoch) return;
+        refreshWaiter.current = null;
+        setSyncing(false);
+        resolve();
+      };
+      refreshWaiter.current = finish;
+      window.setTimeout(() => finish(), 20000);
+    });
   }, []);
 
   if (status === 'loading') return <div className="min-h-screen flex items-center justify-center bg-black"><Spinner /></div>;
@@ -1707,11 +1758,11 @@ function FinancePageInner() {
               onClick={() => {
                 if (navigator.vibrate) navigator.vibrate(8);
                 if (activeTab === 'credit') { setScoreForm(f => ({ ...f, date: today })); setShowAddScore(true); }
-                else { handleRefresh(); }
+                else if (!syncing) { handleRefresh(); }
               }}
               className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
             >
-              {headerButtonLabel}
+              {syncing && activeTab !== 'credit' ? 'Refreshing…' : headerButtonLabel}
             </button>
           </div>
           <div className="flex gap-0 overflow-x-auto scrollbar-hide">
@@ -1754,20 +1805,21 @@ function FinancePageInner() {
       <div className="flex-1 overflow-hidden relative bg-black">
         <div className="h-full overflow-y-auto overscroll-contain px-4 pt-4 pb-24 scrollbar-hide">
           <PullToRefresh onRefresh={handleRefresh}>
-            {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onNavigateRow={id => setActiveTab(id)} />}
-            {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} />}
+            {activeTab === 'overview' && <OverviewTab onRefresh={refreshCount} onRefreshDone={onRefreshDone} onNavigateRow={id => setActiveTab(id)} />}
+            {activeTab === 'budget' && <BudgetTab onRefresh={refreshCount} onRefreshDone={onRefreshDone} />}
             {activeTab === 'transactions' && (
               <TransactionsTab
                 onRefresh={refreshCount}
+                onRefreshDone={onRefreshDone}
                 searchQuery={txSearch}
                 selectedCategory={txCategory}
                 onCategories={setTxCategories}
               />
             )}
-            {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} />}
-            {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} />}
-            {activeTab === 'credit' && <CreditTab onRefresh={refreshCount} />}
-            {activeTab === 'heloc' && <HelocTab onRefresh={refreshCount} />}
+            {activeTab === 'bills' && <BillsTab onRefresh={refreshCount} onRefreshDone={onRefreshDone} />}
+            {activeTab === 'networth' && <NetWorthTab onRefresh={refreshCount} onRefreshDone={onRefreshDone} />}
+            {activeTab === 'credit' && <CreditTab onRefresh={refreshCount} onRefreshDone={onRefreshDone} />}
+            {activeTab === 'heloc' && <HelocTab onRefresh={refreshCount} onRefreshDone={onRefreshDone} />}
           </PullToRefresh>
         </div>
       </div>

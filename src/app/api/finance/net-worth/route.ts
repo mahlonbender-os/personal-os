@@ -3,18 +3,21 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { readNetWorthHistory, readWorkbook } from '@/lib/financeRead';
 import { formatEasternDate } from '@/lib/financeSheet';
+import { freshRequested, NO_STORE_HEADERS } from '@/lib/noStore';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
-const noStore = { headers: { 'Cache-Control': 'no-store, max-age=0' } };
+const noStore = { headers: NO_STORE_HEADERS };
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const book = await readWorkbook(session.accessToken);
+  const book = await readWorkbook(session.accessToken, freshRequested(request));
   const history = await readNetWorthHistory(book);
   const latestSheet = book?.latestBalance ?? null;
 

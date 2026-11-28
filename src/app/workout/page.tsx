@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,28 +100,29 @@ function DeleteSheet({ onCancel, onConfirm, deleting, msg = 'Delete this workout
 
 // ─── Cardio Tab ───────────────────────────────────────────────────────────────
 
-function CardioTab({ refresh }: { refresh: number }) {
+function CardioTab({ refresh, register }: { refresh: number; register: (fn: () => Promise<void>) => void }) {
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState('All');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     setLoading(true);
     try {
-      const d = await fetch('/api/workout?type=cardio').then(r => r.json());
+      const d = await freshFetch('/api/workout?type=cardio', { fresh }).then(r => r.json());
       setSessions(d.sessions || []);
     } catch {}
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { load(); }, [load, refresh]);
+  useEffect(() => { load(refresh > 0); }, [load, refresh]);
+  useEffect(() => { register(() => load(true)); }, [load, register]);
 
   async function handleDelete() {
     if (!deleteId) return;
     setDeleting(true);
     await fetch(`/api/workout?id=${deleteId}`, { method: 'DELETE' });
-    setDeleting(false); setDeleteId(null); load();
+    setDeleting(false); setDeleteId(null); load(true);
   }
 
   const filtered = typeFilter === 'All' ? sessions : sessions.filter(s => s.name === typeFilter);
@@ -249,7 +251,7 @@ function CardioTab({ refresh }: { refresh: number }) {
 
 // ─── Strength Tab ─────────────────────────────────────────────────────────────
 
-function StrengthTab({ refresh }: { refresh: number }) {
+function StrengthTab({ refresh, register }: { refresh: number; register: (fn: () => Promise<void>) => void }) {
   const [subTab, setSubTab] = useState<'sessions' | 'exercises'>('sessions');
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [allSets, setAllSets] = useState<WorkoutSet[]>([]);
@@ -266,12 +268,12 @@ function StrengthTab({ refresh }: { refresh: number }) {
   const [setForm, setSetForm] = useState({ set_number: '', reps: '', weight_lbs: '' });
   const [savingSet, setSavingSet] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     setLoading(true);
     try {
       const [sessRes, setsRes] = await Promise.all([
-        fetch('/api/workout?type=strength').then(r => r.json()),
-        fetch('/api/workout/sets?all=true').then(r => r.json()),
+        freshFetch('/api/workout?type=strength', { fresh }).then(r => r.json()),
+        freshFetch('/api/workout/sets?all=true', { fresh }).then(r => r.json()),
       ]);
       setSessions(sessRes.sessions || []);
       setAllSets(setsRes.sets || []);
@@ -287,7 +289,8 @@ function StrengthTab({ refresh }: { refresh: number }) {
     } catch {}
   }
 
-  useEffect(() => { load(); }, [load, refresh]);
+  useEffect(() => { load(refresh > 0); }, [load, refresh]);
+  useEffect(() => { register(() => load(true)); }, [load, register]);
 
   async function handleDelete() {
     if (!deleteId) return;
@@ -295,7 +298,7 @@ function StrengthTab({ refresh }: { refresh: number }) {
     await fetch(`/api/workout?id=${deleteId}`, { method: 'DELETE' });
     setDeleting(false); setDeleteId(null);
     if (expandedSessionId === deleteId) setExpandedSessionId(null);
-    load();
+    load(true);
   }
 
   async function handleAddSet(sessionId: string) {
@@ -322,7 +325,7 @@ function StrengthTab({ refresh }: { refresh: number }) {
       setAddSetExercise('');
       setAddSetCustom(false);
       setShowAddSet(null);
-      load(); // refresh allSets for history
+      load(true); // refresh allSets for history
     } catch {}
     finally { setSavingSet(false); }
   }
@@ -331,7 +334,7 @@ function StrengthTab({ refresh }: { refresh: number }) {
     await fetch(`/api/workout/sets?id=${setId}`, { method: 'DELETE' });
     setSessionSets(prev => { const n = { ...prev }; delete n[sessionId]; return n; });
     await loadSessionSets(sessionId);
-    load();
+    load(true);
   }
 
   function toggleSession(id: string) {
@@ -702,6 +705,9 @@ export default function WorkoutPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const reloadRef = useRef<() => Promise<void>>(async () => {});
+  const register = useCallback((fn: () => Promise<void>) => { reloadRef.current = fn; }, []);
 
   if (status === 'loading') return <div className="min-h-screen bg-black flex items-center justify-center"><Spinner /></div>;
   if (!session) return <div className="min-h-screen bg-black flex items-center justify-center"><p className="text-[#555]">Please sign in</p></div>;
@@ -711,7 +717,15 @@ export default function WorkoutPage() {
       <div className="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
         <div className="flex-shrink-0 bg-black border-b border-[#1a1a1a] pt-14 px-4 z-30">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold text-white">Workouts 💪</h1>
+            <div>
+              <h1 className="text-xl font-bold text-white">Workouts 💪</h1>
+              {refreshing && (
+                <p className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
+                  <span className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+                  Refreshing…
+                </p>
+              )}
+            </div>
             <button onClick={() => { if (navigator.vibrate) navigator.vibrate(8); setShowAdd(true); }}
               className="text-sm font-semibold text-[#f0a050] active:opacity-70 px-2 py-1">
               {activeTab === 0 ? 'Log Cardio' : 'New Workout'}
@@ -727,10 +741,14 @@ export default function WorkoutPage() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-24 scrollbar-hide">
-          <PullToRefresh onRefresh={async () => setRefreshCount(c => c + 1)}>
+          <PullToRefresh onRefresh={async () => {
+            setRefreshing(true);
+            try { await reloadRef.current(); }
+            finally { setRefreshing(false); }
+          }}>
             <div className="space-y-4">
-              {activeTab === 0 && <CardioTab refresh={refreshCount} />}
-              {activeTab === 1 && <StrengthTab refresh={refreshCount} />}
+              {activeTab === 0 && <CardioTab refresh={refreshCount} register={register} />}
+              {activeTab === 1 && <StrengthTab refresh={refreshCount} register={register} />}
             </div>
           </PullToRefresh>
         </div>

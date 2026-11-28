@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import TrendLine from '@/components/TrendLine';
+import { freshFetch } from '@/lib/freshFetch';
 import {
   formatMetricValue,
   HEALTH_RANGES,
@@ -111,19 +112,20 @@ export default function HealthTrends({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    const cached = readCache(range);
+    const fresh = refreshKey > 0;
+    const cached = fresh ? null : readCache(range);
     if (cached) {
       setPayload(cached);
       setLoading(false);
       setProblem(null);
-    } else {
+    } else if (!fresh) {
       setPayload(null);
       setLoading(true);
     }
 
     (async () => {
       try {
-        const res = await fetch(`/api/health/trends?range=${range}`);
+        const res = await freshFetch(`/api/health/trends?range=${range}`, { fresh });
         if (cancelled) return;
         if (res.status === 401) {
           setPayload(null);
@@ -132,19 +134,19 @@ export default function HealthTrends({ refreshKey }: { refreshKey: number }) {
           return;
         }
         if (!res.ok) {
-          if (!cached) setProblem('error');
+          if (!fresh && !cached) setProblem('error');
           return;
         }
         const json: unknown = await res.json();
         if (!isHealthTrendsPayload(json) || json.range !== range) {
-          if (!cached) setProblem('error');
+          if (!fresh && !cached) setProblem('error');
           return;
         }
         setPayload(json);
         setProblem(null);
         writeCache(range, json);
       } catch {
-        if (!cancelled && !cached) setProblem('error');
+        if (!cancelled && !fresh && !cached) setProblem('error');
       } finally {
         if (!cancelled) setLoading(false);
       }

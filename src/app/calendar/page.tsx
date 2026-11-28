@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import LocationAutocomplete from '@/components/LocationAutocomplete';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 interface CalendarEvent {
   id: string;
@@ -139,7 +140,7 @@ export default function CalendarPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/calendar/events?days=" + selectedDays);
+      const res = await freshFetch("/api/calendar/events?days=" + selectedDays, { fresh: true });
       if (!res.ok) throw new Error("Failed to fetch events");
       const data = await res.json();
       setEvents(data.events || []);

@@ -10,8 +10,11 @@ import {
   normName,
 } from '@/lib/financeSheet';
 import { num, readTransactions, readWorkbook, serviceClient } from '@/lib/financeRead';
+import { freshRequested, NO_STORE_HEADERS } from '@/lib/noStore';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
@@ -27,7 +30,7 @@ function daysBetween(start: string, end: string): number {
   return Math.max(0, Math.round((Date.UTC(ye, me - 1, de) - Date.UTC(ys, ms - 1, ds)) / 86400000));
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -44,7 +47,8 @@ export async function GET() {
     let mahlonHelocShare = 0;
     let dataSource = 'finance_sheet';
 
-    const book = await readWorkbook(session.accessToken);
+    const fresh = freshRequested(request);
+    const book = await readWorkbook(session.accessToken, fresh);
     if (book) {
       currentBalance = helocBalance(book);
       const debt = helocDebt(book);
@@ -66,7 +70,7 @@ export async function GET() {
       if (home?.heloc_current_balance) currentBalance = Math.abs(num(home.heloc_current_balance));
     }
 
-    const txs = (await readTransactions(session.accessToken))
+    const txs = (await readTransactions(session.accessToken, fresh))
       .filter((row) => normName(row.account).includes('heloc'))
       .filter((row) => row.date >= monthStart && row.date <= end);
 
@@ -93,7 +97,7 @@ export async function GET() {
       cycleDateRange: { start: monthStart, end },
       dataSource,
       asOf: book?.latestBalance?.date || today,
-    }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error('[heloc-shield]', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Internal system calculation failure' }, { status: 500 });

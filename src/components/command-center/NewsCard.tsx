@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Newspaper, RefreshCw } from 'lucide-react';
+import { freshFetch } from '@/lib/freshFetch';
 
 interface Article {
   title: string;
@@ -67,39 +68,58 @@ function ArticleRow({ article }: { article: Article }) {
   );
 }
 
-export default function NewsCard() {
+export default function NewsCard({ refreshCount = 0, onDone }: { refreshCount?: number; onDone?: (epoch: number, card: string) => void }) {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
 
-  async function fetchNews(showRefresh: boolean = false) {
-    if (showRefresh) setRefreshing(true);
-    try {
-      const res = await fetch('/api/news');
-      const data = await res.json();
-      const items = data.articles || [];
-      setArticles(items);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(items));
-    } catch (e) {
-      console.error(e);
-    }
-    setLoading(false);
-    setRefreshing(false);
-  }
-
   useEffect(() => {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        setArticles(JSON.parse(cached));
-        setLoading(false);
-      } catch (e) {
-        console.error(e);
+    let active = true;
+    const fresh = refreshCount > 0;
+    if (fresh) setRefreshing(true);
+    else {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        try {
+          setArticles(JSON.parse(cached));
+          setLoading(false);
+        } catch (e) {
+          console.error(e);
+        }
       }
     }
-    fetchNews();
-  }, []);
+    freshFetch('/api/news', { fresh })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        const items = data.articles || [];
+        setArticles(items);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(items)); } catch { /* ignore */ }
+      })
+      .catch((e) => console.error(e))
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+        setRefreshing(false);
+        if (fresh) onDone?.(refreshCount, 'news');
+      });
+    return () => { active = false; };
+  }, [refreshCount, onDone]);
+
+  function refreshNews() {
+    try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+    setRefreshing(true);
+    freshFetch('/api/news', { fresh: true })
+      .then((res) => res.json())
+      .then((data) => {
+        const items = data.articles || [];
+        setArticles(items);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(items)); } catch { /* ignore */ }
+      })
+      .catch((e) => console.error(e))
+      .finally(() => setRefreshing(false));
+  }
 
   const filtered = activeSource === 'All'
     ? articles
@@ -114,7 +134,7 @@ export default function NewsCard() {
           <span className="text-white font-semibold text-sm">Top Headlines</span>
         </div>
         <button
-          onClick={() => fetchNews(true)}
+          onClick={refreshNews}
           className="p-1.5 rounded-full text-[#555] hover:text-[#f0a050] transition-colors"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
