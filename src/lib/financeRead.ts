@@ -75,8 +75,8 @@ async function snapshotTransactions(): Promise<SheetTransaction[]> {
 }
 
 /** Sheet rows when Google is reachable, otherwise the last finance_sheet snapshot. Never the abandoned sheet. */
-export async function readTransactions(accessToken?: string | null): Promise<SheetTransaction[]> {
-  const book = await readWorkbook(accessToken);
+export async function readTransactions(accessToken?: string | null, fresh = false): Promise<SheetTransaction[]> {
+  const book = await readWorkbook(accessToken, fresh);
   if (book) return book.transactions;
   return snapshotTransactions();
 }

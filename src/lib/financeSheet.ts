@@ -578,6 +578,8 @@ export function firstApr(apr: string | undefined): number | null {
 }
 
 let cache: { key: string; at: number; book: FinanceWorkbook } | null = null;
+let inflight: { key: string; fresh: boolean; promise: Promise<FinanceWorkbook> } | null = null;
+let sheetReadSeq = 0;
 
 export function clearFinanceSheetCache(): void {
   cache = null;
@@ -593,6 +595,10 @@ export async function loadFinanceWorkbook(accessToken: string, opts?: { fresh?: 
   if (!opts?.fresh && cache && cache.key === key && now - cache.at < CACHE_MS) {
     return cache.book;
   }
+  // Share an in-flight network read. A pull-to-refresh starts its own read
+  // so it cannot join a request that began before the sheet changed.
+  if (!opts?.fresh && inflight && inflight.key === key) return inflight.promise;
+  if (opts?.fresh && inflight?.fresh && inflight.key === key) return inflight.promise;
 
   const sheetId = financeSheetId();
   const ranges = ['Txns!A:Z', 'Balances!A:AZ', 'Monthly!A:AZ', 'Debt!A:Z', 'Bills!A:Z'];
@@ -601,27 +607,34 @@ export async function loadFinanceWorkbook(accessToken: string, opts?: { fresh?: 
   url.searchParams.set('valueRenderOption', 'FORMATTED_VALUE');
   url.searchParams.set('dateTimeRenderOption', 'FORMATTED_STRING');
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: 'no-store',
+  const ticket = ++sheetReadSeq;
+  const promise = (async () => {
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Finance sheet read failed (${res.status}): ${body.slice(0, 280)}`);
+    }
+    const json = await res.json();
+    const valueRanges: { range?: string; values?: unknown[][] }[] = json.valueRanges || [];
+    const grid = (name: string) => {
+      const hit = valueRanges.find((r) => (r.range || '').replace(/'/g, '').toLowerCase().startsWith(`${name.toLowerCase()}!`));
+      return asGrid(hit?.values);
+    };
+    const book = parseFinanceTables({
+      txns: grid('Txns'),
+      balances: grid('Balances'),
+      monthly: grid('Monthly'),
+      debt: grid('Debt'),
+      bills: grid('Bills'),
+    });
+    if (ticket === sheetReadSeq) cache = { key, at: Date.now(), book };
+    return book;
+  })().finally(() => {
+    if (inflight?.promise === promise) inflight = null;
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Finance sheet read failed (${res.status}): ${body.slice(0, 280)}`);
-  }
-  const json = await res.json();
-  const valueRanges: { range?: string; values?: unknown[][] }[] = json.valueRanges || [];
-  const grid = (name: string) => {
-    const hit = valueRanges.find((r) => (r.range || '').replace(/'/g, '').toLowerCase().startsWith(`${name.toLowerCase()}!`));
-    return asGrid(hit?.values);
-  };
-  const book = parseFinanceTables({
-    txns: grid('Txns'),
-    balances: grid('Balances'),
-    monthly: grid('Monthly'),
-    debt: grid('Debt'),
-    bills: grid('Bills'),
-  });
-  cache = { key, at: now, book };
-  return book;
+  inflight = { key, fresh: Boolean(opts?.fresh), promise };
+  return promise;
 }

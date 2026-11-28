@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 interface Warranty {
   id: string;
@@ -34,10 +35,13 @@ export default function WarrantiesPage() {
   const [cost, setCost] = useState('');
   const [notes, setNotes] = useState('');
 
-  const fetchWarranties = async () => {
+  const fetchWarranties = async (fresh = false) => {
     try {
       setLoading(true);
-      const res = await fetch('/api/warranties');
+      if (fresh) {
+        try { localStorage.removeItem('warranties-data'); } catch { /* ignore */ }
+      }
+      const res = await freshFetch('/api/warranties', { fresh });
       if (res.ok) {
         const data = await res.json();
         setWarranties(Array.isArray(data) ? data : []);
@@ -65,7 +69,7 @@ export default function WarrantiesPage() {
   }, []);
 
   const handleRefresh = async () => {
-    await fetchWarranties();
+    await fetchWarranties(true);
   };
 
   const openAddModal = () => {

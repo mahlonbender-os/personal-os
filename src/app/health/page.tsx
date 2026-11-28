@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
 import HealthTrends from '@/components/health/HealthTrends';
+import { clearStorageKeys, freshFetch } from '@/lib/freshFetch';
 
 interface HealthLog {
   log_date: string;
@@ -38,6 +39,7 @@ export default function HealthPage() {
   const [log, setLog] = useState<HealthLog | null>(null);
   const [history, setHistory] = useState<HealthLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
 
   const fmt = (val: number | null | undefined, decimals = 1): string => {
@@ -46,9 +48,9 @@ export default function HealthPage() {
     return isNaN(n) ? '--' : (decimals === 0 ? Math.round(n).toLocaleString() : n.toFixed(decimals));
   };
 
-  const fetchHealthData = useCallback(async () => {
+  const fetchHealthData = useCallback(async (fresh = false) => {
     try {
-      const res = await fetch('/api/health/latest');
+      const res = await freshFetch('/api/health/latest', { fresh });
       if (res.ok) {
         const data = await res.json();
         const latestLog = data.log || data.latest || null;
@@ -73,10 +75,19 @@ export default function HealthPage() {
       setHistory(JSON.parse(cachedHistory));
       setLoading(false);
     }
-    fetchHealthData();
-  }, [fetchHealthData, refreshCount]);
+    fetchHealthData(false);
+  }, [fetchHealthData]);
 
-  const handleRefresh = async () => setRefreshCount((c) => c + 1);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    clearStorageKeys(['health-module-latest', 'health-module-history', 'health-trends-v1']);
+    setRefreshCount((c) => c + 1);
+    try {
+      await fetchHealthData(true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const dateStr = log?.log_date
     ? new Date(log.log_date + 'T00:00:00').toLocaleDateString('en-US', {
@@ -124,9 +135,16 @@ export default function HealthPage() {
         <div className="flex justify-between items-baseline mb-4">
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white font-display">Biometrics</h1>
-            <p className="text-[10px] text-[#555] font-semibold uppercase tracking-wider mt-0.5">
-              {dateStr || 'Apple Watch Diagnostic Link'}
-            </p>
+            {refreshing ? (
+              <p className="flex items-center gap-1.5 text-[10px] text-[#f0a050] font-semibold mt-0.5">
+                <span className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+                Refreshing…
+              </p>
+            ) : (
+              <p className="text-[10px] text-[#555] font-semibold uppercase tracking-wider mt-0.5">
+                {dateStr || 'Apple Watch Diagnostic Link'}
+              </p>
+            )}
           </div>
           <div className="text-right">
             {loading ? (

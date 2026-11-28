@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { freshFetch } from '@/lib/freshFetch';
 
 interface ShieldMetrics {
   helocRate: number;
@@ -16,30 +17,33 @@ interface ShieldMetrics {
   asOf?: string;
 }
 
-export default function HELOCInterestShield() {
+export default function HELOCInterestShield({ refreshToken = 0 }: { refreshToken?: number }) {
   const [data, setData] = useState<ShieldMetrics | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     async function fetchShieldData() {
       try {
-        const res = await fetch('/api/heloc-shield');
+        const res = await freshFetch('/api/heloc-shield', { fresh: refreshToken > 0 });
+        if (!active) return;
         if (res.ok) {
           const payload = await res.json();
           setData(payload);
         } else {
           setData(null);
         }
-      } catch (err) {
-        setData(null);
+      } catch {
+        if (active) setData(null);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     fetchShieldData();
-  }, []);
+    return () => { active = false; };
+  }, [refreshToken]);
 
   const handleToggleExpand = () => {
     if (navigator.vibrate) navigator.vibrate(5);

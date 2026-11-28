@@ -3,8 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { easternYearMonth, isTransfer, mahlonTransactions } from '@/lib/financeSheet';
 import { readTransactions } from '@/lib/financeRead';
+import { freshRequested, NO_STORE_HEADERS } from '@/lib/noStore';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -12,7 +15,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const month = searchParams.get('month') || easternYearMonth();
-  const rows = mahlonTransactions(await readTransactions(session.accessToken))
+  const rows = mahlonTransactions(await readTransactions(session.accessToken, freshRequested(req)))
     .filter((row) => row.month === month && !isTransfer(row) && row.amount < 0);
 
   const merchantMap: Record<string, number> = {};
@@ -29,6 +32,6 @@ export async function GET(req: Request) {
 
   return NextResponse.json(
     { month, merchants, grandTotal: Math.round(grandTotal * 100) / 100 },
-    { headers: { 'Cache-Control': 'no-store' } }
+    { headers: NO_STORE_HEADERS }
   );
 }

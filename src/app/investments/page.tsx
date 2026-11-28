@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { clearStorageKeys, freshFetch } from '@/lib/freshFetch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -214,12 +215,13 @@ export default function InvestmentsPage() {
   const [showDaily, setShowDaily] = useState(true);
   const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
   const [historyRange, setHistoryRange] = useState('1Y');
+  const [refreshing, setRefreshing] = useState(false);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
-  async function fetchData() {
+  async function fetchData(fresh = false) {
     try {
-      const res = await fetch('/api/finance/investments');
+      const res = await freshFetch('/api/finance/investments', { fresh });
       if (!res.ok) return;
       const json = await res.json();
       if (!isCachedInvestmentData(json)) return;
@@ -232,17 +234,19 @@ export default function InvestmentsPage() {
     }
   }
 
-  async function fetchHistory() {
+  async function fetchHistory(fresh = false) {
     try {
-      const raw = localStorage.getItem(HISTORY_CACHE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000 && parsed.data?.length > 0) {
-          setHistoryData(parsed.data);
-          return;
+      if (!fresh) {
+        const raw = localStorage.getItem(HISTORY_CACHE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.ts && Date.now() - parsed.ts < 6 * 60 * 60 * 1000 && parsed.data?.length > 0) {
+            setHistoryData(parsed.data);
+            return;
+          }
         }
       }
-      const res = await fetch('/api/finance/investments/history');
+      const res = await freshFetch('/api/finance/investments/history', { fresh });
       if (!res.ok) return;
       const json = await res.json();
       const pts: HistoryPoint[] = json.points || [];
@@ -256,8 +260,13 @@ export default function InvestmentsPage() {
   }
 
   const triggerRefresh = async () => {
-    localStorage.removeItem(HISTORY_CACHE_KEY);
-    await Promise.all([fetchData(), fetchHistory()]);
+    setRefreshing(true);
+    clearStorageKeys([CACHE_KEY, HISTORY_CACHE_KEY, ...PREVIOUS_CACHE_KEYS]);
+    try {
+      await Promise.all([fetchData(true), fetchHistory(true)]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -299,17 +308,24 @@ export default function InvestmentsPage() {
             <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
               Investments
             </h1>
-            <p className="text-[10px] text-[#555] mt-0.5">Live Portfolio Tracker</p>
+            {refreshing ? (
+              <p className="flex items-center gap-1.5 text-[10px] text-[#f0a050] mt-0.5">
+                <span className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+                Refreshing…
+              </p>
+            ) : (
+              <p className="text-[10px] text-[#555] mt-0.5">Live Portfolio Tracker</p>
+            )}
           </div>
           <button
             type="button"
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(8);
-              triggerRefresh();
+              if (!refreshing) triggerRefresh();
             }}
             className="text-sm font-semibold text-[#f0a050] active:opacity-70 transition-opacity px-2 py-1"
           >
-            Refresh
+            {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       </div>

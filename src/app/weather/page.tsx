@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -381,9 +382,12 @@ export default function WeatherPage() {
   const [expandedDay, setExpandedDay] = useState<DailyEntry | null>(null);
   const [expandedAlert, setExpandedAlert] = useState<WxAlert | null>(null);
 
-  const fetchForCoords = useCallback((lat: number, lon: number) => {
+  const fetchForCoords = useCallback((lat: number, lon: number, fresh = false) => {
     setLoading(true);
-    fetch(`/api/weather?lat=${lat}&lon=${lon}`)
+    if (fresh) {
+      try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+    }
+    return freshFetch(`/api/weather?lat=${lat}&lon=${lon}`, { fresh })
       .then(r => r.json())
       .then(d => {
         if (d.error) { setError(d.error); return; }
@@ -418,9 +422,30 @@ export default function WeatherPage() {
   }, [fetchForCoords]);
 
   const refresh = useCallback(() => {
-    if (selectedLocation) fetchForCoords(selectedLocation.lat, selectedLocation.lon);
-    else detectAndLoad();
-  }, [selectedLocation, fetchForCoords, detectAndLoad]);
+    if (selectedLocation) return fetchForCoords(selectedLocation.lat, selectedLocation.lon, true);
+    return new Promise<void>((resolve) => {
+      const done = () => resolve();
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const { latitude, longitude } = pos.coords;
+            await fetchForCoords(latitude, longitude, true);
+            setLocLabel(await reverseGeocode(latitude, longitude));
+            done();
+          },
+          async () => {
+            setLocLabel('Reading, PA');
+            await fetchForCoords(DEFAULT_LAT, DEFAULT_LON, true);
+            done();
+          },
+          { timeout: 8000 }
+        );
+      } else {
+        setLocLabel('Reading, PA');
+        fetchForCoords(DEFAULT_LAT, DEFAULT_LON, true).finally(done);
+      }
+    });
+  }, [selectedLocation, fetchForCoords]);
 
   useEffect(() => {
     try {

@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 const USER_ID = 'b0572935-26c9-44b5-8645-229bf5b78743';
 
 export async function GET() {

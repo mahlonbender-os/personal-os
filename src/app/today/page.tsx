@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 interface CalendarEvent {
   id?: string;
@@ -47,12 +48,13 @@ export default function TodayPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     try {
       const [eventRes, listRes] = await Promise.all([
-        fetch('/api/calendar/events?days=7'),
-        fetch('/api/tasks/lists'),
+        freshFetch('/api/calendar/events?days=7', { fresh }),
+        freshFetch('/api/tasks/lists', { fresh }),
       ]);
       const eventJson = await eventRes.json();
       setEvents(Array.isArray(eventJson.events) ? eventJson.events.slice(0, 8) : []);
@@ -64,7 +66,7 @@ export default function TodayPage() {
         return;
       }
       const preferred = lists.find((list: { title?: string }) => list.title === 'Personal OS') || lists[0];
-      const taskRes = await fetch(`/api/tasks/items?listId=${preferred.id}&showCompleted=false`);
+      const taskRes = await freshFetch(`/api/tasks/items?listId=${preferred.id}&showCompleted=false`, { fresh });
       const taskJson = await taskRes.json();
       setTasks(Array.isArray(taskJson.tasks) ? taskJson.tasks.slice(0, 8) : []);
     } catch (err) {
@@ -87,9 +89,20 @@ export default function TodayPage() {
     <div className="min-h-screen bg-black text-white pb-24">
       <div className="sticky top-0 z-30 bg-black border-b border-[#1a1a1a] px-4 pt-14 pb-3">
         <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Syne, system-ui, sans-serif' }}>Today</h1>
-        <p className="text-[11px] text-[#555] mt-0.5">{todayLabel}</p>
+        {refreshing ? (
+          <p className="flex items-center gap-1.5 text-[11px] text-[#f0a050] mt-0.5">
+            <span className="w-2.5 h-2.5 border-2 border-[#f0a050] border-t-transparent rounded-full animate-spin" />
+            Refreshing…
+          </p>
+        ) : (
+          <p className="text-[11px] text-[#555] mt-0.5">{todayLabel}</p>
+        )}
       </div>
-      <PullToRefresh onRefresh={async () => { await load(); }}>
+      <PullToRefresh onRefresh={async () => {
+        setRefreshing(true);
+        try { await load(true); }
+        finally { setRefreshing(false); }
+      }}>
         <div className="px-4 pt-4 space-y-4">
           <section className="rounded-2xl bg-[#111] border border-[#1a1a1a] overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">

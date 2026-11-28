@@ -3,24 +3,27 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { num, readWorkbook, serviceClient, upcomingBills } from '@/lib/financeRead';
 import { FINANCE_SHEET_SOURCE, FINANCE_USER_ID, easternToday } from '@/lib/financeSheet';
+import { freshRequested, NO_STORE_HEADERS } from '@/lib/noStore';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const today = easternToday();
-  const book = await readWorkbook(session.accessToken);
+  const book = await readWorkbook(session.accessToken, freshRequested(request));
   if (book) {
     const bills = upcomingBills(book, today);
     const mine = bills.filter((bill) => bill.owner.trim().toLowerCase() !== 'bree');
     const bree = bills.filter((bill) => bill.owner.trim().toLowerCase() === 'bree');
     return NextResponse.json(
       { bills: mine, breeBills: bree },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      { headers: NO_STORE_HEADERS }
     );
   }
 
@@ -42,6 +45,6 @@ export async function GET() {
   }));
   return NextResponse.json(
     { bills, breeBills: [] },
-    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    { headers: NO_STORE_HEADERS }
   );
 }

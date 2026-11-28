@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { mahlonTransactions } from '@/lib/financeSheet';
 import { readTransactions } from '@/lib/financeRead';
+import { freshRequested, NO_STORE_HEADERS } from '@/lib/noStore';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '200', 10) || 200, 1), 5000);
   const includeBree = searchParams.get('owner') === 'all';
 
-  let transactions = await readTransactions(session.accessToken);
+  let transactions = await readTransactions(session.accessToken, freshRequested(request));
   const bree = transactions.filter((row) => row.owner.trim().toLowerCase() === 'bree');
   if (!includeBree) transactions = mahlonTransactions(transactions);
   if (month) transactions = transactions.filter((row) => row.month === month);
@@ -37,6 +38,6 @@ export async function GET(request: Request) {
       transactions: transactions.slice(0, limit),
       breeCount: bree.length,
     },
-    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    { headers: NO_STORE_HEADERS }
   );
 }

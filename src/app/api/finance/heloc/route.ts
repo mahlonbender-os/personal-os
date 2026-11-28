@@ -3,20 +3,24 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { firstApr, helocBalance, helocDebt, normName } from '@/lib/financeSheet';
 import { readTransactions, readWorkbook } from '@/lib/financeRead';
+import { freshRequested, NO_STORE_HEADERS } from '@/lib/noStore';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 function isHelocAccount(account: string): boolean {
   return normName(account).includes('heloc');
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const fresh = freshRequested(request);
   const [book, transactions] = await Promise.all([
-    readWorkbook(session.accessToken),
-    readTransactions(session.accessToken),
+    readWorkbook(session.accessToken, fresh),
+    readTransactions(session.accessToken, fresh),
   ]);
 
   const rows = transactions
@@ -42,5 +46,5 @@ export async function GET() {
     breeHelocShare: book?.latestBalance?.breeHelocShare || 0,
     mahlonHelocShare: book?.latestBalance?.mahlonHelocShare || 0,
     asOf: book?.latestBalance?.date || null,
-  }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+  }, { headers: NO_STORE_HEADERS });
 }

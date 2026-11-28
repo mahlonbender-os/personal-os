@@ -1,6 +1,7 @@
 'use client';
 
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import EditTaskModal from '@/components/EditTaskModal';
@@ -57,7 +58,7 @@ export default function TasksPage() {
   const [editingTask, setEditingTask] = useState<GoogleTask | null>(null);
 
   useEffect(() => {
-    fetch('/api/tasks/lists')
+    freshFetch('/api/tasks/lists')
       .then(r => r.json())
       .then(d => {
         const fetchedLists = d.lists || [];
@@ -75,7 +76,7 @@ export default function TasksPage() {
     if (!activeListId) return;
     setLoadingTasks(true);
     try {
-      const res = await fetch(`/api/tasks/items?listId=${activeListId}&showCompleted=${showCompleted}`);
+      const res = await freshFetch(`/api/tasks/items?listId=${activeListId}&showCompleted=${showCompleted}`, { fresh: true });
       const data = await res.json();
       setTasks(data.tasks || []);
     } catch (e) {

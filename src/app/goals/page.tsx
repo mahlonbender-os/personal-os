@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 const TABS = ['Goals', 'Habits'];
 const CATEGORIES = ['personal', 'work', 'health', 'finance', 'home', 'fitness', 'learning', 'other'];
@@ -44,11 +45,11 @@ export default function GoalsPage() {
   const [habitDesc, setHabitDesc] = useState('');
   const [deleteHabitId, setDeleteHabitId] = useState<string | null>(null);
 
-  const fetchGoals = useCallback(async () => {
+  const fetchGoals = useCallback(async (fresh = false) => {
     setGoalsLoading(true);
     try {
       const suffix = filter !== 'all' ? `?status=${filter}` : '';
-      const res = await fetch(`/api/goals${suffix}`);
+      const res = await freshFetch(`/api/goals${suffix}`, { fresh });
       const data = await res.json();
       const fetchedGoals = data.goals || [];
       setGoals(fetchedGoals);
@@ -66,10 +67,13 @@ export default function GoalsPage() {
     }
   }, [filter]);
 
-  async function fetchHabits() {
+  async function fetchHabits(fresh = false) {
     setHabitsLoading(true);
+    if (fresh) {
+      try { localStorage.removeItem('habits-cache'); } catch { /* ignore */ }
+    }
     try {
-      const res = await fetch('/api/habits');
+      const res = await freshFetch('/api/habits', { fresh });
       if (res.ok) {
         const data = await res.json();
         setHabits(data);
@@ -83,7 +87,8 @@ export default function GoalsPage() {
   }
 
   async function refreshAll() {
-    await Promise.all([fetchGoals(), fetchHabits()]);
+    try { localStorage.removeItem('habits-cache'); } catch { /* ignore */ }
+    await Promise.all([fetchGoals(true), fetchHabits(true)]);
   }
 
   useEffect(() => { fetchGoals(); }, [fetchGoals]);

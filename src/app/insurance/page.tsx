@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 interface InsurancePolicy {
   id: string;
@@ -38,9 +39,12 @@ export default function InsurancePage() {
   const [editRenewalDate, setEditRenewalDate] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
-  const fetchPolicies = async () => {
+  const fetchPolicies = async (fresh = false) => {
     try {
-      const res = await fetch('/api/insurance');
+      if (fresh) {
+        try { localStorage.removeItem('insurance-data'); } catch { /* ignore */ }
+      }
+      const res = await freshFetch('/api/insurance', { fresh });
       if (res.ok) {
         const data = await res.json();
         setPolicies(data);
@@ -63,7 +67,7 @@ export default function InsurancePage() {
   }, []);
 
   const handleRefresh = async () => {
-    await fetchPolicies();
+    await fetchPolicies(true);
   };
 
   const handleSubmit = async () => {

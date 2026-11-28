@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 import { useHaptics } from '@/context/HapticContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ export default function NotesPage() {
     setLoading(true);
     try {
       const url = tag === 'All' ? '/api/notes' : `/api/notes?tag=${encodeURIComponent(tag)}`;
-      const res = await fetch(url);
+      const res = await freshFetch(url, { fresh: true });
       const json = await res.json();
       setNotes(json.notes || []);
     } catch (e) {

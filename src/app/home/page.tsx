@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import PullToRefresh from '@/components/PullToRefresh';
+import { clearStorageKeys, freshFetch } from '@/lib/freshFetch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,16 +148,17 @@ export default function HomePage() {
       const cpr = localStorage.getItem(CACHE_PROJECTS);
       if (cpr) setProjects(JSON.parse(cpr));
     } catch {}
-    fetchAll();
+    fetchAll(false);
   }, []);
 
-  async function fetchAll() {
-    await Promise.all([fetchProfile(), fetchBalances(), fetchMaintenance(), fetchProjects()]);
+  async function fetchAll(fresh = false) {
+    if (fresh) clearStorageKeys([CACHE_PROFILE, CACHE_BALANCES, CACHE_MAINTENANCE, CACHE_PROJECTS]);
+    await Promise.all([fetchProfile(fresh), fetchBalances(fresh), fetchMaintenance(fresh), fetchProjects(fresh)]);
   }
 
-  async function fetchProfile() {
+  async function fetchProfile(fresh = false) {
     try {
-      const res = await fetch('/api/home/profile');
+      const res = await freshFetch('/api/home/profile', { fresh });
       const data = await res.json();
       if (data && !data.error) {
         setProfile(data);
@@ -165,10 +167,10 @@ export default function HomePage() {
     } catch {}
   }
 
-  async function fetchBalances() {
+  async function fetchBalances(fresh = false) {
     setBalancesLoading(true);
     try {
-      const res = await fetch('/api/home/balances');
+      const res = await freshFetch('/api/home/balances', { fresh });
       const data = await res.json();
       if (data && !data.error) {
         setBalances(data);
@@ -178,9 +180,9 @@ export default function HomePage() {
     setBalancesLoading(false);
   }
 
-  async function fetchMaintenance() {
+  async function fetchMaintenance(fresh = false) {
     try {
-      const res = await fetch('/api/home/maintenance');
+      const res = await freshFetch('/api/home/maintenance', { fresh });
       const data = await res.json();
       if (Array.isArray(data)) {
         setMaintenance(data);
@@ -189,9 +191,9 @@ export default function HomePage() {
     } catch {}
   }
 
-  async function fetchProjects() {
+  async function fetchProjects(fresh = false) {
     try {
-      const res = await fetch('/api/home/projects');
+      const res = await freshFetch('/api/home/projects', { fresh });
       const data = await res.json();
       if (Array.isArray(data)) {
         setProjects(data);
@@ -372,7 +374,7 @@ export default function HomePage() {
   return (
     <>
       <div className="min-h-screen bg-black">
-        <PullToRefresh onRefresh={fetchAll}>
+        <PullToRefresh onRefresh={() => fetchAll(true)}>
           <div className="pb-24">
 
             {/* Header */}

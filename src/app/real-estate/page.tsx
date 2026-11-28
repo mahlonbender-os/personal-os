@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import PullToRefresh from '@/components/PullToRefresh';
+import { freshFetch } from '@/lib/freshFetch';
 
 interface RealEstateData {
   homeValue: number;
@@ -18,9 +19,9 @@ export default function RealEstateOptimizationPage() {
   const [extraPayment, setExtraPayment] = useState('500');
   const [helocRate, setHelocRate] = useState('8.25');
 
-  async function getMetrics() {
+  async function getMetrics(fresh = false) {
     try {
-      const res = await fetch('/api/finance/real-estate');
+      const res = await freshFetch('/api/finance/real-estate', { fresh });
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -37,7 +38,7 @@ export default function RealEstateOptimizationPage() {
   }, []);
 
   const handleRefresh = async () => {
-    await getMetrics();
+    await getMetrics(true);
   };
 
   if (loading) {
