@@ -7,6 +7,7 @@ import PullToRefresh from '@/components/PullToRefresh';
 import Modal from '@/components/Modal';
 import HELOCInterestShield from '@/components/finance/HELOCInterestShield';
 import { MonthlyFlowTrend, NetWorthTrend, type FlowMonth, type NetWorthPoint } from '@/components/finance/NetWorthTrend';
+import { formatEasternMonthDay } from '@/lib/dates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,8 @@ interface Bill {
   status: string;
   amount_type?: string;
   owner?: string;
+  auto_amount?: boolean;
+  auto_updated?: string;
 }
 
 interface NetWorthAccount {
@@ -114,7 +117,7 @@ type Tab = 'overview' | 'budget' | 'transactions' | 'bills' | 'networth' | 'cred
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = 'v9';
+const CACHE_VERSION = 'v10';
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Knox 🐾': '#f59e0b',
@@ -163,6 +166,14 @@ function fmt(n: number) {
 function fmtDate(s: string) {
   if (!s) return '';
   return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function billAmountLabel(bill: { amount?: number | null; amount_type?: string | null; auto_amount?: boolean }): string {
+  const type = String(bill.amount_type || '').toLowerCase();
+  const amount = typeof bill.amount === 'number' ? bill.amount : Number(bill.amount);
+  if (bill.auto_amount && amount > 0) return fmt(amount);
+  if (type.startsWith('var') || !amount) return type === 'payroll' ? 'Payroll' : 'Varies';
+  return fmt(amount);
 }
 
 function easternDay(offset = 0): string {
@@ -873,9 +884,12 @@ function BillsTab({ onRefresh }: { onRefresh: number }) {
           <p className="text-sm font-medium text-[#e0e0e0]">{bill.name}</p>
           <p className="text-[10px] text-[#444]">{bill.payment_account || bill.category}</p>
         </div>
-        <p className="text-sm font-semibold text-[#f0a050] flex-shrink-0 font-mono">
-          {(bill.amount_type || '').toLowerCase().startsWith('var') || !bill.amount ? 'Varies' : fmt(Math.abs(bill.amount))}
-        </p>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-semibold text-[#f0a050] font-mono">{billAmountLabel(bill)}</p>
+          {bill.auto_amount && bill.auto_updated ? (
+            <p className="text-[10px] text-[#444] mt-0.5 whitespace-nowrap">auto · updated {formatEasternMonthDay(bill.auto_updated)}</p>
+          ) : null}
+        </div>
       </div>
     );
   }

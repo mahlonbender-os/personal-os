@@ -48,3 +48,16 @@ export function formatLongDate(iso: string): string {
   const month = MONTHS[Number(match[2]) - 1] || '';
   return `${month} ${Number(match[3])}, ${match[1]}`;
 }
+
+/** "Nov 27" from YYYY-MM-DD. 17:00 UTC matches formatEasternDate so the Eastern day does not shift. */
+export function formatEasternMonthDay(value: string): string {
+  const day = String(value || '').slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return value;
+  const stamp = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 17, 0, 0));
+  return stamp.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+  });
+}
