@@ -5,6 +5,7 @@ import PullToRefresh from '@/components/PullToRefresh';
 import NewsCard from '@/components/command-center/NewsCard';
 import Modal from '@/components/Modal';
 import { clearStoragePrefix, freshFetch } from '@/lib/freshFetch';
+import { formatEasternMonthDay } from '@/lib/dates';
 
 const CC_CARDS = ['health', 'finance', 'investments', 'calendar', 'tasks', 'vehicle', 'weather', 'news'] as const;
 
@@ -13,9 +14,16 @@ const CC_CARDS = ['health', 'finance', 'investments', 'calendar', 'tasks', 'vehi
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(n)); }
+function billAmountLabel(bill: { amount?: number | null; amount_type?: string | null; auto_amount?: boolean }): string {
+  const type = String(bill.amount_type || '').toLowerCase();
+  const amount = typeof bill.amount === 'number' ? bill.amount : Number(bill.amount);
+  if (bill.auto_amount && amount > 0) return fmt(amount);
+  if (type.startsWith('var') || !amount) return type === 'payroll' ? 'Payroll' : 'Varies';
+  return fmt(amount);
+}
 function readCcFinance(): {cf:{income:number;expenses:number;net:number}|null;bills:any[]}|null {
   try {
-    const raw=localStorage.getItem('cc_finance_v2');
+    const raw=localStorage.getItem('cc_finance_v3');
     if(!raw) return null;
     const parsed=JSON.parse(raw);
     if(!parsed||typeof parsed!=='object'||!Array.isArray(parsed.bills)) return null;
@@ -207,7 +215,7 @@ function FinanceRow({ refreshCount, onDone }: { refreshCount: number; onDone: (e
     if (!fresh) {
       const cached=readCcFinance();
       if(cached){setCf(cached.cf);setBills(cached.bills);}
-      else{try{localStorage.removeItem('cc_finance_v2');}catch{}}
+      else{try{localStorage.removeItem('cc_finance_v2');localStorage.removeItem('cc_finance_v3');}catch{}}
     }
     Promise.all([
       freshFetch('/api/finance/cash-flow', { fresh }).then(r=>r.json()),
@@ -219,7 +227,7 @@ function FinanceRow({ refreshCount, onDone }: { refreshCount: number; onDone: (e
       const newCf=cur&&Number.isFinite(cur.income)&&Number.isFinite(cur.net)?{income:cur.income,expenses:(cur.essentials||0)+(cur.discretionary||0),net:cur.net}:null;
       const newBills=(Array.isArray(blData.bills)?blData.bills:[]).filter((b:any)=>b&&typeof b.name==='string'&&Number.isFinite(Number(b.amount)));
       setCf(newCf);setBills(newBills);
-      try{localStorage.setItem('cc_finance_v2',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
+      try{localStorage.setItem('cc_finance_v3',JSON.stringify({cf:newCf,bills:newBills}));}catch{}
     }).catch(()=>{}).finally(()=>{ if (active && fresh) onDone(refreshCount, 'finance'); });
     return () => { active = false; };
   },[refreshCount, onDone]);
@@ -239,7 +247,7 @@ function FinanceRow({ refreshCount, onDone }: { refreshCount: number; onDone: (e
         <div className="text-[9px] font-semibold text-[#444] uppercase tracking-widest mb-2">Bills Due</div>
         <div className="text-[18px] font-extrabold text-[#f0a050] leading-none mb-1 font-display">{fmt(dueTotal)}</div>
         <div className="text-[9px] text-[#444] mb-2">{dueSoon.length} bills · 7 days</div>
-        <div className="space-y-1">{dueSoon.slice(0,3).map((b,i)=>(<div key={i} className="flex justify-between items-center"><span className="text-[9px] text-[#555] truncate">{b.name}</span><span className="text-[9px] text-[#444] font-mono ml-1 flex-shrink-0">{(b.amount_type||'').toLowerCase().startsWith('var')||!b.amount?'Varies':fmt(b.amount)}</span></div>))}{dueSoon.length>3&&<div className="text-[9px] text-[#f0a050]">+{dueSoon.length-3} more</div>}</div>
+        <div className="space-y-1">{dueSoon.slice(0,3).map((b,i)=>(<div key={i} className="flex justify-between items-start gap-1"><span className="text-[9px] text-[#555] truncate">{b.name}</span><span className="text-right ml-1 flex-shrink-0"><span className="block text-[9px] text-[#444] font-mono">{billAmountLabel(b)}</span>{b.auto_amount&&b.auto_updated?<span className="block text-[8px] text-[#333] leading-tight whitespace-nowrap">auto · updated {formatEasternMonthDay(b.auto_updated)}</span>:null}</span></div>))}{dueSoon.length>3&&<div className="text-[9px] text-[#f0a050]">+{dueSoon.length-3} more</div>}</div>
       </div>
     </div>
   );
@@ -403,7 +411,7 @@ export default function CommandCenterCards() {
   const handleRefresh=useCallback(()=>{
     setSyncing(true);
     try{
-      ['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_investments_v2','cc_vehicle_v1','news_articles_v2'].forEach(k=>localStorage.removeItem(k));
+      ['cc_health_v1','cc_finance_v1','cc_finance_v2','cc_finance_v3','cc_calendar_v1','cc_tasks_v1','cc_weather_v1','cc_knox_v2','cc_investments_v1','cc_investments_v2','cc_vehicle_v1','news_articles_v2'].forEach(k=>localStorage.removeItem(k));
       clearStoragePrefix('finance_');
     }catch{}
     const epoch = epochRef.current + 1;
